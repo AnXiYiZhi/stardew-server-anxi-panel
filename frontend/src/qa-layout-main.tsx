@@ -25,6 +25,7 @@ const JUNIMO_REPAIR = params.get('junimoRepair') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
+const FARMHAND_DELETE_QA = params.get('farmhandDeleteQa') || ''
 const INSTALL_DIAGNOSTIC = params.get('installDiagnostic') || ''
 const INSTALL_QA = params.get('installQa') || ''
 const INVITE_QA = INSTALL_QA.startsWith('invite-')
@@ -108,6 +109,9 @@ const players = [
   { name: '星露谷旅人', locationDisplayName: '矿洞湖', uniqueMultiplayerId: 'a1b7c3f8', status: 'online', ping: 62, farmMoney: 34820, personalMoney: 29150, onlineSeconds: 3480 },
   { name: 'WinterBreeze', locationDisplayName: '等待加入…', uniqueMultiplayerId: 'd4e5f6a1', status: 'waiting', ping: null },
   { name: 'PendingGuest', locationDisplayName: '登录中…', uniqueMultiplayerId: 'f2a8c410', status: 'online', isAuthenticated: false, ping: 50, modRiskFlags: ['cjb'] },
+  ...(FARMHAND_DELETE_QA === 'dialog'
+    ? [{ name: 'LongNamedOfflineFarmer', locationDisplayName: '姜岛农舍', uniqueMultiplayerId: '424242424242', status: 'offline', saveCharacterPresent: true, canDeleteCharacter: true }]
+    : []),
 ]
 
 const recentPlayerEvents = [
@@ -118,6 +122,16 @@ const recentPlayerEvents = [
   { id: 'evt-5', type: 'joined', playerName: 'JunimoGuest', uniqueMultiplayerId: 'e7f8a9b0', locationDisplayName: '鹈鹕镇', at: iso(2880), message: 'JunimoGuest 加入了服务器。' },
   { id: 'evt-6', type: 'left', playerName: 'JunimoGuest', uniqueMultiplayerId: 'e7f8a9b0', locationDisplayName: '鹈鹕镇', at: iso(2940), message: 'JunimoGuest 离开了服务器。' },
 ]
+
+const farmhandDeleteIntent = FARMHAND_DELETE_QA === 'recovery'
+  ? {
+      operationId: '0123456789abcdef0123456789abcdef', mode: 'maintenance_now', status: 'recovery_required',
+      uniqueMultiplayerId: '424242424242', expectedName: 'LongNamedOfflineFarmer', expectedSaveId: 'AnxiFarm',
+      jobId: 'job_farmhand_delete_recovery', expiresAt: iso(-1440),
+      backupName: 'prefarmhanddelete_AnxiFarm_20260909_225500_with_a_long_verification_suffix.zip',
+      lastError: '人物已从运行世界删除，但最终保存未确认；联机入口继续保持关闭，请重试最终保存或恢复整档保护备份。',
+    }
+  : null
 
 const playerModItems = [
   { result: 'version_mismatch', uniqueId: 'Pathoschild.SMAPI', name: 'SMAPI', serverVersion: '4.1.10', clientVersion: '4.1.9-beta-build-with-a-very-long-version-suffix', syncKind: 'client_required', riskFlags: [] },
@@ -334,6 +348,7 @@ const backups = {
     }
   }),
 }
+if (FARMHAND_DELETE_QA === 'recovery') backups.backups.push({ ...backups.backups[0], name: farmhandDeleteIntent!.backupName, kind: 'prefarmhanddelete' })
 const backupPolicy = { policy: { gameSaveBackups: true, retainGameDays: 5 } }
 const restartSchedule = { schedule: { instanceId: 'stardew', enabled: false, shutdownTime: '04:00', startupTime: '04:10', timezone: 'Asia/Shanghai', warningMinutes: [10, 5, 1], backupBeforeShutdown: true, skipIfPlayersOnline: true } }
 const passwordStatus = {
@@ -532,6 +547,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/api\/instances$/, instanceListFixture],
   [/\/state$/, instanceStateFixture],
   [/\/metrics$/, metrics],
+  [/\/players\/delete-farmhand$/, { intent: farmhandDeleteIntent }],
   [/\/players\/[^/]+\/mods$/, playerModDetails],
   [/\/players$/, { instanceId: 'stardew', state: STATE, source: 'junimo', onlineCount: 3, maxPlayers: 12, players, parseStatus: 'exact', updatedAt: iso(0), recentEvents: recentPlayerEvents, rawInfo: JSON.stringify({ server: 'AnxiFarm', uptime: '2天 4小时 12分', version: '1.6.15 (Stardew Valley)', players_online: 3, max_players: 8, junimo_note: '此信息为 Junimo 协议原始输出，用于调试与集成。', timestamp: '2025-05-21T14:28:36+08:00' }, null, 2) }],
   [/\/jobs$/, { jobs }],

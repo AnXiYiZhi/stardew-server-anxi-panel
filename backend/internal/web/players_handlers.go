@@ -34,7 +34,10 @@ type playerBanner interface {
 }
 
 type farmhandDeleter interface {
-	DeleteFarmhand(ctx context.Context, req sj.FarmhandDeleteRequest) (*registry.Job, error)
+	DeleteFarmhand(ctx context.Context, req sj.FarmhandDeleteRequest) (*sj.FarmhandDeleteSubmission, error)
+	GetFarmhandDeleteIntent(ctx context.Context, instance registry.Instance) (*sj.FarmhandDeleteIntentResult, error)
+	CancelFarmhandDeleteIntent(ctx context.Context, instance registry.Instance, operationID string) error
+	RetryFarmhandDeletePersistence(ctx context.Context, instance registry.Instance, operationID string, actorID int64) (*sj.FarmhandDeleteSubmission, error)
 }
 
 type kickPlayerRequest struct {
@@ -61,9 +64,17 @@ type deleteFarmhandRequest struct {
 	ExpectedName        string `json:"expectedName"`
 	ExpectedSaveID      string `json:"expectedSaveId"`
 	Acknowledged        bool   `json:"acknowledged"`
+	Mode                string `json:"mode"`
+	RiskAcknowledged    bool   `json:"riskAcknowledged"`
+	ConfirmationName    string `json:"confirmationName"`
 }
 
-// handleFarmhandDelete handles POST /api/instances/:id/players/delete-farmhand.
+type farmhandDeleteRecoveryRequest struct {
+	OperationID string `json:"operationId"`
+	Action      string `json:"action"`
+}
+
+// handleFarmhandDelete manages one world's durable deletion intent and active deletion submission.
 func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAdmin(w, r)
 	if !ok {
@@ -86,6 +97,29 @@ func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, in
 		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持删除存档人物")
 		return
 	}
+	if r.Method == http.MethodGet {
+		intent, err := deleter.GetFarmhandDeleteIntent(r.Context(), makeRegistryInstance(instance))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "farmhand_delete_status_failed", sanitizeErrorMsg(err, "读取人物删除状态失败"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"intent": intent})
+		return
+	}
+	if r.Method == http.MethodDelete {
+		operationID := strings.TrimSpace(r.URL.Query().Get("operationId"))
+		if err := deleter.CancelFarmhandDeleteIntent(r.Context(), makeRegistryInstance(instance), operationID); err != nil {
+			if ce, ok := err.(*sj.CommandError); ok {
+				writeError(w, http.StatusConflict, ce.Code, ce.Message)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "farmhand_delete_cancel_failed", sanitizeErrorMsg(err, "取消等待删除失败"))
+			return
+		}
+		s.auditLog(r, &actor, "farmhand_delete_canceled", "instance", instanceID, auditMetadata("operationId", operationID))
+		writeJSON(w, http.StatusOK, map[string]bool{"canceled": true})
+		return
+	}
 	var body deleteFarmhandRequest
 	if !decodeJSON(w, r, &body) {
 		return
@@ -94,13 +128,27 @@ func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, in
 		writeError(w, http.StatusBadRequest, "confirmation_required", "必须确认人物、小屋及其内容会被删除")
 		return
 	}
+	mode := strings.TrimSpace(body.Mode)
+	if mode == "" {
+		mode = "wait"
+	}
+	if mode == "maintenance_now" {
+		if !body.RiskAcknowledged {
+			writeError(w, http.StatusBadRequest, "risk_confirmation_required", "必须确认强制断开前尚未同步的当天进度可能丢失")
+			return
+		}
+		if strings.TrimSpace(body.ConfirmationName) != strings.TrimSpace(body.ExpectedName) {
+			writeError(w, http.StatusBadRequest, "confirmation_name_mismatch", "请输入目标人物名称以确认立即维护删除")
+			return
+		}
+	}
 	playerID := strings.TrimSpace(body.UniqueMultiplayerID)
 	if playerID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_player", "缺少玩家联机 ID")
 		return
 	}
-	job, err := deleter.DeleteFarmhand(r.Context(), sj.FarmhandDeleteRequest{Instance: makeRegistryInstance(instance), PlayerID: playerID,
-		ExpectedName: body.ExpectedName, ExpectedSave: body.ExpectedSaveID, ActorID: actor.User.ID})
+	submission, err := deleter.DeleteFarmhand(r.Context(), sj.FarmhandDeleteRequest{Instance: makeRegistryInstance(instance), PlayerID: playerID,
+		ExpectedName: body.ExpectedName, ExpectedSave: body.ExpectedSaveID, Mode: mode, ActorID: actor.User.ID})
 	if err != nil {
 		if writeStardewMutationGuardConflict(w, err) {
 			return
@@ -108,7 +156,7 @@ func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, in
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
-			case "server_not_running", "active_save_changed", "operation_in_progress", "farmhand_online", "save_in_progress", "world_not_ready":
+			case "server_not_running", "active_save_changed", "operation_in_progress", "farmhand_online", "save_in_progress", "world_not_ready", "farmhand_delete_in_progress", "save_recovery_pending":
 				status = http.StatusConflict
 			case "not_supported", "farmhand_delete_unsupported":
 				status = http.StatusNotImplemented
@@ -119,9 +167,57 @@ func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, in
 		writeError(w, http.StatusInternalServerError, "farmhand_delete_failed", sanitizeErrorMsg(err, "创建人物删除任务失败"))
 		return
 	}
-	s.auditLog(r, &actor, "farmhand_delete_requested", "instance", instanceID, auditMetadata("jobId", job.ID,
-		"uniqueMultiplayerId", playerID, "name", body.ExpectedName, "saveId", body.ExpectedSaveID))
-	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
+	s.auditLog(r, &actor, "farmhand_delete_requested", "instance", instanceID, auditMetadata("jobId", submission.JobID,
+		"operationId", submission.Intent.OperationID, "mode", mode, "uniqueMultiplayerId", playerID, "name", body.ExpectedName, "saveId", body.ExpectedSaveID))
+	writeJSON(w, http.StatusAccepted, submission)
+}
+
+func (s *server) handleFarmhandDeleteRecovery(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	deleter, supported := driver.(farmhandDeleter)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持人物删除恢复")
+		return
+	}
+	var body farmhandDeleteRecoveryRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Action != "retry_save" {
+		writeError(w, http.StatusBadRequest, "invalid_recovery_action", "人物删除恢复操作无效")
+		return
+	}
+	submission, err := deleter.RetryFarmhandDeletePersistence(r.Context(), makeRegistryInstance(instance), body.OperationID, actor.User.ID)
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			status := http.StatusConflict
+			if ce.Code == "not_supported" {
+				status = http.StatusNotImplemented
+			}
+			writeError(w, status, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "farmhand_delete_recovery_failed", sanitizeErrorMsg(err, "创建人物删除恢复任务失败"))
+		return
+	}
+	s.auditLog(r, &actor, "farmhand_delete_recovery_requested", "instance", instanceID, auditMetadata(
+		"operationId", body.OperationID, "action", body.Action, "jobId", submission.JobID))
+	writeJSON(w, http.StatusAccepted, submission)
 }
 
 // handlePlayerKick handles POST /api/instances/:id/players/kick.

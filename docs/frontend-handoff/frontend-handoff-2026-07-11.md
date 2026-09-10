@@ -1,3 +1,17 @@
+# 2026-09-10：人物删除界面修复接手补充
+
+- `useFarmhandDeleteIntent.refresh` 可接收已接受的意图；`FarmhandDeleteFlow` 在成功响应直接更新，在响应不确定时重读。保留现有轮询和共享组件，不新增流程框架。
+- 已接受的响应与 GET 共用递增序号，只丢弃早于已应用结果的响应和错误；不要改成只接收最后发起的请求，否则慢于 3 秒的网络可能一直不能更新。
+- `StardewMobileShell` 给玩家页传入保护备份回调，复用 `useDesktopRoute('saves')`。手机原存档页只展示自动回档，不应把恢复按钮单纯指向该页而隐藏保护备份。
+- 实际 Browser 检查已覆盖“其他备份”中目标备份及确认框、提交响应丢失后取消入口。23 项状态脚本和 build 已过；发布状态以镜像构建记录为准。
+
+# FE-FARMHAND-DELETE-MAINTENANCE-2 接手记录（2026-09-09，待审核）
+
+- 新增共享 `FarmhandDeleteFlow.tsx/.css`，桌面与手机都默认 wait；maintenance_now 才显示风险 checkbox、目标人物名输入和 60 秒倒计时动作。两端不再维护两份删除确认文案。
+- `useFarmhandDeleteIntent` 读取并轮询持久状态；waiting/countdown 可取消，active 不可取消，recovery_required 提供“重试最终保存”和“前往保护备份”。所有非终态状态都会禁用其它人物删除按钮。
+- `api.ts/types.ts` 新增 mode/intent/recovery 契约，删除请求显式带当前 instanceId。`farmhand-delete-state.ts` 集中状态/确认/到期文本纯函数，`test:farmhand-delete` 已接入 package、compatibility workflow 和 release gate。
+- 全部前端状态脚本、TypeScript 与 production build 已通过。Browser 在 1280×720、390×844 检查等待/立即弹窗、长错误/备份名换行、无横向溢出和立即模式双重确认；干净标签 console warn/error 为 0。本轮没有部署或真实多人交互。
+
 ## 2026-09-05：世界加入地址跟随面板访问地址（已修复，未发布）
 
 - `GameLibrary.tsx` 将 `window.location.hostname` 同时传给加入地址显示与复制；`game-library-state.ts` 使用该主机名和当前世界连接信息中的 `gamePort` 生成地址，与详情页直连地址来源一致。IPv6 已有方括号时不重复包裹。

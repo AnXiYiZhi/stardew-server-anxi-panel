@@ -808,6 +808,9 @@ func (s *server) handleSaveSelect(w http.ResponseWriter, r *http.Request, instan
 			writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
 			return errStardewMutationResponseWritten
 		}
+		if err := s.cancelFarmhandDeleteForSaveChange(r.Context(), instance, body.Name); err != nil {
+			return err
+		}
 		if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
 			writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
 			return errStardewMutationResponseWritten
@@ -869,6 +872,9 @@ func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request
 		if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
 			writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
 			return errStardewMutationResponseWritten
+		}
+		if err := s.cancelFarmhandDeleteForSaveChange(r.Context(), instance, body.Name); err != nil {
+			return err
 		}
 		if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
 			writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
@@ -1138,6 +1144,24 @@ type backupRestoreRestarter interface {
 	RestoreBackupWithRestart(ctx context.Context, instance registry.Instance, backupName string, overwrite bool, actorID int64) (*registry.Job, error)
 }
 
+type farmhandDeleteBackupRestorer interface {
+	ValidateFarmhandDeleteBackupRestore(context.Context, registry.Instance, string) error
+	CompleteFarmhandDeleteBackupRestore(context.Context, registry.Instance, string, string) error
+}
+
+func (s *server) cancelFarmhandDeleteForSaveChange(ctx context.Context, instance storage.Instance, saveName string) error {
+	driver, err := s.registry.Get(instance.DriverID)
+	if err != nil {
+		return nil
+	}
+	if observer, ok := driver.(interface {
+		CancelFarmhandDeleteForSaveChange(context.Context, registry.Instance, string) error
+	}); ok {
+		return observer.CancelFarmhandDeleteForSaveChange(ctx, makeRegistryInstance(instance), saveName)
+	}
+	return nil
+}
+
 // handleSavesBackupRestore handles POST /api/instances/:id/saves/backups/restore.
 // When the instance is running/starting and the request opts in with
 // autoRestart, this stops the server, restores the backup, and starts it
@@ -1196,10 +1220,21 @@ func (s *server) handleSavesBackupRestore(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	driver, _ := s.registry.Get(instance.DriverID)
 	var saveName string
 	err := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		if restorer, ok := driver.(farmhandDeleteBackupRestorer); ok {
+			if err := restorer.ValidateFarmhandDeleteBackupRestore(r.Context(), makeRegistryInstance(instance), body.BackupName); err != nil {
+				return err
+			}
+		}
 		var restoreErr error
 		saveName, restoreErr = sj.RestoreBackup(instance.DataDir, body.BackupName, body.Overwrite)
+		if restoreErr == nil {
+			if restorer, ok := driver.(farmhandDeleteBackupRestorer); ok {
+				restoreErr = restorer.CompleteFarmhandDeleteBackupRestore(r.Context(), makeRegistryInstance(instance), body.BackupName, saveName)
+			}
+		}
 		return restoreErr
 	})
 	if err != nil {

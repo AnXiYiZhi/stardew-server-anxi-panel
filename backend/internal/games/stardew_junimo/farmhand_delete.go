@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +42,7 @@ type FarmhandDeleteRequest struct {
 	PlayerID     string
 	ExpectedName string
 	ExpectedSave string
+	Mode         string
 	ActorID      int64
 }
 
@@ -51,6 +51,7 @@ type farmhandDeletePayload struct {
 	PlayerID     string `json:"uniqueMultiplayerId"`
 	ExpectedName string `json:"expectedName,omitempty"`
 	ExpectedSave string `json:"expectedSaveId"`
+	Mode         string `json:"mode"`
 }
 
 type junimoFarmhand struct {
@@ -79,13 +80,13 @@ type farmhandDeleteRunner struct {
 	expectedName string
 	expectedSave string
 	operationID  string
+	mode         string
 }
 
-// DeleteFarmhand starts a guarded, asynchronous deletion of one offline
-// farmhand from the currently loaded save. Other human players may remain
-// online; they receive in-game notices because Junimo's cabin removal is not
-// guaranteed to refresh an already-connected client's building snapshot.
-func (d *Driver) DeleteFarmhand(ctx context.Context, req FarmhandDeleteRequest) (*registry.Job, error) {
+// DeleteFarmhand records or starts a guarded deletion of one offline farmhand
+// from the currently loaded save. The destructive step never runs while a
+// human player is connected.
+func (d *Driver) DeleteFarmhand(ctx context.Context, req FarmhandDeleteRequest) (*FarmhandDeleteSubmission, error) {
 	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
 		return nil, err
 	}
@@ -96,16 +97,26 @@ func (d *Driver) DeleteFarmhand(ctx context.Context, req FarmhandDeleteRequest) 
 		return nil, &CommandError{Code: "server_not_running", Message: "服务器未运行，无法删除存档人物"}
 	}
 	playerID := strings.TrimSpace(req.PlayerID)
-	parsedID, err := strconv.ParseInt(playerID, 10, 64)
+	_, err := parseFarmhandDeletePlayerID(playerID)
 	if err != nil {
-		return nil, &CommandError{Code: "invalid_player", Message: "玩家联机 ID 无效"}
+		return nil, err
+	}
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = storage.FarmhandDeleteModeWait
+	}
+	if mode != storage.FarmhandDeleteModeWait && mode != storage.FarmhandDeleteModeMaintenanceNow {
+		return nil, &CommandError{Code: "invalid_delete_mode", Message: "人物删除方式无效"}
 	}
 	expectedSave := strings.TrimSpace(req.ExpectedSave)
 	activeSave := strings.TrimSpace(GetActiveSaveName(req.Instance.DataDir))
 	if expectedSave == "" || activeSave == "" || expectedSave != activeSave {
 		return nil, &CommandError{Code: "active_save_changed", Message: "当前激活存档已变化，请刷新后重试"}
 	}
-	ld, ok := d.docker.(LifecycleDockerService)
+	if err := ensureNoPendingSaveCommand(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
+	_, ok := d.docker.(LifecycleDockerService)
 	if !ok {
 		return nil, &CommandError{Code: "not_supported", Message: "Docker 服务不支持 Junimo API 调用"}
 	}
@@ -124,26 +135,135 @@ func (d *Driver) DeleteFarmhand(ctx context.Context, req FarmhandDeleteRequest) 
 	if len(active) > 0 {
 		return nil, &CommandError{Code: "operation_in_progress", Message: "当前有其他服务器任务正在执行，请等待完成后重试"}
 	}
+	intentStore, ok := d.store.(farmhandDeleteIntentStore)
+	if !ok {
+		return nil, &CommandError{Code: "not_supported", Message: "人物删除等待服务未配置"}
+	}
 	operationID, err := randomHex(16)
 	if err != nil {
 		return nil, err
 	}
-	payload := farmhandDeletePayload{OperationID: operationID, PlayerID: playerID, ExpectedName: strings.TrimSpace(req.ExpectedName), ExpectedSave: expectedSave}
+	status := storage.FarmhandDeleteIntentLaunching
+	if mode == storage.FarmhandDeleteModeWait {
+		status = storage.FarmhandDeleteIntentWaiting
+	}
+	intent, err := intentStore.CreateFarmhandDeleteIntent(ctx, storage.CreateFarmhandDeleteIntentParams{
+		InstanceID: req.Instance.ID, OperationID: operationID, Mode: mode, Status: status,
+		PlayerID: playerID, ExpectedName: strings.TrimSpace(req.ExpectedName), ExpectedSaveID: expectedSave,
+		CreatedBy: req.ActorID, ExpiresAt: time.Now().UTC().Add(farmhandDeleteIntentLifetime).Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrConflict) {
+			return nil, &CommandError{Code: "farmhand_delete_in_progress", Message: "该世界已有等待中、执行中或待恢复的人物删除操作"}
+		}
+		return nil, fmt.Errorf("保存人物删除请求失败: %w", err)
+	}
+	resultIntent := makeFarmhandDeleteIntentResult(intent)
+	if mode == storage.FarmhandDeleteModeWait {
+		return &FarmhandDeleteSubmission{Status: storage.FarmhandDeleteIntentWaiting, Intent: &resultIntent}, nil
+	}
+	job, err := d.startFarmhandDeleteJob(ctx, req.Instance, intent)
+	if err != nil {
+		_ = intentStore.UpdateFarmhandDeleteIntent(context.Background(), req.Instance.ID, operationID, storage.FarmhandDeleteIntentFailed, "", err.Error())
+		return nil, fmt.Errorf("创建人物删除任务失败: %w", err)
+	}
+	resultIntent.Status = storage.FarmhandDeleteIntentActive
+	if mode == storage.FarmhandDeleteModeMaintenanceNow {
+		resultIntent.Status = storage.FarmhandDeleteIntentCountdown
+	}
+	resultIntent.JobID = job.ID
+	return &FarmhandDeleteSubmission{Status: resultIntent.Status, JobID: job.ID, Intent: &resultIntent}, nil
+}
+
+func (d *Driver) startFarmhandDeleteJob(ctx context.Context, instance registry.Instance, intent storage.FarmhandDeleteIntent) (*registry.Job, error) {
+	lifecycle, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return nil, &CommandError{Code: "not_supported", Message: "Docker 服务不支持 Junimo API 调用"}
+	}
+	playerIDInt, err := parseFarmhandDeletePlayerID(intent.PlayerID)
+	if err != nil {
+		return nil, err
+	}
+	payload := farmhandDeletePayload{
+		OperationID: intent.OperationID, PlayerID: intent.PlayerID, ExpectedName: intent.ExpectedName,
+		ExpectedSave: intent.ExpectedSaveID, Mode: intent.Mode,
+	}
 	rawPayload, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	runner := &farmhandDeleteRunner{driver: d, lifecycle: ld, instance: req.Instance, playerID: playerID, playerIDInt: parsedID,
-		expectedName: payload.ExpectedName, expectedSave: expectedSave, operationID: operationID}
-	job, err := d.jobs.Start(ctx, jobs.Spec{Type: FarmhandDeleteJobType, DisplayName: "删除离线存档人物", TargetType: "instance",
-		TargetID: req.Instance.ID, CreatedBy: req.ActorID, Payload: string(rawPayload), Timeout: farmhandDeleteTimeout, Run: runner.run})
+	runner := &farmhandDeleteRunner{
+		driver: d, lifecycle: lifecycle, instance: instance, playerID: intent.PlayerID, playerIDInt: playerIDInt,
+		expectedName: intent.ExpectedName, expectedSave: intent.ExpectedSaveID, operationID: intent.OperationID, mode: intent.Mode,
+	}
+	intentStore := d.store.(farmhandDeleteIntentStore)
+	job, err := d.jobs.Start(ctx, jobs.Spec{
+		Type: FarmhandDeleteJobType, DisplayName: "删除离线存档人物", TargetType: "instance",
+		TargetID: instance.ID, CreatedBy: intent.CreatedBy.Int64, Payload: string(rawPayload), Timeout: farmhandDeleteTimeout,
+		Exclusive: true,
+		BeforeRun: func(prepareCtx context.Context, job storage.Job) error {
+			return intentStore.BindFarmhandDeleteIntentJob(prepareCtx, instance.ID, intent.OperationID, job.ID)
+		},
+		Run: runner.run,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("创建人物删除任务失败: %w", err)
+		return nil, err
 	}
 	return &registry.Job{ID: job.ID}, nil
 }
 
-func (r *farmhandDeleteRunner) run(ctx context.Context, job *jobs.Context) error {
+func (r *farmhandDeleteRunner) run(ctx context.Context, job *jobs.Context) (retErr error) {
+	intentStore := r.driver.store.(farmhandDeleteIntentStore)
+	backupName := ""
+	maintenanceOwned := false
+	destructiveBoundaryCrossed := false
+	maintenanceReleaseFailed := false
+	defer func() {
+		if maintenanceOwned && (!destructiveBoundaryCrossed || retErr == nil) {
+			releaseCtx, cancel := context.WithTimeout(context.Background(), farmhandDeleteCommandTimeout)
+			releaseErr := r.endMaintenance(releaseCtx)
+			cancel()
+			if releaseErr != nil {
+				maintenanceReleaseFailed = true
+				retErr = errors.Join(retErr, fmt.Errorf("恢复世界联机入口失败: %w", releaseErr))
+			}
+		}
+		status := storage.FarmhandDeleteIntentCompleted
+		lastError := ""
+		if retErr != nil {
+			lastError = retErr.Error()
+			status = storage.FarmhandDeleteIntentFailed
+			if destructiveBoundaryCrossed {
+				status = storage.FarmhandDeleteIntentRecoveryRequired
+			} else if maintenanceReleaseFailed {
+				// Seal may have persisted before its acknowledgement was lost.
+				// Let the scheduler reconcile the marker before allowing another request.
+				status = storage.FarmhandDeleteIntentActive
+			} else {
+				currentCtx, currentCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				currentIntent, currentErr := intentStore.GetFarmhandDeleteIntent(currentCtx, r.instance.ID)
+				currentCancel()
+				if currentErr == nil && currentIntent.OperationID == r.operationID && currentIntent.Status == storage.FarmhandDeleteIntentCanceled {
+					status = storage.FarmhandDeleteIntentCanceled
+					lastError = currentIntent.LastError
+				} else if isFarmhandDeleteCancellation(retErr) {
+					status = storage.FarmhandDeleteIntentCanceled
+				} else {
+					var commandErr *CommandError
+					if r.mode == storage.FarmhandDeleteModeWait && errors.As(retErr, &commandErr) && commandErr.Code == "players_connected" {
+						status = storage.FarmhandDeleteIntentWaiting
+					}
+				}
+			}
+		}
+		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		updateErr := intentStore.UpdateFarmhandDeleteIntent(updateCtx, r.instance.ID, r.operationID, status, backupName, lastError)
+		cancel()
+		if updateErr != nil && retErr == nil {
+			retErr = fmt.Errorf("更新人物删除状态失败: %w", updateErr)
+		}
+	}()
+
 	stored, err := r.driver.store.GetInstance(ctx, r.instance.ID)
 	if err != nil {
 		return fmt.Errorf("读取实例失败: %w", err)
@@ -157,48 +277,83 @@ func (r *farmhandDeleteRunner) run(ctx context.Context, job *jobs.Context) error
 	}
 
 	_, _ = job.Info(ctx, "正在核对当前存档、人物身份与在线状态。")
-	farmhand, onlineHumans, err := r.preflight(ctx)
+	if err := ensureNoPendingSaveCommand(r.instance.DataDir); err != nil {
+		return err
+	}
+	farmhand, connectedHumans, err := r.preflight(ctx)
 	if err != nil {
 		return err
 	}
 	if r.expectedName != "" && !strings.EqualFold(r.expectedName, farmhand.Name) {
 		_, _ = job.Warn(ctx, "人物显示名已变化，将继续按联机 ID 精确删除。")
 	}
-	preDeleteNoticeSent := false
-	if onlineHumans > 0 {
-		if err := r.broadcastPreDelete(ctx); err != nil {
-			return fmt.Errorf("发送删除前游戏内通告失败: %w", err)
+	if r.mode == storage.FarmhandDeleteModeWait && connectedHumans != 0 {
+		return &CommandError{Code: "players_connected", Message: "等待删除启动时又检测到玩家连接，人物删除未开始"}
+	}
+	if r.mode == storage.FarmhandDeleteModeMaintenanceNow {
+		maintenanceOwned = true
+		if err := r.runCountdown(ctx, job); err != nil {
+			return err
 		}
-		preDeleteNoticeSent = true
-		_, _ = job.Info(ctx, fmt.Sprintf("已向 %d 名在线真人玩家发送删除前通告。", onlineHumans))
+		if err := intentStore.ActivateFarmhandDeleteIntent(ctx, r.instance.ID, r.operationID); err != nil {
+			if errors.Is(err, storage.ErrConflict) {
+				return &CommandError{Code: "farmhand_delete_canceled", Message: "人物删除已在倒计时结束前取消"}
+			}
+			return fmt.Errorf("进入人物删除维护阶段失败: %w", err)
+		}
+	}
+	maintenanceOwned = true
+	if err := r.beginMaintenance(ctx); err != nil {
+		return err
+	}
+	_, _ = job.Info(ctx, "世界已暂时关闭联机入口，正在确认真人连接已全部断开。")
+	if err := r.waitForNoConnectedHumans(ctx); err != nil {
+		return err
+	}
+	if err := ensureNoPendingSaveCommand(r.instance.DataDir); err != nil {
+		return err
+	}
+	_, connectedHumans, err = r.preflight(ctx)
+	if err != nil {
+		return err
+	}
+	if connectedHumans != 0 {
+		return &CommandError{Code: "players_connected", Message: "维护期间仍检测到真人玩家连接，人物删除未开始"}
+	}
+	if err := r.checkMaintenance(ctx); err != nil {
+		return err
 	}
 
 	_, _ = job.Info(ctx, "正在保存删除前的最新游戏进度。")
 	if err := r.saveAndWait(ctx); err != nil {
 		return &CommandError{Code: "predelete_save_failed", Message: "删除前游戏保存未确认，未执行人物删除：" + err.Error()}
 	}
+	if err := r.checkMaintenance(ctx); err != nil {
+		return err
+	}
 	backupPath, err := BackupPreFarmhandDelete(r.instance.DataDir, r.expectedSave)
 	if err != nil {
 		return &CommandError{Code: "predelete_backup_failed", Message: "创建人物删除保护备份失败，未执行删除：" + err.Error()}
 	}
-	backupName := filepath.Base(backupPath)
+	backupName = filepath.Base(backupPath)
+	if err := intentStore.UpdateFarmhandDeleteIntent(ctx, r.instance.ID, r.operationID, storage.FarmhandDeleteIntentActive, backupName, ""); err != nil {
+		return fmt.Errorf("记录人物删除保护备份失败，未执行删除: %w", err)
+	}
 	_, _ = job.Info(ctx, "已创建整档保护备份："+backupName)
 
 	// Recheck immediately before the destructive call. Junimo performs its own
 	// game-thread online/save checks as the final authority.
-	_, onlineHumans, err = r.preflight(ctx)
+	_, connectedHumans, err = r.preflight(ctx)
 	if err != nil {
 		return err
 	}
-	// A player can join while the pre-delete save and backup are running. Make
-	// sure that case gets the warning too, without sending duplicates to players
-	// who were already notified at the first preflight.
-	if onlineHumans > 0 && !preDeleteNoticeSent {
-		if err := r.broadcastPreDelete(ctx); err != nil {
-			return fmt.Errorf("发送删除前游戏内通告失败: %w", err)
-		}
-		_, _ = job.Info(ctx, fmt.Sprintf("已向 %d 名刚上线的真人玩家发送删除前通告。", onlineHumans))
+	if connectedHumans != 0 {
+		return &CommandError{Code: "players_connected", Message: "保护备份完成后检测到真人玩家连接，人物删除未执行"}
 	}
+	if err := r.sealMaintenance(ctx); err != nil {
+		return err
+	}
+	destructiveBoundaryCrossed = true
 	_, _ = job.Info(ctx, "正在通过 Junimo 删除离线人物及其小屋。")
 	if err := r.deleteViaJunimo(ctx); err != nil {
 		return err
@@ -215,73 +370,11 @@ func (r *farmhandDeleteRunner) run(ctx context.Context, job *jobs.Context) error
 		return &CommandError{Code: "farmhand_delete_verification_failed", Message: "最终存档验证失败；保护备份为 " + backupName + "：" + err.Error()}
 	}
 
-	stableID, _, _ := resolveStableSaveIdentity(r.instance.DataDir, r.expectedSave)
-	if store, ok := r.driver.store.(interface {
-		MarkPlayerCharacterDeleted(context.Context, string, string, string, string, string) error
-	}); ok {
-		if err := store.MarkPlayerCharacterDeleted(ctx, r.instance.ID, stableID, r.playerID, r.operationID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil && !errors.Is(err, storage.ErrNotFound) {
-			return fmt.Errorf("更新面板人物名册失败: %w", err)
-		}
-	}
-	// Refresh the audience after the final save so players who joined during the
-	// deletion also receive the reconnect notice.
-	if players, err := r.driver.ListPlayers(ctx, r.instance); err == nil {
-		if current, countErr := countOtherOnlineHumans(players.Players, r.playerID); countErr == nil {
-			onlineHumans = current
-		}
-	}
-	if onlineHumans > 0 {
-		message := "离线存档人物已删除并保存完成。如仍看到旧小屋或位置异常，请重新连接服务器刷新世界状态。"
-		if err := r.broadcastAndWait(ctx, message); err != nil {
-			_, _ = job.Warn(ctx, "删除已完成，但删除后游戏内通告发送失败："+err.Error())
-		} else {
-			_, _ = job.Info(ctx, "已向在线玩家发送删除完成通告。")
-		}
+	if err := r.markRosterDeleted(ctx); err != nil {
+		return err
 	}
 	_, _ = job.Info(ctx, fmt.Sprintf("人物 %s 已删除并持久化；保护备份：%s。", farmhand.Name, backupName))
 	return nil
-}
-
-func (r *farmhandDeleteRunner) broadcastPreDelete(ctx context.Context) error {
-	return r.broadcastAndWait(ctx, "管理员即将删除一个离线存档人物及其小屋。操作完成后如仍看到旧小屋或位置异常，请重新连接服务器。")
-}
-
-func (r *farmhandDeleteRunner) broadcastAndWait(ctx context.Context, message string) error {
-	commandID, err := writePanelBroadcastCommand(r.instance.DataDir, message)
-	if err != nil {
-		return err
-	}
-	// Older compatible control mods don't publish result files. In that case,
-	// writing the command is the strongest available acknowledgement.
-	if !commandResultSupported(r.instance.DataDir) {
-		return nil
-	}
-	deadline := time.NewTimer(20 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		outcome, err := r.driver.importCommandOutcome(ctx, r.instance.ID, r.instance.DataDir, commandID)
-		if err != nil {
-			return err
-		}
-		switch outcome.Status {
-		case CommandStatusSucceeded, CommandStatusDispatched:
-			return nil
-		case CommandStatusFailed, CommandStatusExpired:
-			if strings.TrimSpace(outcome.Message) != "" {
-				return errors.New(outcome.Message)
-			}
-			return fmt.Errorf("广播命令状态为 %s", outcome.Status)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return errors.New("等待游戏内广播确认超时")
-		case <-ticker.C:
-		}
-	}
 }
 
 func makeRegistryInstanceFromStorage(instance storage.Instance) registry.Instance {
@@ -307,33 +400,19 @@ func (r *farmhandDeleteRunner) preflight(ctx context.Context) (junimoFarmhand, i
 	if err != nil {
 		return junimoFarmhand{}, 0, &CommandError{Code: "world_not_ready", Message: "无法确认当前在线玩家状态：" + err.Error()}
 	}
-	onlineHumans, err := countOtherOnlineHumans(players.Players, r.playerID)
+	connected, err := r.connectedHumansFromSnapshot(players)
 	if err != nil {
 		return junimoFarmhand{}, 0, err
 	}
-	return *target, onlineHumans, nil
-}
-
-func countOtherOnlineHumans(players []PlayerInfo, targetPlayerID string) (int, error) {
-	onlineHumans := 0
-	for _, player := range players {
-		if player.IsHost || player.Status != "online" {
-			continue
-		}
-		if player.UniqueMultiplayerID == targetPlayerID {
-			return 0, &CommandError{Code: "farmhand_online", Message: "被删除的人物当前在线，请先让该玩家退出服务器"}
-		}
-		onlineHumans++
-	}
-	return onlineHumans, nil
+	return *target, len(connected), nil
 }
 
 func (r *farmhandDeleteRunner) saveAndWait(ctx context.Context) error {
-	result, err := requestSaveNow(r.instance)
+	commandID, err := r.requestTargetedSave()
 	if err != nil {
 		return err
 	}
-	_, err = waitForDurableSaveOutcome(ctx, r.instance.DataDir, result.CommandID, importDurableSaveOptions{
+	_, err = waitForDurableSaveOutcome(ctx, r.instance.DataDir, commandID, importDurableSaveOptions{
 		CommandTimeout: 3 * time.Minute,
 		PollInterval:   250 * time.Millisecond,
 		GetOutcome: func(dataDir, commandID string) (CommandOutcome, error) {
@@ -341,6 +420,33 @@ func (r *farmhandDeleteRunner) saveAndWait(ctx context.Context) error {
 		},
 	})
 	return err
+}
+
+func (r *farmhandDeleteRunner) requestTargetedSave() (string, error) {
+	if r.instance.State != storage.InstanceStateRunning {
+		return "", &CommandError{Code: "server_not_running", Message: "服务器未运行，无法请求游戏内保存"}
+	}
+	commandID, err := r.writeExpiringCommand("save-now", map[string]string{
+		"transactionId": r.operationID,
+		"saveId":        r.expectedSave,
+	}, 2*time.Minute)
+	if err != nil {
+		return "", fmt.Errorf("写入人物删除保存命令失败: %w", err)
+	}
+	return commandID, nil
+}
+
+func isFarmhandDeleteCancellation(err error) bool {
+	var commandErr *CommandError
+	if !errors.As(err, &commandErr) {
+		return false
+	}
+	switch commandErr.Code {
+	case "farmhand_delete_canceled", "sleep_in_progress", "day_transition_in_progress", "active_save_changed", "farmhand_online":
+		return true
+	default:
+		return false
+	}
 }
 
 func readJunimoFarmhands(ctx context.Context, exec commandExecutor, dataDir string) (junimoFarmhandsResponse, error) {
@@ -356,11 +462,11 @@ func readJunimoFarmhands(ctx context.Context, exec commandExecutor, dataDir stri
 }
 
 func (r *farmhandDeleteRunner) deleteViaJunimo(ctx context.Context) error {
-	apiPort, apiKey, err := readJunimoAPIConfig(r.instance.DataDir)
+	_, apiKey, err := readJunimoAPIConfig(r.instance.DataDir)
 	if err != nil {
 		return err
 	}
-	requestURL := "http://localhost:" + apiPort + "/farmhands?playerId=" + url.QueryEscape(r.playerID)
+	requestURL := "http://localhost:" + junimoContainerAPIPort + "/farmhands?playerId=" + url.QueryEscape(r.playerID)
 	args := []string{"curl", "-sS", "--max-time", "20", "-w", "\n%{http_code}", "-X", "DELETE"}
 	if apiKey != "" {
 		args = append(args, "-H", "Authorization: Bearer "+apiKey)
@@ -421,14 +527,25 @@ func (r *farmhandDeleteRunner) verifyRuntimeAbsent(ctx context.Context) error {
 }
 
 func verifyFarmhandAbsentOnDisk(dataDir, saveName, playerID string) error {
-	saveDir := filepath.Join(savesDir(dataDir), "Saves", saveName)
-	raw, err := os.ReadFile(filepath.Join(saveDir, saveName))
+	present, err := farmhandPresentOnDisk(dataDir, saveName, playerID)
 	if err != nil {
 		return err
 	}
+	if present {
+		return fmt.Errorf("磁盘主存档仍包含被删除人物")
+	}
+	return nil
+}
+
+func farmhandPresentOnDisk(dataDir, saveName, playerID string) (bool, error) {
+	saveDir := filepath.Join(savesDir(dataDir), "Saves", saveName)
+	raw, err := os.ReadFile(filepath.Join(saveDir, saveName))
+	if err != nil {
+		return false, err
+	}
 	var parsed saveRosterXML
 	if err := xml.Unmarshal(raw, &parsed); err != nil || parsed.XMLName.Local != "SaveGame" {
-		return fmt.Errorf("主存档 XML 无法解析")
+		return false, fmt.Errorf("主存档 XML 无法解析")
 	}
 	for _, farmer := range parsed.Farmhands {
 		id := strings.TrimSpace(farmer.UniqueMultiplayerID)
@@ -436,8 +553,8 @@ func verifyFarmhandAbsentOnDisk(dataDir, saveName, playerID string) error {
 			id = strings.TrimSpace(farmer.UniqueMultiplayerIDFallback)
 		}
 		if id == playerID {
-			return fmt.Errorf("磁盘主存档仍包含被删除人物")
+			return true, nil
 		}
 	}
-	return nil
+	return false, nil
 }

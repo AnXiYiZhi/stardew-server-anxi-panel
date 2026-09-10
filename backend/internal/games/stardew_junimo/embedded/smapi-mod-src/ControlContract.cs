@@ -583,6 +583,131 @@ public sealed class PanelCommand
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+public sealed class FarmhandDeleteMaintenanceMarker
+{
+	public const int CurrentSchemaVersion = 1;
+	public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+	public string OperationId { get; set; } = "";
+	public string ExpectedSaveId { get; set; } = "";
+	public string TargetPlayerId { get; set; } = "";
+	public string Phase { get; set; } = FarmhandDeleteMaintenanceContract.GuardedPhase;
+	public bool JoinGateClosed { get; set; }
+	public string CancellationCode { get; set; } = "";
+	public string CancellationMessage { get; set; } = "";
+	public DateTimeOffset CreatedAt { get; set; }
+	public DateTimeOffset? ExpiresAt { get; set; }
+}
+
+public sealed record FarmhandDeleteMaintenanceDecision(bool Allowed, string ErrorCode, string Message)
+{
+	public static FarmhandDeleteMaintenanceDecision Allow(string message = "OK") => new(true, "ok", message);
+	public static FarmhandDeleteMaintenanceDecision Reject(string code, string message) => new(false, code, message);
+}
+
+public static class FarmhandDeleteMaintenanceContract
+{
+	public static bool IsDeletionCommand(PanelCommand command)
+		=> command.Name.StartsWith("farmhand-delete-", StringComparison.Ordinal)
+			|| command.Name == "save-now" && command.Payload?.ContainsKey("operationId") == true;
+
+	public static DateTimeOffset? CommandDeadline(PanelCommand command)
+	{
+		if (command.Payload is not null && command.Payload.TryGetValue("expiresAt", out var raw)
+			&& raw.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(raw.GetString(), out var deadline))
+			return deadline;
+		return null;
+	}
+
+	public static bool CommandExpired(PanelCommand command, DateTimeOffset now)
+		=> IsDeletionCommand(command) && (CommandDeadline(command) is not { } deadline || deadline <= now);
+
+	public const string CountdownPhase = "countdown";
+	public const string GuardedPhase = "guarded";
+	public const string CanceledPhase = "canceled";
+	public const string DestructivePhase = "destructive";
+
+	public static FarmhandDeleteMaintenanceDecision ValidateReadiness(
+		string? operationId,
+		string? expectedSaveId,
+		string? actualSaveId,
+		bool worldReady,
+		bool isServer,
+		bool dayTransitionActive,
+		int sleepReadyCount,
+		bool settlementMenuActive)
+	{
+		if (!ValidOperationId(operationId))
+			return FarmhandDeleteMaintenanceDecision.Reject("farmhand_delete_operation_invalid", "The farmhand deletion operation ID is invalid.");
+		if (!worldReady || !isServer)
+			return FarmhandDeleteMaintenanceDecision.Reject("world_not_ready", "The game world is not ready for farmhand deletion maintenance.");
+		if (string.IsNullOrWhiteSpace(expectedSaveId)
+			|| !string.Equals(expectedSaveId.Trim(), actualSaveId?.Trim(), StringComparison.Ordinal))
+		{
+			return FarmhandDeleteMaintenanceDecision.Reject("active_save_changed", "The loaded save no longer matches the farmhand deletion request.");
+		}
+		if (dayTransitionActive || settlementMenuActive)
+			return FarmhandDeleteMaintenanceDecision.Reject("day_transition_in_progress", "Sleep or day settlement is already in progress.");
+		if (sleepReadyCount > 0)
+			return FarmhandDeleteMaintenanceDecision.Reject("sleep_in_progress", "At least one player is waiting to sleep.");
+		return FarmhandDeleteMaintenanceDecision.Allow();
+	}
+
+	public static bool ShouldAutoRelease(FarmhandDeleteMaintenanceMarker marker, DateTimeOffset now)
+		=> marker.Phase is CountdownPhase or GuardedPhase or CanceledPhase
+			&& marker.ExpiresAt is not null
+			&& now >= marker.ExpiresAt.Value;
+
+	public static FarmhandDeleteMaintenanceDecision CancellationDecision(FarmhandDeleteMaintenanceMarker marker)
+		=> marker.Phase == CanceledPhase
+			? FarmhandDeleteMaintenanceDecision.Reject(
+				string.IsNullOrWhiteSpace(marker.CancellationCode) ? "farmhand_delete_canceled" : marker.CancellationCode,
+				string.IsNullOrWhiteSpace(marker.CancellationMessage) ? "The farmhand deletion maintenance was canceled." : marker.CancellationMessage)
+			: FarmhandDeleteMaintenanceDecision.Allow();
+
+	public static bool CancelBeforeDestructiveBoundary(
+		FarmhandDeleteMaintenanceMarker marker,
+		string code,
+		string message,
+		DateTimeOffset now,
+		TimeSpan cancellationLease)
+	{
+		if (marker.Phase is not (CountdownPhase or GuardedPhase))
+			return false;
+		if (code is not ("sleep_in_progress" or "day_transition_in_progress" or "farmhand_delete_canceled"))
+			return false;
+		marker.Phase = CanceledPhase;
+		marker.CancellationCode = code;
+		marker.CancellationMessage = message;
+		marker.ExpiresAt = now.Add(cancellationLease);
+		return true;
+	}
+
+	public static bool ValidMarker(FarmhandDeleteMaintenanceMarker? marker)
+		=> marker is not null
+			&& marker.SchemaVersion == FarmhandDeleteMaintenanceMarker.CurrentSchemaVersion
+			&& ValidOperationId(marker.OperationId)
+			&& !string.IsNullOrWhiteSpace(marker.ExpectedSaveId)
+			&& long.TryParse(marker.TargetPlayerId, out var playerId)
+			&& playerId != 0
+			&& marker.Phase is CountdownPhase or GuardedPhase or CanceledPhase or DestructivePhase
+			&& (marker.Phase == DestructivePhase || marker.ExpiresAt is not null)
+			&& (marker.Phase != DestructivePhase || marker.ExpiresAt is null)
+			&& (marker.Phase != DestructivePhase || marker.JoinGateClosed)
+			&& (marker.Phase != CanceledPhase || marker.CancellationCode is "sleep_in_progress" or "day_transition_in_progress" or "farmhand_delete_canceled");
+
+	private static bool ValidOperationId(string? value)
+	{
+		if (value is null || value.Length != 32)
+			return false;
+		foreach (var character in value)
+		{
+			if (!((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')))
+				return false;
+		}
+		return true;
+	}
+}
+
 public sealed record SaveCommandExpectation(
 	bool Valid,
 	bool IsTargeted,

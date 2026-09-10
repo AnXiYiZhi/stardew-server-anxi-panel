@@ -1,9 +1,25 @@
+# 2026-09-10：人物删除维护契约修正
+
+- API 路由与两种模式不变。等待的当前状态始终来自持久意图；立即模式仍需要风险确认和目标名称。前端在提交响应丢失时也重新 GET 意图。
+- 新删除维护命令和两条定向 save-now 的 payload 包含 operationId/expiresAt；begin 还携带 mode，wait 在游戏线程发现真实连接时回到等待。Control 首次执行保存前核对当前世界和维护所有权，普通手动保存保持旧契约。
+- `Saved` 后仍显示的本次 SaveGameMenu 不当成日结算；SMAPI 的同日 DayStarted 不当成换日。真实 sleep/newDay/newDaySync/Shipping 与实际日期变化仍在破坏边界前取消；重载非破坏维护取消，破坏维护保持关闭。
+- 恢复检查先匹配保护备份再停止/写盘，恢复完成后验证目标再释放。调度旧快照不能回写完成态。验证入口为新增 Go 回归与 opt-in `TestRealFarmhandDeleteOptIn`，结果见镜像构建记录。
+- seal 回执不确定且维护释放失败时保留可调度意图，由 marker 决定取消或人工恢复；前端忽略早于已应用意图的 GET 响应与错误，避免重新隐藏取消入口。
+
 ## 2026-09-05：世界加入地址跟随面板访问地址（已修复，未发布）
 
 - `GameLibrary.tsx` 将 `window.location.hostname` 同时传给加入地址显示与复制；`game-library-state.ts` 使用该主机名和当前世界连接信息中的 `gamePort` 生成地址，与详情页直连地址来源一致。IPv6 已有方括号时不重复包裹。
 - `GET /api/instances/:id/public-ip` 的响应契约保持原样，卡片仅使用其中的游戏端口；浏览器的面板 HTTP 端口不用于游戏连接。端口无效、连接读取失败/加载中、未安装或待建档时保持原有不可复制状态。
 - 验证：`test:game-library` 覆盖探测 IP 与访问地址不同、IPv4/域名/内网/IPv6、世界端口、空主机与非法端口；`test:responsive-layout` 和 `npm --prefix frontend run build` 均通过。
 - 本次修改同步到 main，尚未进入正式镜像；下一次发布需将加入地址纳入该候选的专项验收。
+
+# FARMHAND-DELETE-MAINTENANCE-2 前后端契约（2026-09-09，待审核）
+
+- 创建：`POST /api/instances/:id/players/delete-farmhand` 请求包含 `uniqueMultiplayerId`、`expectedName`、`expectedSaveId`、`acknowledged:true` 与 `mode`。`wait` 不需要风险字段；`maintenance_now` 还必须有 `riskAcknowledged:true` 且 `confirmationName` 与显示名 trim 后完全一致。mode 缺失按 `wait` 兼容处理。
+- 状态：`GET` 返回 `{intent:null|{operationId,mode,status,uniqueMultiplayerId,expectedName,expectedSaveId,jobId?,expiresAt,backupName?,lastError?}}`。status 为 waiting/launching/countdown/active/recovery_required/completed/canceled/expired/failed；`DELETE ...?operationId=` 只允许 waiting/countdown，进入 active 后返回冲突。
+- 恢复：`POST .../delete-farmhand/recovery` 只接受 `{operationId,action:"retry_save"}`。它不会再次 DELETE，只在相同 destructive marker、相同 saveId 且运行态人物仍缺失时重试最终保存、磁盘验证和闸门释放。
+- Control：倒计时值固定 60/50/40/30/20/10，每 10 秒一个 `farmhand-delete-countdown`。首条命令持久化 countdown marker；sleep/day settlement 会把 marker 锁存为 canceled。维护开始用 `setServerMode("offline")` 拒绝新连接，Panel 再按联机 ID 踢出所有真人玩家；seal 前再次检查锁存状态。
+- 保存：删除事务的两条 `save-now` 都携带 `transactionId=operationId` 与 `saveId=expectedSaveId`。Control 只在同一维护 marker/世界的 `GameLoop.Saved` 中确认，重启 journal 也必须匹配；journal 的 `expiresAt` 是首次提交时的绝对截止时间，旧 schema 缺字段时按 `updatedAt + SaveCommandTimeout` 计算，恢复不会重置期限。普通手动保存和新建档事务契约不变。
 
 # v0.7.0 正式发布完成（2026-09-05）
 

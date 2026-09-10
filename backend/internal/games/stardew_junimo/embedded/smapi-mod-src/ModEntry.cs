@@ -32,6 +32,8 @@ public sealed class ModEntry : Mod
     private HostBedIntegrity? hostBedIntegrity;
     private RolePasswordPolicy playerAuthPolicy = RolePasswordPolicy.Parse(null, null, null, null, null);
     private readonly WarpHomeBridge warpHomeBridge = new();
+    private readonly FarmhandDeleteMaintenanceGate farmhandDeleteMaintenanceGate = new();
+	private DateTimeOffset nextControlPollAt;
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
     private readonly Dictionary<string, PlayerModContext> playerModContexts = new(StringComparer.Ordinal);
     private PauseReason lastForcedPauseReason;
@@ -82,6 +84,7 @@ public sealed class ModEntry : Mod
         hostAutomationBridge = new HostAutomationBridge(OnHostControlChanged);
         hostBedIntegrity = new HostBedIntegrity(Monitor);
         hostSleepSafetyPatch = new HostSleepSafetyPatch(ValidateHostBedForSleep);
+        farmhandDeleteMaintenanceGate.Initialize(controlDir, Monitor);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.GameLoop.SaveCreating += OnSaveCreating;
@@ -198,6 +201,11 @@ public sealed class ModEntry : Mod
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
+		if (!farmhandDeleteMaintenanceGate.OnSaveLoaded())
+		{
+			WriteStatus("farmhand-delete-recovery-blocked", "Maintenance join guard is unavailable; the world was unloaded to protect the pending deletion.");
+			return;
+		}
 		RefreshPendingNewGameMarker();
 		var wroteCustomizationStatus = ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
@@ -216,6 +224,7 @@ public sealed class ModEntry : Mod
 
     private void OnDayStarted(object? sender, DayStartedEventArgs e)
     {
+		farmhandDeleteMaintenanceGate.OnDayStarted();
         hostSleepSafetyPatch?.Reset();
         hostAutomationBridge?.SynchronizeVisibility();
         EnsureHostBedIntegrity();
@@ -251,10 +260,11 @@ public sealed class ModEntry : Mod
 
         WriteSaveEvent(saveName);
 
-		var verifiedTransactionId = verifiedPanelCustomization is not null
-			&& string.Equals(verifiedPanelCustomization.SaveId, saveName, StringComparison.Ordinal)
-			? verifiedPanelCustomization.TransactionId
-			: "";
+		var verifiedTransactionId = farmhandDeleteMaintenanceGate.VerifiedTransactionIdForSave(saveName)
+			?? (verifiedPanelCustomization is not null
+				&& string.Equals(verifiedPanelCustomization.SaveId, saveName, StringComparison.Ordinal)
+				? verifiedPanelCustomization.TransactionId
+				: "");
 		var saveOutcome = pendingSaveCommands.Complete(
 			verifiedTransactionId,
 			saveName,
@@ -280,8 +290,16 @@ public sealed class ModEntry : Mod
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
+		farmhandDeleteMaintenanceGate.Tick();
         hostAutomationBridge?.SynchronizeVisibility();
         ApplyPauseCorrectionSafely();
+		var now = DateTimeOffset.UtcNow;
+		if (now >= nextControlPollAt)
+		{
+			nextControlPollAt = now.AddSeconds(1);
+			WritePlayers();
+			ConsumeCommands();
+		}
 
         if (!e.IsMultipleOf(120))
             return;
@@ -295,9 +313,7 @@ public sealed class ModEntry : Mod
 		EnsureHostBedIntegrity();
 		if (farmCatalogRequest is not null && (catalogRequestChanged || !runtimeFarmCatalogReady || !File.Exists(PanelOptionsPath())))
 			WritePanelOptions();
-        WritePlayers();
         ExpirePendingPlayerModContexts();
-        ConsumeCommands();
 		RewriteStatus();
 
         var timedOutSave = pendingSaveCommands.Expire(DateTimeOffset.UtcNow);
@@ -1344,9 +1360,21 @@ public sealed class ModEntry : Mod
 
     private CommandOutcome HandleCommand(PanelCommand command)
     {
+		if (FarmhandDeleteMaintenanceContract.CommandExpired(command, DateTimeOffset.UtcNow))
+			return NewOutcome(command, CommandStatuses.Expired, "farmhand_delete_expired", "The deletion command expired before it could execute.");
         switch (command.Name)
         {
 			case "save-now":
+				if (FarmhandDeleteMaintenanceContract.IsDeletionCommand(command))
+				{
+					var operationId = CommandPayloadString(command, "operationId");
+					var expectedSaveId = CommandPayloadString(command, "saveId");
+					if (farmhandDeleteMaintenanceGate.VerifiedTransactionIdForSave(expectedSaveId) != operationId)
+						return NewOutcome(command, CommandStatuses.Failed, "farmhand_delete_maintenance_conflict", "The save command no longer owns this world's maintenance operation.");
+					var readiness = farmhandDeleteMaintenanceGate.CheckReady(operationId, expectedSaveId);
+					if (!readiness.Allowed)
+						return MaintenanceOutcome(command, readiness);
+				}
 				var saveOutcome = pendingSaveCommands.Begin(command, Context.IsWorldReady, DateTimeOffset.UtcNow, SaveCommandTimeout);
 				if (saveOutcome.Status == CommandStatuses.Running)
 				{
@@ -1360,7 +1388,7 @@ public sealed class ModEntry : Mod
 						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, actionFailure.ErrorCode, actionFailure.Message)!;
 					try
 					{
-						Game1.activeClickableMenu = new SaveGameMenu();
+						OpenPanelSaveMenu();
 					}
 					catch (Exception ex)
 					{
@@ -1374,6 +1402,31 @@ public sealed class ModEntry : Mod
                     ? rawMessage.GetString()
                     : "";
                 return SendBroadcastMessage(command, message ?? "");
+            case "farmhand-delete-countdown":
+                var countdownOperationId = CommandPayloadString(command, "operationId");
+                var countdownSaveId = CommandPayloadString(command, "expectedSaveId");
+				var countdownTargetId = CommandPayloadString(command, "uniqueMultiplayerId");
+                var countdownSeconds = CommandPayloadInt(command, "seconds");
+                if (countdownSeconds is < 10 or > 60 || countdownSeconds % 10 != 0)
+                    return NewOutcome(command, CommandStatuses.Failed, "farmhand_delete_countdown_invalid", "The maintenance countdown value is invalid.");
+				var countdownDecision = farmhandDeleteMaintenanceGate.Countdown(countdownOperationId, countdownSaveId, countdownTargetId);
+				if (!countdownDecision.Allowed)
+					return MaintenanceOutcome(command, countdownDecision);
+                return SendBroadcastMessage(command, $"将在 {countdownSeconds} 秒后维护并删除一个离线存档人物。请立即停止操作；尚未同步的当天进度可能丢失。");
+            case "farmhand-delete-maintenance-begin":
+                return MaintenanceOutcome(command, farmhandDeleteMaintenanceGate.Begin(
+                    CommandPayloadString(command, "operationId"),
+                    CommandPayloadString(command, "expectedSaveId"),
+                    CommandPayloadString(command, "uniqueMultiplayerId"),
+					CommandPayloadString(command, "mode")));
+            case "farmhand-delete-maintenance-seal":
+                return MaintenanceOutcome(command, farmhandDeleteMaintenanceGate.Seal(CommandPayloadString(command, "operationId")));
+			case "farmhand-delete-maintenance-check":
+				var maintenanceCheckOperationId = CommandPayloadString(command, "operationId");
+				var maintenanceCheckSaveId = CommandPayloadString(command, "expectedSaveId");
+				return MaintenanceOutcome(command, farmhandDeleteMaintenanceGate.CheckReady(maintenanceCheckOperationId, maintenanceCheckSaveId));
+            case "farmhand-delete-maintenance-end":
+                return MaintenanceOutcome(command, farmhandDeleteMaintenanceGate.End(CommandPayloadString(command, "operationId")));
             case "kick":
                 var targetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawTargetId)
                     ? rawTargetId.GetString()
@@ -1415,6 +1468,13 @@ public sealed class ModEntry : Mod
         return NewOutcome(command, CommandStatuses.Dispatched, "", "Command dispatched to the game loop.");
     }
 
+	private void OpenPanelSaveMenu()
+	{
+		var menu = new SaveGameMenu();
+		farmhandDeleteMaintenanceGate.TrackPanelSaveMenu(menu);
+		Game1.activeClickableMenu = menu;
+	}
+
 	private CommandOutcome? EnsurePendingSaveCommandJournal(PanelCommand command)
 	{
 		if (File.Exists(pendingSaveCommandJournalPath))
@@ -1439,6 +1499,7 @@ public sealed class ModEntry : Mod
 		{
 			Command = command,
 			UpdatedAt = DateTimeOffset.UtcNow,
+			ExpiresAt = FarmhandDeleteMaintenanceContract.CommandDeadline(command) ?? DateTimeOffset.UtcNow.Add(SaveCommandTimeout),
 		};
 		return WriteJsonAtomic(pendingSaveCommandJournalPath, journal)
 			? null
@@ -1475,12 +1536,21 @@ public sealed class ModEntry : Mod
 			ClearPendingSaveCommandJournal(command.Id);
 			return;
 		}
+		var now = DateTimeOffset.UtcNow;
+		if (SaveCommandRecoveryContract.IsExpired(journal, now, SaveCommandTimeout))
+		{
+			var expired = NewOutcome(command, CommandStatuses.Failed, "save_timeout", "The durable save command reached its original deadline before recovery.");
+			if (WriteJsonAtomic(resultPath, expired))
+				ClearPendingSaveCommandJournal(command.Id);
+			return;
+		}
 
 		var saveName = Constants.SaveFolderName;
 		if (string.IsNullOrWhiteSpace(saveName) && Context.IsWorldReady)
 			saveName = Game1.GetSaveGameName();
-		var verifiedTransactionId = verifiedPanelCustomization?.TransactionId;
-		var verifiedSaveId = verifiedPanelCustomization?.SaveId;
+		var maintenanceTransactionId = farmhandDeleteMaintenanceGate.VerifiedTransactionIdForSave(saveName ?? "");
+		var verifiedTransactionId = maintenanceTransactionId ?? verifiedPanelCustomization?.TransactionId;
+		var verifiedSaveId = maintenanceTransactionId is not null ? saveName : verifiedPanelCustomization?.SaveId;
 		var decision = SaveCommandRecoveryContract.Evaluate(
 			command, Context.IsWorldReady, saveName, verifiedTransactionId, verifiedSaveId);
 		if (decision.TerminalFailure)
@@ -1493,7 +1563,8 @@ public sealed class ModEntry : Mod
 		if (!decision.CanResume || Game1.activeClickableMenu is not null)
 			return;
 
-		var running = pendingSaveCommands.Begin(command, true, DateTimeOffset.UtcNow, SaveCommandTimeout);
+		var remaining = SaveCommandRecoveryContract.EffectiveDeadline(journal, SaveCommandTimeout) - now;
+		var running = pendingSaveCommands.Begin(command, true, now, remaining);
 		if (running.Status != CommandStatuses.Running)
 		{
 			if (WriteJsonAtomic(resultPath, running))
@@ -1515,7 +1586,7 @@ public sealed class ModEntry : Mod
 		}
 		try
 		{
-			Game1.activeClickableMenu = new SaveGameMenu();
+			OpenPanelSaveMenu();
 			Monitor.Log($"Resumed durable save-now command {command.Id} with the same command ID.", LogLevel.Info);
 		}
 		catch (Exception ex)
@@ -1635,6 +1706,29 @@ public sealed class ModEntry : Mod
             CreatedAt = command.CreatedAt,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
+    }
+
+    private static CommandOutcome MaintenanceOutcome(PanelCommand command, FarmhandDeleteMaintenanceDecision decision)
+        => NewOutcome(
+            command,
+            decision.Allowed ? CommandStatuses.Succeeded : CommandStatuses.Failed,
+            decision.ErrorCode,
+            decision.Message);
+
+    private static string CommandPayloadString(PanelCommand command, string key)
+    {
+        if (command.Payload is null || !command.Payload.TryGetValue(key, out var value) || value.ValueKind != JsonValueKind.String)
+            return "";
+        return value.GetString()?.Trim() ?? "";
+    }
+
+    private static int CommandPayloadInt(PanelCommand command, string key)
+    {
+        if (command.Payload is null || !command.Payload.TryGetValue(key, out var value))
+            return 0;
+        if (value.ValueKind == JsonValueKind.Number)
+            return value.TryGetInt32(out var result) ? result : 0;
+        return value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed) ? parsed : 0;
     }
 
     private static CommandOutcome PlayerCommandSucceeded(PanelCommand command, string message, string playerId, string playerName)

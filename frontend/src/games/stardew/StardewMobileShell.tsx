@@ -160,6 +160,7 @@ export function StardewMobileShell({ user, instanceId, onLogout, onUseDesktop, o
             instanceId={instanceId}
             instanceState={dashboardData.instanceState}
             dashboardData={dashboardData}
+            onOpenBackups={() => useDesktopRoute('saves')}
           />
         ) : activeTab === 'mods' ? (
           <MobileModsPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />

@@ -458,13 +458,22 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handlePlayerBan(w, r, instanceID)
 		return
 	}
-	// POST /api/instances/:id/players/delete-farmhand
+	// GET/POST/DELETE /api/instances/:id/players/delete-farmhand
 	if len(parts) == 3 && parts[1] == "players" && parts[2] == "delete-farmhand" {
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodDelete {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
 		}
 		s.handleFarmhandDelete(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/players/delete-farmhand/recovery
+	if len(parts) == 4 && parts[1] == "players" && parts[2] == "delete-farmhand" && parts[3] == "recovery" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleFarmhandDeleteRecovery(w, r, instanceID)
 		return
 	}
 	// POST /api/instances/:id/festival/event

@@ -1,3 +1,15 @@
+# FARMHAND-DELETE-MAINTENANCE-2 修复验证记录（2026-09-10，未发布）
+
+- 审查修复覆盖真实维护门禁、完整人数证据、过期命令、调度 CAS、恢复启动、保护备份身份、切档取消及手机/提交回执丢失状态；删除重复 kick、旧人数函数和重复实例转换。实机额外修正 Panel 保存尾菜单、SMAPI 同日期合成 DayStarted 误取消，以及容器内 API 端口。没有新增业务依赖或任务框架。
+- Control 从 `0.3.8` 升到 `0.3.9`，stack=`junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.9`；最终嵌入 DLL 为 246784 bytes，SHA-256=`db0aa4e74fdddd8b2a2ae1071028e8a279a99c3912519aa5d456585a42146068`。真实 Stardew 1.6.15/SMAPI 引用标准 Release 编译成功，只有既有 CS9057 warning；编译产物、嵌入 DLL、两份 manifest 和 runtime manifest 一致。
+- Linux Go 1.26.6 全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 退出码 0；Control 契约及真实 Harmony/Options 门禁检查通过。23 项前端脚本、production build、兼容清单及脚本测试、ShellCheck 0.11.0 通过。真实浏览器验证手机可到指定保护备份并打开同名回档确认框，POST 已接受但响应丢失后仍出现等待状态与取消按钮。
+- 隔离 Panel 镜像 `anxi-farmhand-review-20260910-panel:dev`（镜像 ID `sha256:05018fe3dc087be45192242d6287e9ad27572f29c155790dd716beade8a3ce97`）使用本轮二进制和前端；新装 health/version/未初始化/重启通过。独立 v0.7.0 合成用户库迁移 001–016 → 017 后，用户及密码 hash、实例记录保持，登录和再次重启成功，SQLite integrity/foreign keys 均正常。该烟测镜像不是正式候选。
+- `TestRealFarmhandDeleteOptIn` 使用独立新存档、游戏副本和两个官方测试客户端，完整一轮 **541.02 秒 PASS，退出码 0**：在线旁观者时等待、无人后实际删除/保存/保护备份；倒计时取消和六次真实通知；DELETE 成功回执丢失保持维护；06:10 拒绝重连；SIGKILL 后重启、旧人物重载仍保持门禁；指定保护备份恢复后重连；真实睡觉进入次日并取消；再次丢失回执后只重试最终保存，磁盘删除及非目标人物保留通过。测试二进制 SHA-256=`252288f71cdad26c8f728c3f8d8c422374cd0dac5db71499980ca6b8e1d89c13`。终态意图 completed、维护标记清除、测试库完整性正常。
+- 上述 Linux 全量测试、Panel 烟测与实机 E2E 是作者最终复审前的验证。随后复审只调整了 `farmhand_delete.go` 的维护释放失败收尾、其回归测试与前端意图 hook 的响应顺序保护；Control DLL 和正常删除链路未再修改。新增 Go 回归先复现两项失败，再通过 seal 回执丢失、非破坏阶段释放失败、明确取消后成功释放三个场景；全部 13 个 FarmhandDelete 顶层测试通过（4.441 秒，exit 0）。前端 23 项脚本与 production build 再次通过。
+- 新增 hook 时序验证直接执行生产 hook 的异步函数，以最小 React hook 替身和可控 Promise 覆盖旧 GET 晚于已接受意图、两个 GET 逆序、4.2 秒响应与 3 秒轮询交叠、旧错误晚到和卸载后旧响应五项；旧版四项失败，修复后五项全部通过。此次浏览器工具不可用，headless 也未取得页面证据，因此该补丁只有 hook 行为单测及构建证明，不标为新增浏览器验收；前次手机/响应丢失的浏览器记录仍保留其原验证范围。
+- 日志及结果下载并核验 SHA-256 后，测试容器、网络、volume、专属目录和三项本轮镜像/工具引用均已清理。三个现有容器 ID、启动时间、重启次数、镜像未变且 healthy；测试不挂载现有存档或长期凭据。游戏文件只从只读源复制到独立副本。
+- 本次以 PR 交付修复，未打 tag、创建 Release 或替换生产。正式发布时仍按 AGENTS.md 对最终源码的不可变候选执行真实 Web updater 升级/回滚及其余发布门禁；上述直接启动的数据库迁移烟测不冒充 Web 更新验收。
+
 # v0.7.0 正式发布验收（2026-09-05，released）
 
 官网发布收尾：每版正式 Release 完成后同步 `website/docs/changelog.md` 与首页 release/版本摘要，执行 docs:build、等待 Pages 成功并回读线上正文。本次补齐 v0.7.0，VitePress 构建 6.61s 通过；Pages 结果记录于门户文档。此类网站文案提交不会触发候选镜像重建。

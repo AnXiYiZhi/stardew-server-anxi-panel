@@ -1,14 +1,39 @@
+# 2026-09-10：人物删除隔离验证补充
+
+- 多 hunk 补丁必须按文件行序排列；一次把前面的 helper 插入放在后面的替换之后导致匹配失败，零修改。重新读取真实完整行后按行序拆分，不从摘要拼局部行。
+- 官方 TestClient 启动脚本经 Git archive 提取不保证可执行，Docker 退出 5；测试只对任务副本显式 chmod 755。空 POST 必须传 `--data ''` 或 Content-Length: 0，否则 HttpListener 可返回 411。测试断线应检查连接状态；`wait/disconnected` 还要求关闭标题子菜单，不能作为被动断线的唯一证据。
+- 长 SSH 调用可能失去本地会话终态；任务专属长测试用独立 PID 与 exit 文件记录结果，重试前核对进程已退出。清理必须验证精确容器 label、挂载和任务根；不使用 prune 或生产数据。测试备份路径来自 `backupsDir`，不得省略其 saves 子目录。
+- 本轮检索也出现过猜测不存在 handler 文件和 PowerShell foreach 直接接管道；后续只用 rg 命中路径，语句结果先以 @() 收集。作者复审又混用了仓库与任务目录的 work、embedded、tests 路径及不存在的 jobs/context.go，并在报告目录执行裸 Git；均只读失败。跨目录命令必须使用搜索命中的绝对路径、Git 固定传仓库 `-C`，已有 AGENTS.md 规则继续适用。凭据只用于内存中的连接，未复制或写入日志。
+- Windows 复审不能临时设 `core.autocrlf=false` 来消除警告，它会把既有 CRLF 读成整文件差异；保留仓库换行配置，使用 `core.safecrlf=false` 与 `--ignore-space-at-eol` 阅读语义差异。此错误只影响输出，没有改写文件。
+- `gh repo fork OWNER/REPO --clone=false --remote=false` 在当前 CLI 因显式仓库参数与 remote 选项不兼容而在执行前退出；已读取帮助，显式仓库且不克隆时只用 `gh repo fork OWNER/REPO --clone=false --default-branch-only`，之后另行配置已核实的远端。
+- 作者前端复验的 CUA 盘点返回 `unsupported Codex auth method: apikey`，未执行浏览器操作；不得把工具不可用算成产品失败或测试通过。已装浏览器的 headless 命令即使退出 0，若 DOM/证据为空，也必须先检查参数和独立 profile 是否真正启动，再判定结果。
+- 最终清单脚本在 Windows 用 `Path.read_text()` 默认 GBK 读取 UTF-8 清单时解码失败，未修改产品文件；所有文本读取显式指定 `encoding='utf-8'` 后重跑。`PYTHONIOENCODING` 只控制标准输入输出，不能替代文件编码参数。
+- E2E 已自行删除测试卷，最终清理探针只匹配大写 `No such`，未识别 Docker 的小写 `no such volume`，在任何删除前退出；只读核对两个精确卷确已不存在后，将可选 inspect 的不存在提示统一为小写匹配，保留其它错误拒绝和全部归属检查。
+
 # 项目执行错题本
+
+## 2026-09-09：长测试续接调用混入占位文本
+
+- 环境：Codex `functions.exec` 编排层。轮询仍在运行的 Go 全量测试时，把自然语言占位片段误写进 JavaScript 源，调用在执行前以 `SyntaxError: Invalid or unexpected token` 退出；原测试 session 未收到输入、没有中断，源码和服务器均未改变。
+- 正确做法：重新使用已验证的最小骨架 `const result = await tools.write_stdin({ session_id, chars: "", yield_time_ms, max_output_tokens }); text(result.output);`，只替换已确认的 session ID。后续长任务续接不得在工具方法位置插入注释、自然语言或未完成表达式。
+- 最终行号定位把包含 C# 双引号的复合 `rg` 正则内联到 PowerShell，模式被截断并报 `unclosed group`；只读查询中该子命令失败，零源码/服务器修改。改为对已知文件分别使用 `Select-String -SimpleMatch`，复杂 C# 字面量不再内联正则。
 
 ## 2026-09-05：彻底删除世界任务检索补充
 
 - Review 修复补充：一次多 hunk 补丁把较早的 GameInstallRail 锚点放到较晚章节之后，补丁零修改失败；按源码顺序拆分后成功。两次混用仓库根与 backend workdir 导致 Go 无 module/读取 frontend 路径不存在，均为 fail-fast、未修改数据。余下命令统一仓库根 workdir，Go 使用 `go -C backend ...`，npm 使用 `npm --prefix frontend ...`；该约束已提升到 AGENTS.md，跨子项目读文件不再切换 workdir。
+- 2026-09-09 人物删除维护代码首次格式化时仍从仓库根执行 `go fmt ./backend/...`，因根目录没有 `go.mod` 立即退出；格式化与随后测试均未执行。修正为仓库根调用 `go -C backend fmt ./internal/...` 与 `go -C backend test ...`，发送前同时核对 module 根和参数前缀。
+- 修正后又把 `go -C backend fmt` 的参数写成三个包，工具遍历了包内全部 Go 文件并刷新 Windows 工作树换行/mtime；`git diff --numstat` 确认语义差异仍只在本功能文件，但 `git status` 暂时显示大量无内容差异的路径。后续格式化只把当前修改文件的精确路径传给 `gofmt -w`，交付前用 `git diff --name-only` 与 `git diff --ignore-space-at-eol` 双重核对，不再包级写格式化命令。
 - Review Linux 回归补充：隔离 Go 容器从 proxy.golang.org 下载 modernc SQLite 1.54.0 时发生 unexpected EOF，相关包在 setup 阶段失败，未运行其测试。任务容器已随 --rm 退出；改用已验证宿主 Go 下载缓存作为只读 file GOPROXY，在独立容器中解压和编译，避免重复下载同一大制品。此方式仅复用模块制品，测试临时目录与编译缓存仍位于 Linux 容器；不得把环境依赖失败记为产品测试失败或成功。
+- 2026-09-09 本机缺少 Go 1.25 时，首次用 `Invoke-WebRequest` 下载官方 Windows 便携 ZIP，在约 6 MB 处因 transport stream unexpected EOF 退出；产品编译尚未开始，仓库与服务器均未受影响。保留精确目标与已下载分片，改用 `curl.exe --retry 3 --retry-all-errors -C -` 有界续传，并在解压前对照 Go 官方 JSON 清单校验 SHA-256；不得把工具链下载失败记为产品测试失败。
 - 浏览器收尾补充：上下文恢复后误用不存在的 `tab.getState()`，返回 TypeError，未执行页面交互。重新调用 `cua.getState()` 盘点，再用已支持的 `cua.getTab(id, { browser })` 读取 AX 状态，使用已验证 locator `press('Escape')` 完成验收；恢复上下文时不猜 tab 方法。
 - 环境：PowerShell 7。源码检索误传 `backend/internal/docker/runtime*.go`，rg 返回 123；随后误读未经检索确认的 `backend/internal/docker/client.go`，fail-fast 退出 1。均为只读，未修改产品数据。
 - 根因：未遵守已提升至 AGENTS.md 的 glob 与精确命中路径规则。后续 rg 位置参数仅使用一个已确认目录，文件 glob 只用 `-g`；读取文件必须来自检索结果，不再猜文件名。正确形式为 `rg -n 'type Client' backend/internal/docker`。
 - 最近复发：误读猜测的 `smapi_update_apply.go`，实际检索结果为 `smapi_update_workflow.go`；另一条将仓库根相对路径与 backend workdir 叠加。均在只读阶段终止。继续执行已存在的精确路径/workdir 强制规则，检索与按包测试拆成独立调用。
 - 同任务再次检索猜测的 `docker_host_paths.go` 失败；前段原容器只读标签/挂载投影成功，不代表后段路径有效。后续相关实现直接依据已读取的 driver/options 与实际 Docker inspect 契约，不再追加推测文件路径。Review 修复续接时误把已列出的 `frontend/src/games/GameInstallRail.tsx` 读成 `games/stardew/GameInstallRail.tsx`，只读失败、零修改；随后按 Git 输出的精确路径读取。之后猜测 Web `handler_test.go`，实际测试辅助函数位于检索命中的 `docker_handlers_test.go`，同样只读失败。继续严格执行已有真实命中路径规则。
+- 2026-09-09 人物删除维护实现续接时又凭记忆读取不存在的 `kick.go`、`broadcast.go` 和 `pages/PlayerAuthSettingsModal.tsx`；均为只读失败，产品文件与服务器未改动。实际认证组件由 `rg --files frontend/src` 定位为 `games/stardew/PlayerAuthSettingsDialog.tsx`。本任务余下读取只接受当前 `rg` 命中的精确路径，不能从功能名推测文件名。
+- 同轮又把不存在的仓库根 `compatibility-matrix.yml` 作为 `rg` 位置参数，实际文件由检索确认在 `.github/workflows/compatibility-matrix.yml`；只读查询部分退出 2，零产品修改。后续兼容门禁只读取已命中的 workflow 与 `scripts/run-release-gates.sh`，不再附加猜测根文件。
+- 同轮保存契约检索又夹带不存在的 `backend/internal/games/stardew_junimo/save_command.go`，`rg` 对该位置参数退出 2；真实实现已命中 `farmhand_delete.go`、`ControlContract.cs`、`DeferredCommandOutcomes.cs` 和 `ModEntry.cs`。余下读取固定使用这些命中路径，组合搜索不得再加候选文件名。
+- 同轮前端视觉 QA 检索把不存在的 `frontend/src/qa` 当成搜索根，`rg` 退出 2；真实夹具已命中 `frontend/src/qa-layout-main.tsx`。这是只读失败、零修改。后续 QA 只读取该精确路径和 `frontend/qa-layout.html`，不再按目录名推测。
 - 浏览器补充：编辑 QA 模块触发 HMR 后，历史改写的 `/games/stardew` 重载丢失 mock harness。Delete 键无效果，随后确认按钮定位超时；实际 API 的 `isDefault` 缺失保护阻止入口，没有删除请求。后续每次源码 reload 后重新导航完整 `qa-layout.html?...`，先核对“管理员”与合成世界名称再交互。
 - Docker 补充：首版 deletion JSON probe 使用通用 `run`，inspect 中历史容器环境敏感键经过文本脱敏后破坏 JSON，E2E 安全拒绝、未清理目标。改用既有 `runWithEnvironmentRaw` 在私有内存先解析结构，只保存资源身份投影；原始 stdout 不输出、不落盘。修正后真实 Web DELETE E2E 通过。
 - Docker bind 验收补充：增加真实存档 bind 后，Windows 直接 `docker create --mount` 的 Source 为 `/run/desktop/mnt/host/c/...`，Compose labels/原 Compose 容器仍可为 drive 路径。首轮因严格不等而安全拒绝；用合成 fixture 的 Source/Destination 投影确认后，Docker 归属函数仅归一化这个已验证的 drive 映射，补跨盘、路径穿越与前缀边界回归。容器内 Panel 的 working_dir 同时允许精确 containerDataDir 与已配置 hostDataDir 映射。
@@ -2274,6 +2299,8 @@
 - 最近复发/补充：2026-07-29 重构隔离预览时再次直接读取不存在的 `docs/.vitepress/config.mts`；随后先用 `rg --files --hidden docs/.vitepress` 找到真实的 `config.ts`。2026-07-31 搜索前端 tooltip 时又把未经发现的 `frontend/src/components` 作为 `rg` 位置参数，产生 `os error 2`；同时后续成功输出掩盖了原生命令状态。今后所有多目录搜索先用 `rg --files <已确认根目录>` 发现路径，或只从已确认存在的共同父目录配合 `-g` 搜索，并在 `rg` 后立即保存、判断 `$LASTEXITCODE`。
 - 最近复发/补充：2026-08-13 修改 NAS 部署文案时，把 VitePress 配置根按习惯写成不存在的 `website/.vitepress`，与真实的 `website/docs/.vitepress` 一起传给 `rg`，有效文档匹配之后仍以路径错误退出。随后停止使用猜测路径，先从 `website` 根执行 `rg --files --hidden -g '*vitepress*' -g 'config.*'` 发现配置位置，再读取精确命中路径。
 - 最近复发/补充：2026-08-01 一次组合读取对不存在路径产生 PowerShell non-terminating error，末尾显式 `exit 0` 又把它掩盖。只读发布脚本同样必须以 `$ErrorActionPreference=''Stop''` 开始，文件路径先发现后读取，成功分支才允许输出 0。
+- 最近复发/补充：2026-09-09 设计人物删除维护流程时，连续按常见 Go 命名读取不存在的 `backend/internal/storage/{store,migrate,storage}.go`，随后又把 Windows 不展开的 `backend/internal/storage/*_test.go` 作为 `rg` 位置参数；命令均只读且源码未因此变化。改为先用 `rg --files backend/internal/storage` 取得真实的 `db.go`、`migrations.go` 与测试清单，再只读取精确命中路径；本轮余下不得从类型或职责猜文件名，也不得把通配路径作为 Windows `rg` 位置参数。
+- 最近复发/补充：同一任务首次格式化存储层时，`workdir` 已设为 `backend` 却仍把仓库根相对的 `backend/internal/...` 传给 `rg`/`gofmt`，并在未先执行 `Get-Command go` 的情况下假定 Go 已在 PATH；检索路径错误，`gofmt`/`go` 均未启动，补丁内容未被这些失败命令改写。后续格式化回到仓库根使用已确认路径，Go 测试先探测本机工具链，不可用则按项目规则使用任务专属 Linux 工具链。
 - 环境：PowerShell 7，读取 VitePress 配置。
 - 错误模式：未先查看实际文件便读取 `website/docs/.vitepress/config.mts`，并在脚本末尾无条件 `exit 0`。
 - 症状：`Get-Content` 报路径不存在，但组合命令仍显示 exit 0，后续输出容易让人误以为所有输入都已读取。

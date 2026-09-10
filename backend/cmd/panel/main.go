@@ -142,6 +142,7 @@ func main() {
 		backupInstances = append(backupInstances, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt})
 	}
 	go stardewDriver.RunBackupMaintenanceScheduler(signalCtx, backupInstances)
+	go stardewDriver.RunFarmhandDeleteScheduler(signalCtx)
 
 	restartScheduler := web.NewRestartScheduler(web.RestartSchedulerDeps{
 		Store:    store,

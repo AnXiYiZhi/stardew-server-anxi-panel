@@ -129,6 +129,7 @@ echo "release gates: frontend regression and production build"
   npm run test:game-library
   npm run test:session-expiry
   npm run test:world-delete
+  npm run test:farmhand-delete
   npm run test:lifecycle-action-state
   npm run test:new-game-idempotency
   npm run test:nexus-extension-idempotency

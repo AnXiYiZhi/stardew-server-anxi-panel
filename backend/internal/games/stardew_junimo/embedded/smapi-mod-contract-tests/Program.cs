@@ -1,4 +1,5 @@
 using StardewAnxiPanel.Control;
+using System.Text.Json;
 
 var command = new PanelCommand
 {
@@ -597,9 +598,17 @@ var wrongTypeSaveCommand = new PanelCommand
 Expect(SaveCommandContract.CompleteSavedEvent(wrongTypeSaveCommand, "Target_1", now.AddSeconds(1)),
     CommandStatuses.Failed, "save_target_invalid");
 
-var saveJournal = new PendingSaveCommandJournal { Command = targetedSaveCommand, UpdatedAt = now };
+var saveJournal = new PendingSaveCommandJournal { Command = targetedSaveCommand, UpdatedAt = now, ExpiresAt = now.AddSeconds(30) };
 if (!SaveCommandRecoveryContract.Matches(saveJournal, targetedSaveCommand))
     throw new InvalidOperationException("durable save journal did not match its original command");
+if (SaveCommandRecoveryContract.IsExpired(saveJournal, now.AddSeconds(29), TimeSpan.FromMinutes(2))
+    || !SaveCommandRecoveryContract.IsExpired(saveJournal, now.AddSeconds(30), TimeSpan.FromMinutes(2)))
+{
+    throw new InvalidOperationException("durable save journal did not preserve its absolute deadline");
+}
+var legacyDeadlineJournal = new PendingSaveCommandJournal { Command = targetedSaveCommand, UpdatedAt = now };
+if (SaveCommandRecoveryContract.EffectiveDeadline(legacyDeadlineJournal, TimeSpan.FromSeconds(30)) != now.AddSeconds(30))
+    throw new InvalidOperationException("legacy durable save journal did not receive a bounded fallback deadline");
 var differentTarget = new PanelCommand
 {
     Id = targetedSaveCommand.Id,
@@ -1053,4 +1062,95 @@ finally
     if (Directory.Exists(atomicDir))
         Directory.Delete(atomicDir, true);
 }
+
+var maintenanceOperation = "0123456789abcdef0123456789abcdef";
+var maintenanceReady = FarmhandDeleteMaintenanceContract.ValidateReadiness(
+    maintenanceOperation, "Farm_1", "Farm_1", true, true, false, 0, false);
+if (!maintenanceReady.Allowed)
+    throw new InvalidOperationException("ready farmhand deletion maintenance was rejected");
+foreach (var blocked in new[]
+{
+    FarmhandDeleteMaintenanceContract.ValidateReadiness(maintenanceOperation, "Farm_1", "Farm_1", true, true, true, 0, false),
+    FarmhandDeleteMaintenanceContract.ValidateReadiness(maintenanceOperation, "Farm_1", "Farm_1", true, true, false, 1, false),
+    FarmhandDeleteMaintenanceContract.ValidateReadiness(maintenanceOperation, "Farm_1", "Farm_1", true, true, false, 0, true),
+})
+{
+    if (blocked.Allowed || blocked.ErrorCode is not ("day_transition_in_progress" or "sleep_in_progress"))
+        throw new InvalidOperationException("sleep or settlement did not cancel farmhand deletion maintenance");
+}
+if (FarmhandDeleteMaintenanceContract.ValidateReadiness(
+        maintenanceOperation, "Farm_1", "Farm_2", true, true, false, 0, false).ErrorCode != "active_save_changed")
+{
+    throw new InvalidOperationException("farmhand deletion accepted a different active save");
+}
+var guardedMarker = new FarmhandDeleteMaintenanceMarker
+{
+    OperationId = maintenanceOperation,
+    ExpectedSaveId = "Farm_1",
+    TargetPlayerId = "42",
+    Phase = FarmhandDeleteMaintenanceContract.GuardedPhase,
+    CreatedAt = now,
+    ExpiresAt = now.AddMinutes(1),
+};
+if (!FarmhandDeleteMaintenanceContract.ValidMarker(guardedMarker)
+    || FarmhandDeleteMaintenanceContract.ShouldAutoRelease(guardedMarker, now)
+    || !FarmhandDeleteMaintenanceContract.ShouldAutoRelease(guardedMarker, now.AddMinutes(2)))
+{
+    throw new InvalidOperationException("guarded maintenance lease expiry contract is invalid");
+}
+var countdownMarker = new FarmhandDeleteMaintenanceMarker
+{
+    OperationId = maintenanceOperation,
+    ExpectedSaveId = "Farm_1",
+    TargetPlayerId = "42",
+    Phase = FarmhandDeleteMaintenanceContract.CountdownPhase,
+    CreatedAt = now,
+    ExpiresAt = now.AddMinutes(10),
+};
+if (!FarmhandDeleteMaintenanceContract.ValidMarker(countdownMarker)
+    || !FarmhandDeleteMaintenanceContract.CancelBeforeDestructiveBoundary(
+        countdownMarker, "sleep_in_progress", "sleep started", now.AddSeconds(1), TimeSpan.FromMinutes(10))
+    || countdownMarker.Phase != FarmhandDeleteMaintenanceContract.CanceledPhase
+    || countdownMarker.CancellationCode != "sleep_in_progress"
+    || FarmhandDeleteMaintenanceContract.CancellationDecision(countdownMarker).Allowed
+    || !FarmhandDeleteMaintenanceContract.ValidMarker(countdownMarker))
+{
+    throw new InvalidOperationException("sleep did not durably cancel the maintenance countdown");
+}
+guardedMarker.Phase = FarmhandDeleteMaintenanceContract.DestructivePhase;
+guardedMarker.ExpiresAt = null;
+guardedMarker.JoinGateClosed = true;
+if (!FarmhandDeleteMaintenanceContract.ValidMarker(guardedMarker)
+    || FarmhandDeleteMaintenanceContract.ShouldAutoRelease(guardedMarker, now.AddDays(1))
+    || FarmhandDeleteMaintenanceContract.CancelBeforeDestructiveBoundary(
+        guardedMarker, "day_transition_in_progress", "day changed", now.AddDays(1), TimeSpan.FromMinutes(10)))
+{
+    throw new InvalidOperationException("destructive maintenance was auto-released");
+}
+var expiringMaintenance = new PanelCommand
+{
+    Name = "farmhand-delete-maintenance-begin",
+    Payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>("{\"expiresAt\":\"2030-01-01T00:00:20Z\"}")
+};
+var commandStart = DateTimeOffset.Parse("2030-01-01T00:00:00Z");
+if (FarmhandDeleteMaintenanceContract.CommandExpired(expiringMaintenance, commandStart)
+    || !FarmhandDeleteMaintenanceContract.CommandExpired(expiringMaintenance, commandStart.AddSeconds(20)))
+    throw new InvalidOperationException("maintenance commands did not honor their absolute deadline");
+expiringMaintenance.Payload = null;
+if (!FarmhandDeleteMaintenanceContract.CommandExpired(expiringMaintenance, commandStart))
+    throw new InvalidOperationException("a maintenance command without a deadline was accepted");
+if (FarmhandDeleteMaintenanceContract.CommandExpired(new PanelCommand { Name = "save-now" }, commandStart))
+    throw new InvalidOperationException("ordinary save commands lost backward compatibility");
+var expiredDeletionSave = new PanelCommand
+{
+    Name = "save-now",
+    Payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>("{\"operationId\":\"0123456789abcdef0123456789abcdef\",\"expiresAt\":\"2030-01-01T00:00:20Z\"}")
+};
+if (!FarmhandDeleteMaintenanceContract.CommandExpired(expiredDeletionSave, commandStart.AddHours(1)))
+    throw new InvalidOperationException("a delayed deletion save was allowed to start in a later world");
+guardedMarker.Phase = FarmhandDeleteMaintenanceContract.GuardedPhase;
+if (!FarmhandDeleteMaintenanceContract.CancelBeforeDestructiveBoundary(
+        guardedMarker, "farmhand_delete_canceled", "world reloaded", now, TimeSpan.FromMinutes(10))
+    || !FarmhandDeleteMaintenanceContract.ValidMarker(guardedMarker))
+    throw new InvalidOperationException("world reload cancellation was not persisted as a valid marker");
 Console.WriteLine("control command outcome branch tests passed");

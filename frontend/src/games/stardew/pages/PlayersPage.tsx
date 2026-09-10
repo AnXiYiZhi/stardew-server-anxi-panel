@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { kickPlayer, warpPlayerHome, approvePlayerAuth, banPlayer, deleteFarmhand, getInstancePasswordStatus } from '../../../api'
+import { kickPlayer, warpPlayerHome, approvePlayerAuth, banPlayer, getInstancePasswordStatus } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { InstancePasswordStatus } from '../../../types'
@@ -7,6 +7,9 @@ import { formatStardewLocation, rawStardewLocation, readableStardewLocation, typ
 import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
 import { hasPlayerCjbRisk, playerModActionLabel } from '../player-mod-details'
 import { ModalPortal } from '../../../core/ModalPortal'
+import { FarmhandDeleteFlow, type FarmhandDeleteTarget } from '../FarmhandDeleteFlow'
+import { farmhandDeleteIntentActive } from '../farmhand-delete-state'
+import { useFarmhandDeleteIntent } from '../useFarmhandDeleteIntent'
 
 const PLAYER_EVENTS_PAGE_SIZE = 2
 
@@ -200,7 +203,7 @@ function isWaitingPlayerStatus(status?: string): boolean {
 
 type KickTarget = { uniqueMultiplayerId: string; name: string }
 
-export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
+export function PlayersPage({ user, instanceId, instanceState, dashboardData, onNavigate }: StardewPageProps) {
   const [eventsPage, setEventsPage] = useState(1)
   const [warpHomeConfirmTarget, setWarpHomeConfirmTarget] = useState<KickTarget | null>(null)
   const [warpHomeBusyId, setWarpHomeBusyId] = useState<string | null>(null)
@@ -223,10 +226,7 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
   const [banError, setBanError] = useState<string | null>(null)
   const [banMessage, setBanMessage] = useState<string | null>(null)
   const [banConfirmed, setBanConfirmed] = useState(false)
-  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<KickTarget | null>(null)
-  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [deleteMessage, setDeleteMessage] = useState<string | null>(null)
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<FarmhandDeleteTarget | null>(null)
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -237,6 +237,8 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
   const farmhandDeleteJobActive = dashboardData.jobs.some(
     (job) => job.type === 'stardew_farmhand_delete' && (job.status === 'queued' || job.status === 'running'),
   )
+  const farmhandDeleteState = useFarmhandDeleteIntent(instanceId, isAdmin)
+  const farmhandDeleteInProgress = farmhandDeleteJobActive || farmhandDeleteIntentActive(farmhandDeleteState.intent)
   const recentEvents = playersData?.recentEvents ?? []
   const serverInfo = playersData?.rawInfo ?? null
   const serverInfoError = dashboardData.playersError
@@ -485,25 +487,6 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
     }
   }
 
-  async function handleConfirmDelete() {
-    const target = deleteConfirmTarget
-    const saveId = dashboardData.saves?.activeSaveName
-    if (!target || !saveId) return
-    setDeleteBusyId(target.uniqueMultiplayerId)
-    setDeleteError(null)
-    setDeleteMessage(null)
-    try {
-      await deleteFarmhand(target.uniqueMultiplayerId, target.name, saveId)
-      setDeleteMessage(`人物 ${target.name} 的删除任务已提交；系统会先保存并创建整档保护备份。`)
-      dashboardData.refreshJobs()
-    } catch (e) {
-      setDeleteError(errorMessage(e))
-    } finally {
-      setDeleteBusyId(null)
-      setDeleteConfirmTarget(null)
-    }
-  }
-
   return (
     <div className="sd-page sd-players-page">
       <div className="sd-page-header">
@@ -686,7 +669,7 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
                   <button
                     className="sd-players-icon-button sd-players-icon-delete"
                     type="button"
-                    disabled={!isAdmin || !isRunning || !player.canDeleteCharacter || !dashboardData.saves?.activeSaveName || farmhandDeleteJobActive || deleteBusyId !== null}
+                    disabled={!isAdmin || !isRunning || !player.canDeleteCharacter || !dashboardData.saves?.activeSaveName || farmhandDeleteInProgress}
                     title={
                       !isAdmin
                         ? '仅管理员可用'
@@ -698,8 +681,8 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
                               ? '被删除的人物必须离线'
                               : !player.saveCharacterPresent
                                 ? '该记录不属于当前存档人物'
-                                : farmhandDeleteJobActive
-                                  ? '已有存档人物删除任务正在执行'
+                                : farmhandDeleteInProgress
+                                  ? '已有存档人物删除操作正在等待、执行或恢复'
                                   : '删除离线存档人物'
                     }
                     aria-label="删除存档人物"
@@ -724,8 +707,19 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
             农场收入显示团队累计收入；个人收入仅在分开钱包模式下有可靠统计。
           </div>
         )}
-        {deleteMessage ? <div className="sd-notice sd-notice--ok">{deleteMessage}</div> : null}
-        {deleteError ? <div className="sd-notice sd-notice--error">{deleteError}</div> : null}
+        <FarmhandDeleteFlow
+          instanceId={instanceId}
+          activeSaveId={dashboardData.saves?.activeSaveName}
+          intent={farmhandDeleteState.intent}
+          intentError={farmhandDeleteState.error}
+          intentLoading={farmhandDeleteState.loading}
+          onlineHumanCount={onlineHumanCount}
+          onClose={() => setDeleteConfirmTarget(null)}
+          onIntentRefresh={farmhandDeleteState.refresh}
+          onJobsRefresh={dashboardData.refreshJobs}
+          onOpenBackups={() => onNavigate('saves')}
+          target={deleteConfirmTarget}
+        />
         {warpHomeError ? <div className="sd-players-info-error sd-players-action-feedback">{warpHomeError}</div> : null}
         {warpHomeMessage ? <div className={`${warpHomeConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} sd-players-action-feedback`}>{warpHomeMessage}</div> : null}
         {kickError ? <div className="sd-players-info-error sd-players-action-feedback">{kickError}</div> : null}
@@ -1006,30 +1000,6 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
         </ModalPortal>
       ) : null}
 
-      {deleteConfirmTarget ? (
-        <ModalPortal
-          className="sd-confirm-overlay"
-          role="alertdialog"
-          ariaLabelledBy="player-delete-confirm-title"
-          onEscape={deleteBusyId !== null ? undefined : () => setDeleteConfirmTarget(null)}
-        >
-          <div className="sd-confirm-dialog">
-            <h3 id="player-delete-confirm-title">确认删除存档人物</h3>
-            <p>将永久删除人物 {deleteConfirmTarget.name}、其人物进度、背包以及对应小屋和小屋内容。该操作不会封禁玩家，对方以后仍可重新创建人物。</p>
-            {onlineHumanCount > 0 ? (
-              <p className="sd-notice sd-notice--warn">当前有 {onlineHumanCount} 名玩家在线。现支持有真人玩家在线时删除离线玩家存档，但删除会同时移除其小屋，现有在线客户端可能无法立即同步建筑变化，出现旧小屋残影或位置显示异常。建议在线玩家在操作完成后重新连接。系统将先保存并创建整档保护备份。</p>
-            ) : (
-              <p className="sd-notice sd-notice--warn">系统将先保存当前进度并创建整档保护备份。恢复保护备份会回滚整个农场，不能只恢复这一个人物。</p>
-            )}
-            <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setDeleteConfirmTarget(null)} disabled={deleteBusyId !== null}>取消</button>
-              <button className="sd-btn-delete" onClick={() => void handleConfirmDelete()} disabled={deleteBusyId !== null}>
-                {deleteBusyId !== null ? '正在提交…' : '确认删除人物'}
-              </button>
-            </div>
-          </div>
-        </ModalPortal>
-      ) : null}
     </div>
   )
 }

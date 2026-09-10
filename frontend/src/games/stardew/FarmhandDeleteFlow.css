@@ -1,0 +1,193 @@
+.sd-farmhand-delete-status {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 13px 0;
+  border-top: 2px solid rgba(112, 72, 32, 0.28);
+  border-bottom: 2px solid rgba(112, 72, 32, 0.28);
+  color: #3b220e;
+}
+
+.sd-farmhand-delete-status.is-recovery_required {
+  border-color: #a33a2d;
+}
+
+.sd-farmhand-delete-status-head,
+.sd-farmhand-delete-status-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sd-farmhand-delete-status-head > div,
+.sd-farmhand-delete-status-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sd-farmhand-delete-status-head span,
+.sd-farmhand-delete-status-body span {
+  color: #70451f;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sd-farmhand-delete-status-head strong {
+  font-size: 16px;
+}
+
+.sd-farmhand-delete-status-body .is-error,
+.sd-farmhand-delete-feedback.is-error {
+  color: #8c241c;
+}
+
+.sd-farmhand-delete-feedback {
+  padding: 9px 10px;
+  border-left: 4px solid #a33a2d;
+  background: #fff1df;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sd-farmhand-delete-feedback.is-ok {
+  border-color: #3d7c48;
+  color: #24572e;
+}
+
+.sd-farmhand-delete-status-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.sd-farmhand-delete-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  overflow-y: auto;
+}
+
+.sd-farmhand-delete-dialog h3 {
+  margin: 0 0 10px;
+}
+
+.sd-farmhand-delete-dialog > p {
+  margin: 0 0 14px;
+  line-height: 1.55;
+}
+
+.sd-farmhand-delete-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.sd-farmhand-delete-modes > button {
+  display: grid;
+  gap: 5px;
+  min-height: 78px;
+  padding: 11px 12px;
+  border: 2px solid #b8884f;
+  border-radius: 6px;
+  background: #fff1c9;
+  color: #4b2a12;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sd-farmhand-delete-modes > button span {
+  color: #795333;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sd-farmhand-delete-modes > button.is-selected {
+  border-color: #417c47;
+  background: #e8f2d8;
+  box-shadow: inset 0 0 0 1px #417c47;
+}
+
+.sd-farmhand-delete-modes > button.is-selected.is-danger {
+  border-color: #a33a2d;
+  background: #fde0cf;
+  box-shadow: inset 0 0 0 1px #a33a2d;
+}
+
+.sd-farmhand-delete-modes > button:focus-visible,
+.sd-farmhand-delete-risk-check:has(input:focus-visible) {
+  outline: 3px solid #1e6ca8;
+  outline-offset: 2px;
+}
+
+.sd-farmhand-delete-mode-note,
+.sd-farmhand-delete-risk {
+  margin-bottom: 14px;
+  padding: 11px 12px;
+  border-left: 4px solid #417c47;
+  background: #f2f6dc;
+  color: #3f2b16;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sd-farmhand-delete-risk {
+  border-color: #a33a2d;
+  background: #fff0df;
+}
+
+.sd-farmhand-delete-risk > p {
+  margin: 0 0 8px;
+}
+
+.sd-farmhand-delete-risk-check,
+.sd-farmhand-delete-confirm-name {
+  display: flex;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.sd-farmhand-delete-risk-check {
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.sd-farmhand-delete-risk-check input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: #a33a2d;
+  flex: 0 0 auto;
+}
+
+.sd-farmhand-delete-confirm-name {
+  flex-direction: column;
+}
+
+.sd-farmhand-delete-confirm-name .sd-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 560px) {
+  .sd-farmhand-delete-modes {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-farmhand-delete-status-head,
+  .sd-farmhand-delete-status-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sd-farmhand-delete-status-head > button,
+  .sd-farmhand-delete-status-actions > button {
+    width: 100%;
+  }
+
+  .sd-farmhand-delete-dialog.is-mobile {
+    width: min(100%, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
+  }
+}

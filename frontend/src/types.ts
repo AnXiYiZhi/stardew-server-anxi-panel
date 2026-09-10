@@ -581,6 +581,42 @@ export type StardewPlayerInfo = {
   deleteCharacterBlockReason?: string
 }
 
+export type FarmhandDeleteMode = 'wait' | 'maintenance_now'
+
+export type FarmhandDeleteIntentStatus =
+  | 'waiting'
+  | 'launching'
+  | 'countdown'
+  | 'active'
+  | 'recovery_required'
+  | 'completed'
+  | 'canceled'
+  | 'expired'
+  | 'failed'
+
+export type FarmhandDeleteIntent = {
+  operationId: string
+  mode: FarmhandDeleteMode
+  status: FarmhandDeleteIntentStatus
+  uniqueMultiplayerId: string
+  expectedName: string
+  expectedSaveId: string
+  jobId?: string
+  expiresAt: string
+  backupName?: string
+  lastError?: string
+}
+
+export type FarmhandDeleteIntentResponse = {
+  intent: FarmhandDeleteIntent | null
+}
+
+export type FarmhandDeleteSubmission = {
+  status: FarmhandDeleteIntentStatus
+  jobId?: string
+  intent?: FarmhandDeleteIntent
+}
+
 export type StardewPlayerEvent = {
   id: string
   type: 'seen' | 'joined' | 'left' | string

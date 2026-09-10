@@ -1,3 +1,19 @@
+# 2026-09-10：人物删除修复接手补充
+
+- 删除人数检查和入口控制必须同时可靠：同档新鲜 Control 快照用于调度，游戏线程真实连接用于 begin/seal；Options 重新联机由当前维护标记拦截。不要恢复逐人 kick 或再加一个抢写 online/offline 的 tick 循环。
+- 保存必须绑定 operation/save/deadline；本次 SaveGameMenu 实例和实际游戏日期用于区分手动保存与日结算，不能仅凭 PendingCommandId 或 DayStarted 事件判断。
+- 恢复使用现有意图的条件更新，备份名先持久化再 seal；错误备份先拒绝，明确恢复成功才清门禁。default wait 的恢复 launching 不能再按初次等待处理；切档事件和轮询都取消旧等待。
+- seal 确认与解除维护均失败时仍保留 active，供现有中断恢复调度核对 marker；不能记成不再被扫描的 failed。对应故障回归覆盖 destructive、非破坏阶段和已确认释放。
+- 新真实测试只接受任务专属根目录、独立游戏副本和官方 TestClient，不连接 Steam、不借用生产存档。执行/证据/未发布状态见 `docs/09-image-build.md`。
+
+# FARMHAND-DELETE-MAINTENANCE-2 接手记录（2026-09-09，待审核）
+
+- 新增迁移 017 和每世界唯一的 durable intent。waiting 不占 job；后台调度每 2 秒检查 24 小时期限、活动 save、目标是否重新上线、在线人数和活动任务。状态机为 waiting → launching → active，立即模式在 job 绑定后先进入 countdown；cancel countdown 与 activate 使用条件更新互斥。
+- `farmhand_delete.go` 的事务先经 Control 倒计时/闸门，由 offline 断开真人玩家；断开轮询、保存前、保存后和 Junimo DELETE seal 前检查睡觉/日结算锁存。两次 save-now 用 operationId/saveId 定向，修复旧 untargeted journal 可能被另一世界后续 Saved 误确认的问题；journal 持久化绝对截止时间，重启不续期。
+- Control `0.3.9` 增加 `FarmhandDeleteMaintenanceGate` 与 countdown/check/begin/seal/end 命令。marker 的 destructive 阶段没有租约且保持 offline；非破坏阶段最多 10 分钟自动释放。Panel 中断时，人物仍在则取消并释放，destructive 则进入 recovery_required。
+- API 增加 GET/DELETE/recovery；立即模式要求风险勾选和精确人物名。恢复 runner 不重复 DELETE，只重试最终保存、磁盘验证、墓碑和闸门释放。
+- Control `0.3.9` 的最终 DLL 身份、全量回归及隔离 Docker/双客户端验证统一见 `docs/09-image-build.md`；真实游戏引用编译通过，正式候选的 Web 升级与回滚仍须在发布前完成。
+
 # v0.7.0 正式发布完成（2026-09-05）
 
 - 已发布游戏库、多世界创建/改名/删除、迁移 014–016、创建 token/journal 互斥与恢复、共享 Steam 下载、世界安装授权路由、过期会话与首次导入 journal 修复。完整提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。

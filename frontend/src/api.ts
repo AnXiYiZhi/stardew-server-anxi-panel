@@ -42,6 +42,9 @@ import type {
   ModSyncKind,
   NewGameConfig,
   FarmTypeCatalogResponse,
+  FarmhandDeleteIntentResponse,
+  FarmhandDeleteMode,
+  FarmhandDeleteSubmission,
   NewGameModSelection,
   NexusModSearchResponse,
   NexusModSearchResult,
@@ -848,11 +851,35 @@ export function deleteFarmhand(
   uniqueMultiplayerId: string,
   expectedName: string,
   expectedSaveId: string,
+  mode: FarmhandDeleteMode,
+  riskAcknowledged: boolean,
+  confirmationName: string,
   instanceId = defaultInstanceId,
 ) {
-  return request<InstallJobResponse>(
+  return request<FarmhandDeleteSubmission>(
     `/api/instances/${encodeURIComponent(instanceId)}/players/delete-farmhand`,
-    { method: 'POST', body: { uniqueMultiplayerId, expectedName, expectedSaveId, acknowledged: true } },
+    { method: 'POST', body: { uniqueMultiplayerId, expectedName, expectedSaveId, mode, acknowledged: true, riskAcknowledged, confirmationName } },
+  )
+}
+
+export function getFarmhandDeleteIntent(instanceId = defaultInstanceId) {
+  return request<FarmhandDeleteIntentResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/delete-farmhand`,
+  )
+}
+
+export function cancelFarmhandDeleteIntent(operationId: string, instanceId = defaultInstanceId) {
+  const query = new URLSearchParams({ operationId })
+  return request<{ canceled: boolean }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/delete-farmhand?${query.toString()}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function retryFarmhandDeletePersistence(operationId: string, instanceId = defaultInstanceId) {
+  return request<FarmhandDeleteSubmission>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/delete-farmhand/recovery`,
+    { method: 'POST', body: { operationId, action: 'retry_save' } },
   )
 }
 

@@ -704,6 +704,9 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.ValidateFarmhandDeleteBackupRestore(ctx, instance, backupName); err != nil {
+		return nil, err
+	}
 	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
 		return nil, err
 	}
@@ -1422,6 +1425,9 @@ func (r *lifecycleRunner) doRestoreAndRestart(ctx context.Context, jobCtx *jobs.
 		return err
 	}
 	_, _ = jobCtx.Info(ctx, fmt.Sprintf("回档完成，当前存档已切换为 %s", saveName))
+	if err := r.driver.CompleteFarmhandDeleteBackupRestore(ctx, makeRegistryInstanceFromStorage(r.instance), r.restoreBackupName, saveName); err != nil {
+		return err
+	}
 
 	if !wasRunning {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "回档完成", "restored", jobCtx.ID)

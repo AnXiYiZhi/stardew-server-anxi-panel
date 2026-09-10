@@ -1,3 +1,19 @@
+# 2026-09-10：人物删除审查修复
+
+- 等待删除只采用同一存档的新鲜、完整 Control 快照；关闭入口前再在游戏线程检查真实连接。删除请求在容器内固定访问 8080，不使用主机映射端口。`offline` 已断开连接，去掉逐人重复 kick。
+- Control 在既有维护标记期间拦截 `Options.setServerMode` 的重新联机；seal 前再核对实际连接和关闭状态。命令携带绝对截止时间，超时清理未消费命令。保存界面按本次实例识别；SMAPI 保存后合成的 DayStarted 只有实际游戏日期变化才取消。
+- 调度恢复按原状态、jobId、updatedAt 条件更新，避免旧快照覆盖终态；恢复启动不使用等待期限。保护备份名称在 seal 前持久化；选错恢复备份在停服/写盘前拒绝，只有明确恢复对应保护备份并验证人物后才清维护标记。切档入口同时取消等待，避免切走又切回被轮询漏掉。
+- seal 确认丢失且解除维护也失败时，保留 active 意图交给现有中断恢复调度；destructive 标记进入人工恢复，非破坏标记确认释放后取消，不能提前记为普通失败而丢失恢复入口。
+- 重复实例转换和旧人数函数已移除；不新增状态机或业务依赖。验证与剩余发布步骤统一见 `docs/09-image-build.md` 本次记录。
+
+# FARMHAND-DELETE-MAINTENANCE-2：等待删除与受控维护（2026-09-09，待审核）
+
+- `POST /api/instances/:id/players/delete-farmhand` 新增 `mode=wait|maintenance_now`。缺省为 `wait`：请求持久化 24 小时但不占活动 job，目标人物上线、活动存档变化或超时会取消；无人在线且没有其它活动任务时才原子 claim 并创建删除 job。`GET` 返回当前意图，`DELETE` 可取消 waiting 或 countdown，`POST .../recovery` 只重试破坏边界后的最终保存。
+- 立即模式先进入持久 `countdown` 状态，60 秒内每 10 秒由 Control 发一次游戏内通告。管理员取消倒计时与 runner 进入 `active` 使用 SQLite compare-and-set，只有一方能成功；进入维护后不再允许取消。
+- Control `0.3.9` 用 `farmhand-delete-maintenance.json` 记录 countdown/guarded/canceled/destructive。倒计时和 guarded 阶段检查 sleep ready、`newDay/newDaySync`、Shipping/非本次 Panel SaveGameMenu，以及实际日期变化；命中后在 Junimo DELETE 前取消并恢复联机。面板自己的定向 save-now 不会被误判为日结算。最终 DLL 身份统一见 `docs/09-image-build.md`。
+- 删除顺序固定为关闭新连接、断开真人玩家并确认零连接、定向保存、整档保护备份、再次检查、seal destructive、Junimo 官方 DELETE、运行态复核、第二次定向保存和磁盘复核。两次保存都绑定 operationId/saveId；pending save journal 保存原始绝对截止时间，旧 journal 以 `updatedAt + 2 分钟` 限界，重启不能重新获得完整超时。破坏边界前失败会释放闸门，边界后失败保持 offline 并进入 `recovery_required`。
+- Panel 重启会恢复 waiting；中断的 countdown/active 释放非破坏性维护并标记取消，destructive 标记则转 recovery。迁移 017 保存每个世界唯一意图。代码回归、真实游戏及隔离 Panel 验证结果见 `docs/09-image-build.md`；正式候选的 Web 升级与回滚仍是发布前门禁。
+
 # v0.7.0 正式发布完成（2026-09-05）
 
 - 已发布游戏库、多世界创建/改名/删除、迁移 014–016、创建 token/journal 互斥与恢复、共享 Steam 下载、世界安装授权路由、过期会话与首次导入 journal 修复。完整提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。

@@ -162,12 +162,19 @@ public sealed class PendingSaveCommandJournal
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public PanelCommand Command { get; set; } = new();
     public DateTimeOffset UpdatedAt { get; set; }
+	public DateTimeOffset? ExpiresAt { get; set; }
 }
 
 public sealed record SaveCommandRecoveryDecision(bool CanResume, bool TerminalFailure, string ErrorCode);
 
 public static class SaveCommandRecoveryContract
 {
+	public static DateTimeOffset EffectiveDeadline(PendingSaveCommandJournal journal, TimeSpan defaultTimeout)
+		=> journal.ExpiresAt ?? journal.UpdatedAt.Add(defaultTimeout);
+
+	public static bool IsExpired(PendingSaveCommandJournal journal, DateTimeOffset now, TimeSpan defaultTimeout)
+		=> now >= EffectiveDeadline(journal, defaultTimeout);
+
     public static bool Matches(PendingSaveCommandJournal? journal, PanelCommand command)
     {
         if (journal is null || journal.SchemaVersion != PendingSaveCommandJournal.CurrentSchemaVersion)
