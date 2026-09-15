@@ -59,6 +59,10 @@
 }
 
 button.sd-mhome-status-item--version {
+  appearance: none;
+  border: 1px solid #bc9255;
+  border-radius: 2px;
+  background: #f5dfad;
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -170,14 +174,15 @@ button.sd-mhome-status-item--version:focus-visible {
 /* 快捷控制卡 */
 
 .sd-mhome-lifecycle-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .sd-mhome-lifecycle-btn {
   width: 100%;
   min-height: 44px;
+  min-width: 0;
 }
 
 /* 待认证玩家卡 */

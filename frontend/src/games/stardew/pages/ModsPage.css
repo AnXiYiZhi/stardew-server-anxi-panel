@@ -1680,11 +1680,9 @@
 }
 
 .sd-mods-nexus-card .sd-mods-card-actions > .sd-btn-delete {
-  background-color: #b94432;
-  background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
-  background-repeat: no-repeat;
-  color: #fff6dc;
-  text-shadow: 0 1px 0 rgba(89, 20, 12, 0.82);
+  background-color: var(--sd-button-fill);
+  color: #8b2020;
+  text-shadow: none;
 }
 
 .sd-mods-search-footer {

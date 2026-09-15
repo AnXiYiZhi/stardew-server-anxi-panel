@@ -149,12 +149,11 @@
 }
 
 .sd-mplay-player-actions {
-  flex: 0 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
   max-width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
 
@@ -162,6 +161,27 @@
   min-height: 44px;
   min-width: 56px;
   padding-inline: 10px;
+}
+
+.sd-mplay-management {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.sd-mplay-management > summary {
+  width: fit-content;
+  list-style: none;
+}
+
+.sd-mplay-management > summary::-webkit-details-marker { display: none; }
+.sd-mplay-management > summary::after { content: '+'; margin-left: 8px; }
+.sd-mplay-management[open] > summary::after { content: '−'; }
+
+.sd-mplay-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
 }
 
 .sd-mplay-player-mods-btn {

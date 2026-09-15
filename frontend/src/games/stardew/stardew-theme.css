@@ -174,15 +174,15 @@
   --sd-btn-h-lg: 40px;
   --sd-btn-font-lg: 15px;
   --sd-btn-icon-lg: 20px;
-  --sd-btn-h-md: 28px;
+  --sd-btn-h-md: 32px;
   --sd-btn-font-md: 13px;
   --sd-btn-icon-md: 15px;
-  --sd-btn-h-sm: 22px;
+  --sd-btn-h-sm: 28px;
   --sd-btn-font-sm: 12px;
   --sd-btn-icon-sm: 12px;
 }
 
-/* 所有 PNG 按钮公共基础 */
+/* 九宫格仅绘制固定厚度的边框；语义底色独立于图片，不随宽高拉伸。 */
 .sd-btn-green, .sd-btn-tan,
 .sd-btn-start, .sd-btn-stop, .sd-btn-restart,
 .sd-btn-copy, .sd-btn-delete {
@@ -191,14 +191,20 @@
   justify-content: center;
   gap: 4px;
   cursor: pointer;
-  border: none;
+  box-sizing: border-box;
+  appearance: none;
+  border: 5px solid #80502c;
+  border-image: url('/assets/stardew/ui/buttons/button_frame_warm_9slice.png') 10% / 5px / 0 stretch;
+  border-radius: 0;
   font-family: inherit;
   font-weight: 700;
   transition: filter .1s, transform .07s;
   user-select: none;
   white-space: nowrap;
-  background-size: 100% 100%;
-  background-color: transparent;
+  background-image: none;
+  background-color: var(--sd-button-fill, #f2d69d);
+  background-clip: padding-box;
+  text-shadow: none;
   padding: 0;
 }
 
@@ -237,7 +243,7 @@
 
 /* 绿色主按钮（md 默认档） */
 .sd-btn-green {
-  background-image: url('/assets/stardew/ui/buttons/button_primary_small_green_blank.png');
+  --sd-button-fill: #426b32;
   height: var(--sd-btn-h-md);
   min-width: 58px;
   padding: 0 10px;
@@ -247,7 +253,7 @@
 
 /* 棕色次级按钮（md 默认档） */
 .sd-btn-tan {
-  background-image: url('/assets/stardew/ui/buttons/button_secondary_small_tan_blank.png');
+  --sd-button-fill: #f2d69d;
   height: var(--sd-btn-h-md);
   min-width: 50px;
   padding: 0 10px;
@@ -257,7 +263,7 @@
 
 /* 危险按钮（md 默认档）：删除/清空/踢出/封禁/危险确认统一用它 */
 .sd-btn-delete {
-  background-image: url('/assets/stardew/ui/buttons/button_delete_small_tan_blank.png');
+  --sd-button-fill: #f8d2bc;
   height: var(--sd-btn-h-md);
   min-width: 50px;
   padding: 0 10px;
@@ -267,7 +273,7 @@
 
 /* 复制小按钮 */
 .sd-btn-copy {
-  background-image: url('/assets/stardew/ui/buttons/button_copy_small_blank.png');
+  --sd-button-fill: #f2d69d;
   width: 48px;
   height: var(--sd-btn-h-md);
   font-size: var(--sd-btn-font-sm);
@@ -276,18 +282,18 @@
 
 /* 生命周期大按钮（lg 档，仅用于启动/停止/重启本体） */
 .sd-btn-start {
-  background-image: url('/assets/stardew/ui/buttons/button_server_start_green_blank.png');
+  --sd-button-fill: #426b32;
   color: #fff;
 }
 
 .sd-btn-stop {
-  background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
+  --sd-button-fill: #a33c2e;
   color: #fff;
 }
 
 .sd-btn-restart {
-  background-image: url('/assets/stardew/ui/buttons/button_server_restart_tan_blank.png');
-  color: #fff7cf;
+  --sd-button-fill: #f2d69d;
+  color: #2c1a0a;
 }
 
 .sd-btn-start, .sd-btn-stop, .sd-btn-restart {
@@ -296,7 +302,25 @@
   padding: 0 18px;
   gap: 8px;
   font-size: var(--sd-btn-font-lg);
-  text-shadow: 0 1px 0 rgba(42, 20, 6, 0.42);
+  text-shadow: none;
+}
+
+/* 键盘焦点保持独立于按钮颜色。 */
+:is(.sd-btn-green, .sd-btn-tan, .sd-btn-delete, .sd-btn-copy, .sd-btn-start, .sd-btn-stop, .sd-btn-restart):focus-visible {
+  outline: 2px solid #315d79;
+  outline-offset: 3px;
+}
+
+/* 紧凑壳用触控尺寸；桌面表格仍可采用 sm 档。 */
+.sd-mshell :is(.sd-btn-green, .sd-btn-tan, .sd-btn-delete, .sd-btn-copy, .sd-btn-start, .sd-btn-stop, .sd-btn-restart) {
+  min-height: 44px;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.sd-btn-green, .sd-btn-tan, .sd-btn-delete, .sd-btn-copy, .sd-btn-start, .sd-btn-stop, .sd-btn-restart) {
+    transition: none;
+  }
 }
 
 /* 尺寸修饰符：任何 sd-btn-* 都可叠加 */

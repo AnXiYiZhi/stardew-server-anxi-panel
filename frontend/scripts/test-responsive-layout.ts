@@ -601,7 +601,7 @@ assert.match(diagnosticsPageCss, /@media\s*\(max-width:\s*760px\)[\s\S]*?\.sd-di
 assert.match(diagnosticsPageCss, /@media\s*\(max-width:\s*460px\)[\s\S]*?\.sd-diag-page \.sd-diag-header-actions\s*{[^}]*grid-template-columns:\s*1fr/s)
 assert.match(
   modsPageCss,
-  /\.sd-mods-nexus-card \.sd-mods-card-actions > \.sd-btn-delete\s*{[^}]*background-color:\s*#b94432;[^}]*button_server_stop_red_blank\.png[^}]*color:\s*#fff6dc;/s,
+  /\.sd-mods-nexus-card \.sd-mods-card-actions > \.sd-btn-delete\s*{[^}]*background-color:\s*var\(--sd-button-fill\);[^}]*color:\s*#8b2020;/s,
 )
 assert.match(qaSource, /SURFACE === 'app'/)
 assert.match(qaSource, /\/\\\/control-commands\$\//)

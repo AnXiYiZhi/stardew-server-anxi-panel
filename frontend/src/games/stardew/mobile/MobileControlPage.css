@@ -110,7 +110,7 @@
   gap: 8px;
 }
 
-.sd-mctrl-action-btn {
+.sd-mctrl-action-list .sd-mctrl-action-btn {
   width: 100%;
   min-height: 56px;
   box-sizing: border-box;
@@ -119,42 +119,14 @@
   gap: 10px;
   padding: 8px 12px;
   text-align: left;
-  /* 仍保留给"永久启用 Joja 路线"按钮用：它继续用 sd-btn-delete 的红色像素贴图（用户
-     要求这个危险操作按钮样式不动），贴图原生尺寸远小于这里的整行宽度，全局
-     background-size:100% 100% 拉伸后浏览器默认平滑插值会糊成一片，改成最近邻缩放
-     和图标 .sd-btn-img 的 image-rendering:pixelated 保持一致，不改全局按钮基础规则。 */
+  justify-content: flex-start;
+  height: auto;
+  border: 5px solid #80502c;
+  border-image: url('/assets/stardew/ui/buttons/button_frame_warm_9slice.png') 10% / 5px / 0 stretch;
+  border-radius: 0;
+  background: var(--sd-button-fill, #f2d69d);
+  box-shadow: none;
   image-rendering: pixelated;
-}
-
-/* PC 端"快捷操作"网格里非危险操作按钮实际不是拉伸的像素贴图，而是文件尾部最终覆盖
-   （StardewPanel.css `.sd-server-quick .sd-server-quick-grid > button`）画的羊皮纸卡片
-   （边框 + 渐变 + 内阴影），完全不依赖 background-image，缩放到任意宽度都不会糊。这里
-   照抄同一套视觉参数，只加在这个修饰类上、不加进 `.sd-mctrl-action-btn` 本体，避免影响
-   仍需保留红色像素贴图的 Joja 按钮（它只有 `sd-mctrl-action-btn` 没有这个修饰类）。
-   选择器必须写成 `.sd-mctrl-action-btn.sd-mctrl-action-btn--card`（两个类叠加、而不是
-   只用 `.sd-mctrl-action-btn--card` 单类）：Vite 打包后 `stardew-theme.css` 里
-   `.sd-btn-tan` 的 background-image 规则实际排在这个组件 CSS 之后，单类选择器和
-   `.sd-btn-tan` 优先级相同时会被源码顺序更靠后的 `.sd-btn-tan` 覆盖回 PNG 贴图（踩过
-   一次坑：改完以为生效了，实际背景根本没变）。两个类叠加把优先级提到 (0,2,0)，不管
-   打包顺序如何都稳赢 (0,1,0) 的 `.sd-btn-tan`。 */
-.sd-mctrl-action-btn.sd-mctrl-action-btn--card {
-  border: 2px solid rgba(160, 108, 44, 0.58);
-  border-radius: 3px;
-  background:
-    linear-gradient(180deg, rgba(255, 246, 213, 0.92), rgba(239, 199, 123, 0.76)),
-    #f4d79a;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 252, 222, 0.7),
-    0 2px 0 rgba(99, 59, 22, 0.2);
-  color: #3a250e;
-  text-shadow: none;
-  image-rendering: auto;
-}
-
-.sd-mctrl-action-btn.sd-mctrl-action-btn--card:disabled {
-  background:
-    linear-gradient(180deg, rgba(246, 232, 196, 0.8), rgba(218, 194, 151, 0.72)),
-    #dcc79f;
 }
 
 .sd-mctrl-action-btn--card .sd-mctrl-action-copy span {
@@ -178,18 +150,14 @@
 .sd-mctrl-action-copy strong {
   font-size: 13px;
   font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .sd-mctrl-action-copy span {
   font-size: 11px;
   font-weight: 600;
   opacity: 0.85;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 /* 弹窗（计划重启 / 密码设置 / 小屋高级设置 / Joja 确认共用） */

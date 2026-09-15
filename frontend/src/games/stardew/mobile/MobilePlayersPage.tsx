@@ -353,92 +353,97 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
                     >
                       {warpHomeBusyId === player.uniqueMultiplayerId ? '处理中…' : '回家'}
                     </button>
-                    <button
-                      type="button"
-                      className="sd-btn-delete sd-mplay-player-action-btn"
-                      disabled={
-                        !isAdmin ||
-                        !isRunning ||
-                        player.status !== 'online' ||
-                        player.isHost ||
-                        !player.uniqueMultiplayerId ||
-                        isPlayerActionBusy(player.uniqueMultiplayerId)
-                      }
-                      title={
-                        !isAdmin
-                          ? '仅管理员可用'
-                          : player.isHost
-                            ? '无法踢出主机玩家'
-                            : player.status !== 'online'
-                              ? '玩家不在线'
-                              : !player.uniqueMultiplayerId
-                                ? '缺少玩家联机 ID，暂不支持踢出'
-                                : '踢出玩家'
-                      }
-                      onClick={() =>
-                        setKickConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
-                      }
-                    >
-                      {kickBusyId === player.uniqueMultiplayerId ? '处理中…' : '踢出'}
-                    </button>
-                    <button
-                      type="button"
-                      className="sd-btn-delete sd-mplay-player-action-btn"
-                      disabled={!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || isPlayerActionBusy(player.uniqueMultiplayerId)}
-                      title={
-                        !isAdmin
-                          ? '仅管理员可用'
-                          : player.isHost
-                            ? '无法封禁主机玩家'
-                            : !player.uniqueMultiplayerId
-                              ? '缺少玩家联机 ID，暂不支持封禁'
-                              : '封禁玩家'
-                      }
-                      onClick={() =>
-                        setBanConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
-                      }
-                    >
-                      {banBusyId === player.uniqueMultiplayerId ? '处理中…' : '封禁'}
-                    </button>
-                    {passwordStatus?.enabled && player.isAuthenticated === false ? (
-                      <button
-                        type="button"
-                        className="sd-btn-green sd-mplay-player-action-btn"
-                        disabled={
-                          !isAdmin ||
-                          !isRunning ||
-                          player.isHost ||
-                          !player.uniqueMultiplayerId ||
-                          !passwordStatus.passwordBridgeAvailable ||
-                          isPlayerActionBusy(player.uniqueMultiplayerId)
-                        }
-                        title={!passwordStatus.passwordBridgeAvailable ? '密码认证反射桥不可用' : '批准该玩家认证'}
-                        onClick={() => setApproveConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
-                      >
-                        {approveBusyId === player.uniqueMultiplayerId ? '处理中…' : '批准认证'}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="sd-btn-delete sd-mplay-player-action-btn"
-                      disabled={!isAdmin || !isRunning || !player.canDeleteCharacter || !dashboardData.saves?.activeSaveName || farmhandDeleteJobActive || isPlayerActionBusy(player.uniqueMultiplayerId || '')}
-                      title={
-                        !isAdmin
-                          ? '仅管理员可用'
-                          : !isRunning
-                            ? '服务器运行时才可删除存档人物'
-                            : player.isHost
-                              ? '无法删除主机人物'
-                              : player.status === 'online'
-                                ? '被删除的人物必须离线'
-                                : !player.saveCharacterPresent
-                                  ? '该记录不属于当前存档人物'
-                                  : '删除离线存档人物'
-                      }
-                      onClick={() => setDeleteConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
-                    >
-                      {deleteBusyId === player.uniqueMultiplayerId ? '提交中…' : '删除人物'}
-                    </button>
+                    <details className="sd-mplay-management">
+                      <summary className="sd-btn-tan sd-mplay-player-action-btn">管理操作</summary>
+                      <div className="sd-mplay-management-actions">
+                        <button
+                          type="button"
+                          className="sd-btn-delete sd-mplay-player-action-btn"
+                          disabled={
+                            !isAdmin ||
+                            !isRunning ||
+                            player.status !== 'online' ||
+                            player.isHost ||
+                            !player.uniqueMultiplayerId ||
+                            isPlayerActionBusy(player.uniqueMultiplayerId)
+                          }
+                          title={
+                            !isAdmin
+                              ? '仅管理员可用'
+                              : player.isHost
+                                ? '无法踢出主机玩家'
+                                : player.status !== 'online'
+                                  ? '玩家不在线'
+                                  : !player.uniqueMultiplayerId
+                                    ? '缺少玩家联机 ID，暂不支持踢出'
+                                    : '踢出玩家'
+                          }
+                          onClick={() =>
+                            setKickConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
+                          }
+                        >
+                          {kickBusyId === player.uniqueMultiplayerId ? '处理中…' : '踢出'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sd-btn-delete sd-mplay-player-action-btn"
+                          disabled={!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || isPlayerActionBusy(player.uniqueMultiplayerId)}
+                          title={
+                            !isAdmin
+                              ? '仅管理员可用'
+                              : player.isHost
+                                ? '无法封禁主机玩家'
+                                : !player.uniqueMultiplayerId
+                                  ? '缺少玩家联机 ID，暂不支持封禁'
+                                  : '封禁玩家'
+                          }
+                          onClick={() =>
+                            setBanConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
+                          }
+                        >
+                          {banBusyId === player.uniqueMultiplayerId ? '处理中…' : '封禁'}
+                        </button>
+                        {passwordStatus?.enabled && player.isAuthenticated === false ? (
+                          <button
+                            type="button"
+                            className="sd-btn-green sd-mplay-player-action-btn"
+                            disabled={
+                              !isAdmin ||
+                              !isRunning ||
+                              player.isHost ||
+                              !player.uniqueMultiplayerId ||
+                              !passwordStatus.passwordBridgeAvailable ||
+                              isPlayerActionBusy(player.uniqueMultiplayerId)
+                            }
+                            title={!passwordStatus.passwordBridgeAvailable ? '密码认证反射桥不可用' : '批准该玩家认证'}
+                            onClick={() => setApproveConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                          >
+                            {approveBusyId === player.uniqueMultiplayerId ? '处理中…' : '批准认证'}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="sd-btn-delete sd-mplay-player-action-btn"
+                          disabled={!isAdmin || !isRunning || !player.canDeleteCharacter || !dashboardData.saves?.activeSaveName || farmhandDeleteJobActive || isPlayerActionBusy(player.uniqueMultiplayerId || '')}
+                          title={
+                            !isAdmin
+                              ? '仅管理员可用'
+                              : !isRunning
+                                ? '服务器运行时才可删除存档人物'
+                                : player.isHost
+                                  ? '无法删除主机人物'
+                                  : player.status === 'online'
+                                    ? '被删除的人物必须离线'
+                                    : !player.saveCharacterPresent
+                                      ? '该记录不属于当前存档人物'
+                                      : '删除离线存档人物'
+                          }
+                          onClick={() => setDeleteConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                        >
+                          {deleteBusyId === player.uniqueMultiplayerId ? '提交中…' : '删除人物'}
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </div>
               </div>

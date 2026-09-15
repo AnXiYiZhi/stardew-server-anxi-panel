@@ -2092,7 +2092,8 @@
 .sd-settings-user-actions .sd-btn-delete,
 .sd-settings-user-actions .sd-btn-tan {
   min-width: 34px;
-  font-size: 11px;
+  min-height: 28px;
+  font-size: 12px;
 }
 
 .sd-settings-user-actions .sd-btn-tan {
@@ -2108,4 +2109,21 @@
 
 .sd-settings-security-actions .sd-btn-green {
   min-width: 144px;
+}
+
+/* 每个用户的信息与操作分行，按钮不再挤占用户名及登录时间。 */
+.sd-settings-page .sd-settings-user-list::before { display: none; }
+.sd-settings-page .sd-settings-user-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding: 12px;
+}
+.sd-settings-page .sd-settings-user-login {
+  grid-column: 1 / -1;
+  white-space: normal;
+}
+.sd-settings-page .sd-settings-user-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+  gap: 8px;
 }
