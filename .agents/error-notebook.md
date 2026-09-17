@@ -2,6 +2,7 @@
 
 ## 2026-09-17：v0.7.1 发布预检
 
+- 官网只读回读的 Invoke-WebRequest 首次报目标主动拒绝连接；核对 .NET DefaultProxy 后确认指向未监听的本机 127.0.0.1:10801，与官网服务无关。针对该公开 HTTPS 地址使用已确认支持的 -NoProxy 和 30 秒超时后读取正常，未修改系统代理或 TLS 校验。以后同类故障先投影代理 host/port 与旁路状态，再决定该次公开只读请求是否直连；不得把本机代理失败归为 Pages 部署失败。
 - 候选 35234039329 新增夹具把占位 Alpine 的 3.20 传作 Junimo imageTag，触发现有精确兼容版本校验；改为读取 install-options 的 recommended tag，仅在任务隔离 daemon 内给占位镜像设置对应 tag。本机完整真实 HTTP/Docker 专项通过后再提交候选。API 失败诊断保留有界且脱敏的响应原因；以后不能把测试基础镜像版本当作业务组件版本。
 - 发布续接只读探针再次宽匹配整份文档导致输出截断，又使用未确认的 backend/internal/driver 路径导致 rg 退出 2；均未据此取得有效证据。后续读取限定顶部目标段，检索位置参数只用已确认目录并先收集、再限量投影，继续执行 AGENTS.md 已有强制规则。
 
@@ -4424,6 +4425,7 @@
 
 # 2026-08-23：PowerShell 任务变量 `$home` 与只读 `$HOME` 大小写碰撞
 
+- 最近复发（2026-09-17，v0.7.1 官网验收）：临时脚本再次把首页响应赋给 `$home`，触发只读变量异常、后续断言未执行。改为 `$homeResponse` 后线上两页正文与版本顺序验证通过；继续执行 AGENTS.md 的自动变量禁用规则，任务脚本赋值变量须先核对保留名，不能因大小写不同视为独立变量。
 - 环境：Windows 11、PowerShell 7，官网 GitHub Pages 线上只读 HTTP 验证。
 - 错误模式：把首页响应赋给 `$home`；PowerShell 变量名大小写不敏感，因此实际尝试覆盖只读自动变量 `$HOME`。
 - 症状 / 退出码：`Invoke-WebRequest` 结果无法赋值，报 `Cannot overwrite variable HOME because it is read-only or constant` 并退出 1；官网与仓库零写入。

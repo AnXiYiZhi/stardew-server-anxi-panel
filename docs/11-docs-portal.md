@@ -3,7 +3,8 @@
 ## 2026-09-17：官网展示 v0.7.1
 
 - 更新 `website/docs/changelog.md` 与首页 release/摘要，完整说明性能优化、三级资源监控、安装失败解释、VNC 继承及桌面/手机体验；v0.7.0 保留为历史版本。
-- Node 24 Alpine、独立 node_modules/dist/cache 卷执行 npm ci 和 docs:build 通过，VitePress 构建 10.14 秒；随后同步 main 触发 Pages，并在上线后补记 workflow 与线上正文核验结果。此轮仅更新文档与官网，不改变正式镜像或 tag。
+- Node 24 Alpine、独立 node_modules/dist/cache 卷执行 npm ci 和 docs:build 通过，VitePress 构建 10.14 秒；生成 HTML 的首页版本、changelog v0.7.1/v0.7.0 顺序及四项更新正文断言通过，三个测试卷已按归属清理。
+- 官网提交 `ec0253bac563004835efced566982725bd3f4597` 的 [Pages 35239660559](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35239660559) 构建与部署成功（build 20s / deploy 19s）。线上首页与从实际 href 解析的 `/changelog.html` 均 HTTP 200，v0.7.1 最新版本、v0.7.0 历史顺序及四项更新正文全部命中。本轮仅更新文档与官网，没有触发候选重建，没有移动 tag 或改变正式 digest。
 
 ## 2026-09-05：官网展示 v0.7.0
 

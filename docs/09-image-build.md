@@ -33,6 +33,7 @@
 
 ## 实际矩阵、故障与清理
 
+- 官网收尾：`website/docs/changelog.md` 与首页 release/摘要已同步 v0.7.1；Node 24 VitePress 构建 10.14s 通过，Pages `35239660559` build/deploy 成功，线上首页及实际链接 `/changelog.html` 均 HTTP 200，最新版本、历史顺序与全部更新正文核验通过。官网测试三个隔离卷已清理，详情见 docs/11-docs-portal.md。
 - 后端全量 test/vet/build、全部前端状态回归/audit/production build、脚本测试/ShellCheck、兼容清单、updater/Docker integration 和真实资源归属专项全部通过；独立 Compatibility [35236077030](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35236077030) 成功（6m19s）。本地前置共执行全部 27 个 test:*。
 - 路径差异自动选择 SMAPI 真实下载、Junimo integration 与官网构建；运行栈 manifest 未变，独立远程制品复核由 run-release-gates.sh 自动跳过。数据库/部署格式/长期数据结构/Control 未改变，不增加更老版本与真实 C# 编译长链。
 - 候选全新安装、未初始化、health/version 与重启通过；全新和 v0.7.0 Web 升级后的静态 gzip/ETag/304/HEAD/Range、三级资源/权限/异步存储、玩家读取、世界/VNC 管理、真实 Docker 安装失败持久化及重复安装新任务全部通过。升级执行 Web check、dry-run、管理员 apply、断线恢复、终态及重启；同一候选引用 unhealthy 注入确认 failed_rolled_back/health_check_failed 和旧版恢复，SQLite integrity、初始化、长期数据与非目标游戏容器/卷保持通过。既有 Mod、legacy runtime repair、未知卷持有者、导入安全边界回归也通过。
