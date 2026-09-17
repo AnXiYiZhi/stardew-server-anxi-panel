@@ -2,6 +2,8 @@
 
 ## 2026-09-17：v0.7.1 发布预检
 
+- 候选 35232312967 的完整代码门禁、镜像和全新世界管理通过，但新增 Python E2E 在 DinD 内报 `python3: command not found`（127）；根因为宿主 Python 已通过不代表隔离 DinD 镜像具备解释器。Linux/Windows 候选包装器的有界 apk 安装清单均增加 python3，E2E 启动依赖探针同步声明；以后新增跨容器夹具解释器必须同时核对宿主和实际执行容器。补齐候选工作流对测试/候选脚本与发布 workflow 的路径触发，脚本修复提交能自动建立新候选，文档证据提交仍不重建。
+
 - 只读路径定位再次把 compatibility.yml、player_handlers.go、shared_steam.go、stardew_routes.go 等职责名称当作真实文件名，探针均 fail-fast、未取得证据；已改用已确认目录内的精确符号检索和 rg --files，读取只使用真实命中。继续执行 AGENTS.md 已提升的单目录、真实路径规则，不能凭职责补猜文件名。
 - 多文档/长 ShellCheck 输出合并再次超出预算；后续完整输出落 output/v071-preflight-20260917，再读取精确主题、终态或短尾段；截断内容不作为已读证据。ShellCheck 对在子 shell 内改写共享变量报 SC2030/SC2031，改为外层函数先声明局部变量、内层子 shell 仅执行夹具及清理，未禁用对应检查。
 

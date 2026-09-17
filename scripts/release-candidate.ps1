@@ -266,7 +266,7 @@ try {
 
         $dindToolsReady = $false
         for ($attempt = 1; $attempt -le 3; $attempt++) {
-            & docker exec $dindContainer apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip | Out-Null
+            & docker exec $dindContainer apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip python3 | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $dindToolsReady = $true
                 break

@@ -11,6 +11,14 @@ on:
       - "!frontend/scripts/**"
       - "browser-extensions/**"
       - "deploy/**"
+      - "scripts/release-candidate.*"
+      - "scripts/run-release-gates.sh"
+      - "scripts/validate-release-matrix.sh"
+      - "scripts/compatibility_matrix.py"
+      - "scripts/tests/**"
+      - ".github/workflows/release-candidate.yml"
+      - ".github/workflows/release-after-candidate.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
       version:

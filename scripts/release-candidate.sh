@@ -265,7 +265,7 @@ fi
 
 dind_tools_ready=0
 for attempt in 1 2 3; do
-  if docker exec "$dind_container" apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip >/dev/null; then
+  if docker exec "$dind_container" apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip python3 >/dev/null; then
     dind_tools_ready=1
     break
   fi

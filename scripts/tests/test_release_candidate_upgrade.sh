@@ -84,7 +84,7 @@ if [[ ! -f "$fixtures_tar" ]]; then
   exit 1
 fi
 
-for command_name in docker curl grep jq openssl sha256sum sort sqlite3 zip; do
+for command_name in docker curl grep jq openssl python3 sha256sum sort sqlite3 zip; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "candidate upgrade E2E: missing required command: $command_name" >&2
     exit 1
