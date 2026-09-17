@@ -1,5 +1,10 @@
 # 文档门户网站建设方案
 
+## 2026-09-17：官网展示 v0.7.1
+
+- 更新 `website/docs/changelog.md` 与首页 release/摘要，完整说明性能优化、三级资源监控、安装失败解释、VNC 继承及桌面/手机体验；v0.7.0 保留为历史版本。
+- Node 24 Alpine、独立 node_modules/dist/cache 卷执行 npm ci 和 docs:build 通过，VitePress 构建 10.14 秒；随后同步 main 触发 Pages，并在上线后补记 workflow 与线上正文核验结果。此轮仅更新文档与官网，不改变正式镜像或 tag。
+
 ## 2026-09-05：官网展示 v0.7.0
 
 - `website/docs/changelog.md` 置顶 v0.7.0，说明游戏库、多世界管理、安装授权和状态恢复，链接正式 Release；v0.6.1 保留为历史版本。

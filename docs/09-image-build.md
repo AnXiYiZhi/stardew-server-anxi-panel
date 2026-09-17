@@ -1,4 +1,4 @@
-# v0.7.1 发布候选验收（2026-09-17，准备中）
+# v0.7.1 正式发布验收（2026-09-17，released）
 
 - 候选 35234039329 的代码门禁、世界管理、静态 HTTP 和三级资源专项通过，安装夹具传入 Alpine 3.20 作为 Junimo 版本而被精确版本门禁拒绝（HTTP 500）。夹具改从 install-options 读取唯一 recommended tag，在隔离 daemon 为占位 server 镜像使用该 tag，并保留实际 SteamCMD 失败/重试与持久化断言；本机同代码镜像在独立 DinD 的完整 Python 专项已通过。独立 Compatibility 35234039188 成功；修复测试输入后重新建立候选，不复用失败证明。
 
@@ -7,7 +7,7 @@
 - 首次候选 35232312967（a11ed88acdee）在完整代码门禁与镜像构建后停止：新增全新世界管理/VNC 验收通过，随后 DinD 缺少 Python 导致新增专项未执行（127）。未创建 tag 或正式引用。修复两平台包装器的 python3 依赖与启动探针，并补齐发布脚本/workflow 变更的自动触发路径；新测试输入须建立新 SHA 的候选。独立 Compatibility 35232312951 全部通过（6m17s），此前日志夹具超时在两条 CI 全包回归均未复现。
 
 - 发布范围：当前 main 工作区全部已完成的相关代码、测试、素材和长期文档，包含前两轮性能优化、整机/游戏/世界资源分层、安装错误解释与持久化、新世界继承 VNC 密码及特殊字符 round-trip、桌面/移动端总览/控制/玩家/模组/存档/诊断/任务/设置布局、快捷操作排序、审批入口、直连地址、木纹按钮和优化 WebP。保留源素材和 QA/回归入口；输出、缓存和临时脚本不入提交。
-- 版本与升级：当前正式版 v0.7.0，自动候选递增为 v0.7.1；仅在 main 提交并同步 origin/main，固定候选 SHA/UTC build date/digest。没有数据库迁移、运行栈 manifest 或 Control DLL 变化，上一正式版真实 Web 升级为本轮代表路径；更老版本是否增加由兼容边界及自动差异矩阵决定。
+- 版本与升级：从上一正式版 v0.7.0 自动递增并发布 v0.7.1；全部相关修改直接提交 main 并同步 origin/main，发布提交为 `6df5c33542aaba43fdb6b525cc8aaa991d88c042`。没有数据库迁移、运行栈 manifest 或 Control DLL 变化，本轮代表升级为 v0.7.0 → v0.7.1，没有新增更老版本直升。
 - 门禁补齐：run-release-gates 与 Compatibility workflow 接入 read-requests 和资源范围真实 Docker 回归；新增 release_patch_features.py，在隔离 DinD 内的全新候选和升级后的 Panel 上通过真实 HTTP/Docker 验证本版功能，沿用原有升级/回滚与数据完整性断言。
 - 本地前置：Node 24 Alpine 洁净 npm ci、全部 test:*、production audit/build 通过（Vite 2.15 秒）；新增 Python 语法、Bash 语法和 ShellCheck 通过。上一轮千行日志夹具在常规磁盘超时仍须由本次不可变候选的完整回归复核，不以 tmpfs 复测替代候选结果。
 
@@ -23,7 +23,21 @@
 | 条件长链 | 网站构建；SMAPI 真实下载及 Junimo integration；manifest 未变时远程制品检查自动跳过 | run-release-gates 路径差异自动选择 |
 | 正式提升 | annotated tag 指向候选 SHA；三仓版本/latest 六引用 digest 与 OCI 一致；health/version、Release 及部署资产 | 自动 tag/Release + 发布后独立复核 |
 
-- 候选、自动 tag、正式 workflow ID、digest、耗时、故障和清理结果待完成后回填；任一必跑项失败即修复并重新建立有效证明，不移动已有 tag。
+## 不可变证明与发布结果
+
+- 候选 [35236076995](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35236076995) attempt 1 成功，14:48:42–15:04:54 UTC，含排队共 16m12s；固定 build date=`2026-09-17T14:49:01Z`，artifact=`release-candidate-0.7.1-6df5c33542aa`，previousVersion=`0.7.0`。本版相对 v0.7.0 共涉及 178 个文件，包含发布前工作区全部相关修改与验收补齐。
+- candidateRef=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.7.1-6df5c33542aa`；唯一 digest=`sha256:7ca8ebf15459ecf539abe3e91a8fb1944e7714f7f1906adfe50dda917adc2b85`；候选 image ID=`sha256:468c27918afc7ca7828a4e7a15dbe534e4e2a3a264892e4a13ca8fbfe8a23a69`。
+- 自动 tag [35237877449](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35237877449) 成功；独立 fetch/cat-file/peeled commit 核验 annotated `v0.7.1` 精确指向上述候选 commit，tag 注释绑定候选 workflow 和 digest，创建时等于 origin/main，没有移动既有 tag。
+- 正式提升 [35237903515](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35237903515) 成功，15:05:10–15:15:21 UTC，共 10m11s；主要耗时为跨仓镜像复制。直接提升候选精确 digest，未重新构建。Docker Hub `anxiyizhi/stardew-server-anxi-panel`、ACR `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel`、GHCR `ghcr.io/anxiyizhi/stardew-server-anxi-panel` 的 `0.7.1/latest` 六引用经发布流程及本机 buildx 双重核对完全一致。
+- 正式 GHCR digest 独立拉取并核验 OCI version/revision/created、`/health`、`/api/version`（0.7.1 / 完整 SHA / 固定 build date）、未初始化状态与重启恢复，全部通过。[GitHub Release v0.7.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.1) 为 latest、非 draft/prerelease；四个部署/修复脚本下载后 SHA256 与源码逐项相同，Release 说明已补齐本版全部用户可见变更与证明链接。
+
+## 实际矩阵、故障与清理
+
+- 后端全量 test/vet/build、全部前端状态回归/audit/production build、脚本测试/ShellCheck、兼容清单、updater/Docker integration 和真实资源归属专项全部通过；独立 Compatibility [35236077030](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35236077030) 成功（6m19s）。本地前置共执行全部 27 个 test:*。
+- 路径差异自动选择 SMAPI 真实下载、Junimo integration 与官网构建；运行栈 manifest 未变，独立远程制品复核由 run-release-gates.sh 自动跳过。数据库/部署格式/长期数据结构/Control 未改变，不增加更老版本与真实 C# 编译长链。
+- 候选全新安装、未初始化、health/version 与重启通过；全新和 v0.7.0 Web 升级后的静态 gzip/ETag/304/HEAD/Range、三级资源/权限/异步存储、玩家读取、世界/VNC 管理、真实 Docker 安装失败持久化及重复安装新任务全部通过。升级执行 Web check、dry-run、管理员 apply、断线恢复、终态及重启；同一候选引用 unhealthy 注入确认 failed_rolled_back/health_check_failed 和旧版恢复，SQLite integrity、初始化、长期数据与非目标游戏容器/卷保持通过。既有 Mod、legacy runtime repair、未知卷持有者、导入安全边界回归也通过。
+- 初始候选 `35232312967` 因 DinD 未安装 Python 停止；修复 Linux/Windows 包装器和依赖探针。`35233855353` 因随后的 driverId 夹具修正被新 main 自动替代；`35234039329` 因安装夹具版本错误停止，改为从真实 install-options 读取 recommended tag并先在本机隔离 DinD 完整复现通过。两次失败均在 tag 前停止，没有降低或跳过失败断言；最终仅上述成功候选获得正式提升。
+- CI 候选的临时容器、网络、卷和 DinD 由受控 cleanup 清理；本机预检依赖/产物卷、独立复现 DinD、正式冒烟容器及数据卷均核对归属后删除，标签复查无残留。完整日志、候选证明及正式核验 JSON 留在忽略目录 `output/v071-preflight-20260917`。发布后仅回填文档和官网，不移动 tag、不重建同 digest 候选；本节以下「未发布」为历史过程，均已由本版覆盖。
 
 
 ## PERF-READ-PATHS-2：性能复审整改候选补充（2026-09-17，未发布）

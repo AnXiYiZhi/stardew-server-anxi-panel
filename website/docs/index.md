@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.7.0
+release: v0.7.1
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.7.0。游戏库与独立世界管理，支持世界创建、改名、安全删除及更清楚的安装授权体验。
+    details: 当前最新 v0.7.1。读取与静态资源性能优化，三级资源监控、清晰安装错误，以及更完善的桌面与手机操作。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
