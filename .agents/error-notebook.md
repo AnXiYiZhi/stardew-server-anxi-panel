@@ -2,6 +2,9 @@
 
 ## 2026-09-17：v0.7.1 发布预检
 
+- 候选 35234039329 新增夹具把占位 Alpine 的 3.20 传作 Junimo imageTag，触发现有精确兼容版本校验；改为读取 install-options 的 recommended tag，仅在任务隔离 daemon 内给占位镜像设置对应 tag。本机完整真实 HTTP/Docker 专项通过后再提交候选。API 失败诊断保留有界且脱敏的响应原因；以后不能把测试基础镜像版本当作业务组件版本。
+- 发布续接只读探针再次宽匹配整份文档导致输出截断，又使用未确认的 backend/internal/driver 路径导致 rg 退出 2；均未据此取得有效证据。后续读取限定顶部目标段，检索位置参数只用已确认目录并先收集、再限量投影，继续执行 AGENTS.md 已有强制规则。
+
 - 候选 35232312967 的完整代码门禁、镜像和全新世界管理通过，但新增 Python E2E 在 DinD 内报 `python3: command not found`（127）；根因为宿主 Python 已通过不代表隔离 DinD 镜像具备解释器。Linux/Windows 候选包装器的有界 apk 安装清单均增加 python3，E2E 启动依赖探针同步声明；以后新增跨容器夹具解释器必须同时核对宿主和实际执行容器。补齐候选工作流对测试/候选脚本与发布 workflow 的路径触发，脚本修复提交能自动建立新候选，文档证据提交仍不重建。
 
 - 只读路径定位再次把 compatibility.yml、player_handlers.go、shared_steam.go、stardew_routes.go 等职责名称当作真实文件名，探针均 fail-fast、未取得证据；已改用已确认目录内的精确符号检索和 rg --files，读取只使用真实命中。继续执行 AGENTS.md 已提升的单目录、真实路径规则，不能凭职责补猜文件名。

@@ -51,7 +51,8 @@ def main():
 
     def api(path, body=None, expected=200):
         status, _, raw = request(path, body)
-        require(status == expected, f"{path}: HTTP {status}, expected {expected}")
+        detail = raw.decode(errors="replace").replace("patch-fixture-secret", "[redacted]")
+        require(status == expected, f"{path}: HTTP {status}, expected {expected}: {detail[:1000]}")
         return json.loads(raw)
 
     # Content negotiation, validation and byte ranges use the embedded build.
@@ -104,9 +105,15 @@ def main():
     before_volumes = set(docker("volume", "ls", "--format", "{{.Name}}").splitlines())
     target_volume = args.owner + "-patch-install"
     require(target_volume not in before_volumes, "patch volume collision")
+    options = api("/api/instances/stardew/install-options")["imageTagOptions"]
+    recommended = [option["tag"] for option in options if option.get("recommended")]
+    require(len(recommended) == 1, "ambiguous recommended install version")
+    image_tag = recommended[0]
+    server_image = args.owner + "/patch-server:" + image_tag
+    docker("image", "tag", "alpine:3.20", server_image)
     docker("volume", "create", "--label", "com.anxi-panel.test-owner=" + args.owner, target_volume)
     updates = {
-        "SERVER_IMAGE": "alpine:3.20", "SERVER_IMAGE_CANDIDATES": "alpine:3.20",
+        "SERVER_IMAGE": server_image, "SERVER_IMAGE_CANDIDATES": server_image,
         "STEAMCMD_IMAGE": args.error_image, "STEAMCMD_IMAGE_CANDIDATES": args.error_image,
         "GAME_DATA_VOLUME": target_volume, "STEAM_INVITE_ENABLED": "false",
     }
@@ -117,7 +124,7 @@ def main():
         for _ in range(2):
             job = api("/api/instances/stardew/install", {
                 "steamUsername": "patch-fixture-user", "steamPassword": "patch-fixture-secret",
-                "vncPassword": "Patch7!", "imageTag": "3.20",
+                "vncPassword": "Patch7!", "imageTag": image_tag,
             }, expected=202)
             job_id = job["jobId"]
             require(job_id not in jobs, "retry reused terminal job")
@@ -129,7 +136,8 @@ def main():
                     break
                 time.sleep(0.5)
             require(result.get("status") == "failed", "controlled install did not fail terminally")
-            require("账号或密码错误" in result.get("errorMessage", ""), "actionable install cause lost")
+            require("账号或密码错误" in result.get("errorMessage", ""),
+                    "actionable install cause lost: " + result.get("errorMessage", ""))
             require("patch-fixture-secret" not in json.dumps(result), "job exposed fixture credential")
             state = api("/api/instances/stardew")
             require(state.get("stateMessage") == result["errorMessage"], "instance lost durable failure cause")
