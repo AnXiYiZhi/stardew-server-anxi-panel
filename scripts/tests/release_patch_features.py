@@ -81,7 +81,7 @@ def main():
     resource = api("/api/resources")
     require(resource["machine"]["scope"] == "machine", "machine scope missing")
     require(resource["machine"]["cpuCount"] > 0, "machine CPU denominator missing")
-    game = next(item for item in resource["games"] if item["driverId"] == "stardew")
+    game = next(item for item in resource["games"] if item["driverId"] == "stardew_junimo")
     require(game["sample"]["scope"] == "game" and game["worldCount"] >= 1, "game aggregation missing")
     metrics = api("/api/instances/stardew/metrics")
     require(metrics["sample"]["scope"] == "world" and metrics["machine"]["scope"] == "machine",
@@ -89,7 +89,7 @@ def main():
     deadline = time.monotonic() + 35
     while not game["sample"].get("storageTimestamp") and time.monotonic() < deadline:
         time.sleep(1)
-        game = next(item for item in api("/api/resources")["games"] if item["driverId"] == "stardew")
+        game = next(item for item in api("/api/resources")["games"] if item["driverId"] == "stardew_junimo")
     require(game["sample"].get("storageTimestamp"), "background storage sample did not complete")
     for _ in range(3):
         players = api("/api/instances/stardew/players")
