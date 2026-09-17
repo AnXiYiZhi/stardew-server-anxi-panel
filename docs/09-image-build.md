@@ -1,3 +1,60 @@
+# v0.7.1 发布候选验收（2026-09-17，准备中）
+
+- 发布范围：当前 main 工作区全部已完成的相关代码、测试、素材和长期文档，包含前两轮性能优化、整机/游戏/世界资源分层、安装错误解释与持久化、新世界继承 VNC 密码及特殊字符 round-trip、桌面/移动端总览/控制/玩家/模组/存档/诊断/任务/设置布局、快捷操作排序、审批入口、直连地址、木纹按钮和优化 WebP。保留源素材和 QA/回归入口；输出、缓存和临时脚本不入提交。
+- 版本与升级：当前正式版 v0.7.0，自动候选递增为 v0.7.1；仅在 main 提交并同步 origin/main，固定候选 SHA/UTC build date/digest。没有数据库迁移、运行栈 manifest 或 Control DLL 变化，上一正式版真实 Web 升级为本轮代表路径；更老版本是否增加由兼容边界及自动差异矩阵决定。
+- 门禁补齐：run-release-gates 与 Compatibility workflow 接入 read-requests 和资源范围真实 Docker 回归；新增 release_patch_features.py，在隔离 DinD 内的全新候选和升级后的 Panel 上通过真实 HTTP/Docker 验证本版功能，沿用原有升级/回滚与数据完整性断言。
+- 本地前置：Node 24 Alpine 洁净 npm ci、全部 test:*、production audit/build 通过（Vite 2.15 秒）；新增 Python 语法、Bash 语法和 ShellCheck 通过。上一轮千行日志夹具在常规磁盘超时仍须由本次不可变候选的完整回归复核，不以 tmpfs 复测替代候选结果。
+
+| 范围 | 本版必测路径及边界 | 证据来源 |
+| --- | --- | --- |
+| 完整代码门禁 | 后端全包 test/vet/build；全部前端状态回归/build/audit；脚本/ShellCheck、兼容清单、updater/Docker integration | 自动候选与 Compatibility |
+| 资源监控 | 整机/游戏/世界 scope、匿名拒绝、共享卷去重、缺失不创建、符号链接隔离、异步样本、取消清理 | Go 真实 Docker + 全新/升级后 HTTP |
+| 玩家与性能 | 正常快照刷新、跨存档/配置/实例代际保护、人数缓存失效、心跳节流、业务即时写库、批次回滚、取消后失败重试 | 全包和专项回归 + 全新/升级后玩家接口 |
+| 静态/前端 | gzip 原文一致、编码独立 ETag、304/HEAD/Range、immutable、构建隔离；导航/轮询/移动布局/审批与命令状态 | 全新/升级后真实 HTTP + 前端全部 test:* 和已有浏览器证据 |
+| 安装失败 | 40 类规则、敏感值脱敏、1100 行日志后的持久化；实际 Docker SteamCMD 受控失败、中文终态、重复安装新任务 | 全包/共享样例 + 全新/升级后 Docker 进程/API |
+| VNC/世界 | 空密码拒绝及回收、创建继承、接口不泄露、特殊字符、多世界创建/改名/删除幂等/源卷保持 | 全包 + 全新/升级后的真实世界管理 |
+| 升级与回滚 | v0.7.0 Web check/dry-run/admin apply/断线重连/终态、unhealthy 回滚、SQLite/用户/实例/存档/Mod/备份/非目标资源与重启 | 同一不可变候选 E2E |
+| 条件长链 | 网站构建；SMAPI 真实下载及 Junimo integration；manifest 未变时远程制品检查自动跳过 | run-release-gates 路径差异自动选择 |
+| 正式提升 | annotated tag 指向候选 SHA；三仓版本/latest 六引用 digest 与 OCI 一致；health/version、Release 及部署资产 | 自动 tag/Release + 发布后独立复核 |
+
+- 候选、自动 tag、正式 workflow ID、digest、耗时、故障和清理结果待完成后回填；任一必跑项失败即修复并重新建立有效证明，不移动已有 tag。
+
+
+## PERF-READ-PATHS-2：性能复审整改候选补充（2026-09-17，未发布）
+
+- 资源清理：任务容器与两个 Go 缓存卷按精确名称/标签删除，E2E 夹具及扫描器已回收；完整本地日志保留，临时脚本删除。
+
+- 新增变更：玩家快照一致性/人数缓存/名册批次事务与心跳节流、按 driver 归属卷的存储扫描、构建级静态内容缓存，以及全调用者取消后的失败缓存重试。无数据库 schema 或 Control 版本变化。
+- 存储扫描复用 driver 指定的本地 runtime 镜像，要求 sh/find/stat/awk；禁止 pull/联网，只读绑定 Docker 返回的普通本地卷目录。插件与外部 bind 卷显示未知。临时扫描器限制 0.5 CPU、128 MiB、32 PID、16 MiB tmpfs；成功及取消都回收精确命名容器。正式候选需覆盖其 runtime 镜像，不以 Alpine 夹具代替全部兼容验证。
+- 构建仍须 embed 原资源与预生成 .gz；每个 HTTP server 的静态缓存属于一个不可变 embed 文件系统，升级/重启自动重建。304/HEAD/Range 必须不重读内容且保持按编码区分的 ETag。
+- 专项矩阵增加：普通快照更新时间与跨存档/实例代际竞争、人数配置失效、心跳与业务变更/批次回滚、精确卷范围/缺失卷/符号链接/取消清理、静态并发冷读/构建隔离/304 热路径、全订阅者取消后的读失败恢复。Linux 性能专项重复 10 轮、前端相关回归、vet/build、本机真实 Docker E2E 通过；扫描器另使用 dockerproxy.net/sdvd/server:1.5.0-preview.125 实测通过。全包中的两个千行安装日志夹具超过 15 秒，隔离复测通过，常规磁盘整包未一次全绿，不能当作正式候选门禁证明；详细日志与耗时见后端文档 PERF-READ-PATHS-2。
+- 正式候选继续验证全新安装、上一正式版真实 Web 升级、同候选 unhealthy 回滚及升级后的上述功能；本轮未创建 tag、推镜像或触发 Release。
+
+## PERF-READ-PATHS-1：八项性能优化（2026-09-17，本地完成，未发布）
+
+- 变更范围：版本/玩家读取缓存与并发、玩家锁范围、存储后台刷新、静态压缩和缓存、路由预加载/轮询、14 张素材衍生文件。涉及 driver、Docker runtime_components、Web 资源/静态服务、frontend/package.json build 及 scripts/precompress.mjs；无数据库 schema 迁移。
+- 构建要求：frontend 的 production build 自动生成 .gz，须和原始 dist 文件一起 embed/COPY；保留原文件用于不支持 gzip 的客户端。公共 optimized.webp 未使用内容哈希，通过 no-cache + ETag 更新失效；哈希 JS/CSS 一年 immutable。
+
+| 本版专项 | 本地验证 | 正式候选要求 |
+| --- | --- | --- |
+| 版本展示与变更 | 冷读只读固定 manifest、缓存合并/配置失效、实时 preflight | 全新/升级后 Panel 展示，再执行维护 dry-run |
+| 玩家读取 | 10 MiB 合成缓存基准、XML 变化/损坏、取消/并发、重复落库、慢读不占全局锁 | 运行世界的真实 control/存档读取与删除/维护互斥 |
+| 资源统计 | 阻塞存储不阻塞 CPU/内存、单刷新；多世界真实 Docker E2E | 新 Panel 冷启动、过期刷新、重启后恢复 |
+| 静态/前端 | gzip/304/编码区分、27 回归脚本、production build、桌面/手机浏览器 | Go 实际静态响应、新旧页面升级失效、导航与隐藏恢复 |
+| 生命周期/升级 | 保留既有自动回归与实时预检 | 上一正式版 Web 更新全流程及同候选 unhealthy 回滚 |
+
+- 本地数据：版本/容量分离 Docker E2E 3.4 秒，多世界资源 E2E 12.3 秒；缓存专项重复 10 次通过，Linux vet/build 通过。13 张常用 UI 素材 10,183,943 → 882,256 字节；加登录背景共 14 张 12,083,529 → 2,446,378 字节。基准为本机合成数据，浏览器为独立模拟接口，均不等同生产测量。
+- 收尾：Junimo 整包终验 222.9 秒、Web 整包终验 43.4 秒通过；任务容器、两个标记为 perf-20260917 的 Go 缓存卷及 18157 预览监听全部清理，截图与完整日志留在系统临时目录 anxi-perf-20260917；本次没有候选 run、release run 或镜像 digest，也未创建 tag、Release 或提升 latest。后续候选的选择/跳过必须由 run-release-gates.sh 判定，不能用本地记录替代。
+
+
+## INSTALL-ERROR-EXPLANATIONS-1：安装失败原因与处理建议（2026-09-17，本地完成，未发布）
+
+- 受影响链路：Junimo 安装与可选 Steam 授权失败结果、安装请求安全提示、前端安装/任务错误解释与小屏布局。`Dockerfile` frontend-builder 新增共享 `backend/internal/games/installerrors/catalog.json` 的 COPY，Go 使用 embed；两端只维护一份错误规则。
+- 本版专项：40 类已知报错、code 5/任意退出码/137 不确定性、同任务重试恢复与跨 job 隔离、1100 行日志后的原因持久化、等时间戳结果合并、API 脱敏、安装/授权取消、缺文件优先、桌面/手机展开日志与重新填写。正式候选还须在全新与升级后 Panel 上验收至少一条真实 Docker 安装失败路径及恢复。
+- 本地证据：`docker build --target frontend-builder -t anxi-install-errors-frontend:20260917 .` 通过，证明共享 JSON 在 Linux 镜像构建上下文中可用。安装/任务/响应式前端回归、最终 production build、40 类 Go/TS 样例、jobs/SQLite 与 Web 定向回归通过；独立 Chrome 5 类错误场景通过。Linux installerrors/Junimo 整包 1378 个用例/子用例通过、2 个既有条件跳过（真实实例与 PowerShell）、零失败，Junimo 包耗时 267.55 秒；相关 vet/Panel build 通过。完整 JSON 日志保留在系统临时目录；任务容器、前端测试镜像与 4671 监听已清零。
+- 本轮使用任务专属验证容器与 4671 预览；未执行正式候选、tag、Release、镜像发布或现有服务替换。外部 Steam 登录/下载故障以日志回放验证，不能替代正式发布的真实 Docker/Web 门禁。
+
+
 # v0.7.0 正式发布验收（2026-09-05，released）
 
 官网发布收尾：每版正式 Release 完成后同步 `website/docs/changelog.md` 与首页 release/版本摘要，执行 docs:build、等待 Pages 成功并回读线上正文。本次补齐 v0.7.0，VitePress 构建 6.61s 通过；Pages 结果记录于门户文档。此类网站文案提交不会触发候选镜像重建。

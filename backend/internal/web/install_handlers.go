@@ -47,7 +47,7 @@ func (s *server) handleInstancePrepare(w http.ResponseWriter, r *http.Request, i
 
 	if err := driver.Prepare(r.Context(), makeRegistryInstance(instance)); err != nil {
 		s.logger.Error("prepare failed", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "prepare_failed", sanitizeErrorMsg(err, "准备实例目录失败"))
+		writeError(w, http.StatusInternalServerError, "prepare_failed", installRequestFailureMessage(err, "准备实例目录失败"))
 		return
 	}
 
@@ -140,7 +140,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 			return
 		}
 		s.logger.Error("auto-prepare failed", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "prepare_failed", sanitizeErrorMsg(err, "准备实例目录失败"))
+		writeError(w, http.StatusInternalServerError, "prepare_failed", installRequestFailureMessage(err, "准备实例目录失败"))
 		return
 	}
 	if instance.State == storage.InstanceStateAdminCreated ||
@@ -176,7 +176,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 			return
 		}
 		s.logger.Error("install failed to start", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "install_failed", sanitizeErrorMsg(err, "安装任务启动失败"))
+		writeError(w, http.StatusInternalServerError, "install_failed", installRequestFailureMessage(err, "安装任务启动失败"))
 		return
 	}
 
@@ -360,7 +360,7 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 			return
 		}
 		s.logger.Error("steam-auth login failed to start", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "auth_login_failed", sanitizeErrorMsg(err, "登录授权任务启动失败"))
+		writeError(w, http.StatusInternalServerError, "auth_login_failed", installRequestFailureMessage(err, "登录授权任务启动失败"))
 		return
 	}
 	s.logger.Info("steam-auth login job started", "instance", instanceID, "job_id", job.ID, "actor", actor.User.ID)

@@ -1724,6 +1724,108 @@
   margin-left: 0;
 }
 
+.sd-saves-page .sd-save-gameday-card {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px;
+  border: 2px solid #a06c2c;
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow: inset 0 0 0 2px rgba(255, 243, 210, 0.55), 0 2px 0 rgba(90, 55, 18, 0.25);
+}
+
+.sd-save-gameday-card > .sd-save-backup-policy-card,
+.sd-save-gameday-card > .sd-save-backup-list-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sd-save-gameday-card > .sd-save-backup-policy-card {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(160, 108, 44, 0.28);
+}
+
+.sd-save-gameday-card > .sd-save-backups-header {
+  align-items: center;
+  min-height: 32px;
+}
+
+.sd-save-gameday-card > .sd-save-backups-header .sd-btn-utility {
+  min-height: 32px;
+}
+
+.sd-save-gameday-card > .sd-save-backups-header .sd-btn-utility::after {
+  inset-block: 0;
+}
+
+.sd-save-gameday-card .sd-save-backup-policy {
+  display: flex;
+  flex: 1 1 560px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.sd-save-gameday-card .sd-save-backup-slider {
+  grid-template-columns: auto minmax(90px, 140px);
+}
+
+.sd-saves-page .sd-save-gameday-card .sd-save-backup-policy .sd-btn-green {
+  width: auto;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.sd-save-gameday-card input {
+  accent-color: #648044;
+}
+
+.sd-save-gameday-card .sd-save-backups-thead,
+.sd-save-gameday-card .sd-save-backup-row {
+  grid-template-columns: minmax(130px, 1.2fr) minmax(90px, 1fr) minmax(80px, 0.8fr) minmax(150px, 1.2fr) minmax(70px, 0.6fr) minmax(138px, auto);
+  text-align: center;
+}
+
+.sd-saves-page .sd-save-gameday-card .sd-save-backup-actions,
+.sd-saves-page .sd-save-backups-table .sd-save-backup-actions {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+}
+
+.sd-save-gameday-card .sd-save-backup-actions > button,
+.sd-save-backups-table .sd-save-backup-actions > button {
+  flex: 0 0 auto;
+}
+
+.sd-saves-page .sd-save-backups-table .sd-save-backups-thead,
+.sd-saves-page .sd-save-backups-table .sd-save-backup-row {
+  grid-template-columns: minmax(190px, 2fr) minmax(100px, 1fr) minmax(150px, 1.2fr) minmax(70px, 0.6fr) minmax(86px, 0.7fr) minmax(138px, auto);
+  text-align: center;
+}
+
+.sd-save-backups-table .sd-save-backup-file {
+  justify-content: center;
+}
+
+.sd-saves-page .sd-save-backups-table .sd-save-backup-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  font-size: 12px;
+}
+
 @container sd-main-scroll (max-width: 620px) {
   .sd-main-scroll > .sd-saves-page {
     padding-inline: 8px;

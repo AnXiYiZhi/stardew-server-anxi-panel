@@ -324,7 +324,7 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
         </div>
         <button
           type="button"
-          className="sd-btn-tan sd-msave-refresh-btn"
+          className="sd-btn-tan sd-btn-utility sd-msave-refresh-btn"
           onClick={() => void handleRefresh()}
           disabled={refreshBusy}
         >
@@ -453,10 +453,11 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
                       <button
                         type="button"
                         className="sd-btn-green sd-msave-gameday-btn"
+                        aria-label={`回档到${saveDateText(backup)}`}
                         disabled={restoreBusy}
                         onClick={() => openRestoreDialog(backup)}
                       >
-                        回档到此日
+                        回档
                       </button>
                     </div>
                   ))}

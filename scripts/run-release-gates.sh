@@ -100,6 +100,7 @@ echo "release gates: backend"
   go test -tags=integration ./internal/docker
   PANEL_PROVISION_DOCKER_TEST=1 go test ./internal/docker -run '^TestInstanceProvisionDockerOwnership$' -count=1 -v
   TEST_WORLD_DELETE_DOCKER=1 go test ./internal/web -run '^TestWorldDeleteDockerE2E$' -count=1 -v
+  go test -tags=integration ./internal/web -run '^TestResourceScopesRealDocker$' -count=1 -v
 )
 
 if changed_since_base backend/internal/games/stardew_junimo scripts/compatibility_matrix.py; then
@@ -139,6 +140,7 @@ echo "release gates: frontend regression and production build"
   npm run test:save-backup-details
   npm run test:mod-list
   npm run test:responsive-layout
+  npm run test:read-requests
   npm run test:player-mods
   npm run build
 )

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { subscribeVisiblePoll } from '../../../core/visible-polling'
+import { currentSessionGeneration } from '../../../auth-session-events'
 import type { ControlCommand, Job, JobLog } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import {
@@ -10,6 +12,7 @@ import {
   getJob,
   getLatestJobLogs,
   getJobs,
+  defaultInstanceId,
   updateInstanceVNCPort,
 } from '../../../api'
 import {
@@ -21,19 +24,12 @@ import {
   shortJobID,
 } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
+import { jobErrorSummary, jobStatusLabel } from '../../../core/job-presentation'
 
 // ── 常量表 ────────────────────────────────────────────────────────────────────
 
 const pullProgressRe = /^\[pull:progress:(\d+):(\d+)\]$/
 const CONTROL_COMMAND_PAGE_SIZE = 3
-
-const STATUS_LABELS: Record<string, string> = {
-  queued: '排队中',
-  running: '运行中',
-  succeeded: '已完成',
-  failed: '失败',
-  canceled: '已取消',
-}
 
 const COMMAND_STATUS_LABELS: Record<string, string> = {
   queued: '排队中', running: '处理中', succeeded: '已确认成功', dispatched: '已派发',
@@ -43,19 +39,6 @@ const COMMAND_STATUS_LABELS: Record<string, string> = {
 const COMMAND_TYPE_LABELS: Record<string, string> = {
   'warp-home': '回家', kick: '踢出', 'approve-auth': '批准认证', broadcast: '喊话', say: '喊话',
   ban: '封禁', 'trigger-event': '触发节日', 'enable-joja': '启用 Joja', 'save-now': '立即保存',
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  stardew_install: '安装游戏',
-  stardew_start: '启动服务器',
-  stardew_stop: '停止服务器',
-  stardew_restart: '重启服务器',
-  stardew_custom_new_game: '新建存档',
-  stardew_select_save_and_start: '选档启动',
-  stardew_upload_save_and_start: '上传存档启动',
-  stardew_farmhand_delete: '删除存档人物',
-  test: '测试任务',
-  test_fail: '失败测试',
 }
 
 const TYPE_ICON_CLASSES: Record<string, string> = {
@@ -73,12 +56,8 @@ const TYPE_ICON_CLASSES: Record<string, string> = {
   test_fail: 'server',
 }
 
-function typeLabel(t: string): string {
-  return TYPE_LABELS[t] ?? t
-}
-
 function statusLabel(s: string): string {
-  return STATUS_LABELS[s] ?? s
+  return jobStatusLabel(s)
 }
 
 function statusCls(s: string): string {
@@ -175,9 +154,10 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     }
   }, [])
 
-  const loadControlCommands = useCallback(async () => {
+  const loadControlCommands = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await getControlCommands()
+      const res = await getControlCommands(defaultInstanceId, 50, signal)
+      if (signal?.aborted) return
       setControlCommands(res.commands)
       setControlCommandPage((page) => Math.min(
         page,
@@ -185,7 +165,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       ))
       setControlCommandsError('')
     } catch (e) {
-      setControlCommandsError(errorMessage(e))
+      if (!signal?.aborted) setControlCommandsError(errorMessage(e))
     }
   }, [])
 
@@ -208,9 +188,8 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
   }, [loadJobs])
 
   useEffect(() => {
-    void loadControlCommands()
-    const timer = window.setInterval(() => void loadControlCommands(), 5000)
-    return () => window.clearInterval(timer)
+    return subscribeVisiblePoll(`control-commands:${currentSessionGeneration()}:${defaultInstanceId}`, 5000,
+      signal => loadControlCommands(signal), { data: () => undefined })
   }, [loadControlCommands])
 
   // 选中任务变化时：加载详情 + 日志 + 开启 SSE（非终态任务）
@@ -459,7 +438,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       <div className="sd-jobs-toolbar">
         <div className="sd-jobs-toolbar-actions sd-actionbar">
           <button
-            className="sd-btn-tan"
+            className="sd-btn-tan sd-btn-utility"
             disabled={busy || loadingJobs}
             onClick={() => void handleRefresh()}
             type="button"
@@ -518,10 +497,10 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                 <span className={typeIconCls(job.type)} aria-hidden="true" />
                 <div className="sd-jobs-list-row-content">
                   <div className="sd-jobs-list-row-type" title={jobDisplayName(job)}>
-                    {job.displayName?.trim() || typeLabel(job.type)}
+                    {jobDisplayName(job)}
                   </div>
                   <div className="sd-jobs-list-row-id" title={job.id}>
-                    ID: {shortJobID(job.id)}
+                    编号：{shortJobID(job.id)}
                   </div>
                   <div className="sd-jobs-list-row-date">
                     {formatDate(job.createdAt)}
@@ -551,7 +530,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                     <span className={typeIconCls(selectedJob.type)} aria-hidden="true" />
                     <div className="sd-jobs-detail-title-main">
                       <div className="sd-jobs-detail-title" title={jobDisplayName(selectedJob)}>
-                        {selectedJob.displayName?.trim() || typeLabel(selectedJob.type)}
+                        {jobDisplayName(selectedJob)}
                       </div>
                       <div className="sd-jobs-detail-id" title={selectedJob.id}>
                         {shortJobID(selectedJob.id)}
@@ -624,7 +603,8 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                 {selectedJob.errorMessage ? (
                   <div className="sd-jobs-error-banner sd-jobs-error-banner-prominent">
                     <span className="sd-jobs-error-label">错误：</span>
-                    {selectedJob.errorMessage}
+                    {jobErrorSummary(selectedJob.errorMessage)}
+                    <details><summary>原始诊断信息</summary><p>{selectedJob.errorMessage}</p></details>
                   </div>
                 ) : null}
 

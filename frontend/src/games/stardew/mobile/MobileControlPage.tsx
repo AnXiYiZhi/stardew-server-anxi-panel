@@ -18,8 +18,10 @@ import { STARDEW_GAME_LANGUAGES } from '../game-languages'
 import { PlayerAuthSettingsDialog } from '../PlayerAuthSettingsDialog'
 import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
 import { ServerRuntimeSettingsDialog } from '../ServerRuntimeSettingsDialog'
+import { SortableControlActions } from './SortableControlActions'
+import { controlActionOrderKey } from './control-action-order'
 
-type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'> & {
+type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceId' | 'instanceState' | 'dashboardData'> & {
   restartInProgress: boolean
   onPlayerAuthRestart: () => Promise<void>
 }
@@ -61,12 +63,14 @@ function serverStatusDotClass(state: string | null, loading: boolean): string {
 
 export function MobileControlPage({
   user,
+  instanceId,
   instanceState,
   dashboardData,
   restartInProgress,
   onPlayerAuthRestart,
 }: MobileControlPageProps) {
   const isAdmin = user.role === 'admin'
+  const actionOrderKey = controlActionOrderKey(user.id, instanceId)
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
   const activeSaveName = dashboardData.saves?.activeSaveName?.trim() || '暂无存档'
@@ -329,7 +333,7 @@ export function MobileControlPage({
               />
               <button
                 type="button"
-                className="sd-btn-restart sd-mctrl-say-btn"
+                className="sd-btn-green sd-mctrl-say-btn"
                 onClick={() => void handleSay()}
                 disabled={sayBusy || !sayMessage.trim()}
               >
@@ -347,127 +351,155 @@ export function MobileControlPage({
 
       {/* ── 快捷操作 ─────────────────────────────────────────────────────── */}
       <section className="sd-panel sd-mctrl-card">
-        <div className="sd-mctrl-card-title">
-          <img src={ICONS.quick} alt="" />
-          快捷操作
-        </div>
-        <div className="sd-mctrl-action-list">
-          <button
-            type="button"
-            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
-            disabled={!isAdmin}
-            title={isAdmin ? '设置服务器游戏与 Mod 消息使用的语言' : '仅管理员可设置服务器游戏语言'}
-            onClick={() => void openGameLanguage()}
-          >
+        <SortableControlActions
+          key={actionOrderKey}
+          storageKey={actionOrderKey}
+          title={<><img src={ICONS.quick} alt="" />快捷操作</>}
+        >
+          <div className="sd-mctrl-action-row" data-control-action="language">
             <img className="sd-mctrl-action-icon" src={ICONS.settings} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>服务器游戏语言</strong>
               <span>默认简体中文 / 12 种语言</span>
             </span>
-          </button>
+            <button
+              type="button"
+              className="sd-btn-tan sd-mctrl-action-btn"
+              disabled={!isAdmin}
+              title={isAdmin ? '设置服务器游戏与 Mod 消息使用的语言' : '仅管理员可设置服务器游戏语言'}
+              onClick={() => void openGameLanguage()}
+              aria-label="服务器游戏语言"
+            >
+              设置
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
-            disabled={!isAdmin}
-            title={isAdmin ? '设置每天几点关闭、几点开启服务器' : '仅管理员可设置计划重启'}
-            onClick={() => void openRestartSchedule()}
-          >
+          <div className="sd-mctrl-action-row" data-control-action="schedule">
             <img className="sd-mctrl-action-icon" src={ICONS.schedule} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>计划重启</strong>
               <span>设置定时重启</span>
             </span>
-          </button>
+            <button
+              type="button"
+              className="sd-btn-tan sd-mctrl-action-btn"
+              disabled={!isAdmin}
+              title={isAdmin ? '设置每天几点关闭、几点开启服务器' : '仅管理员可设置计划重启'}
+              onClick={() => void openRestartSchedule()}
+              aria-label="计划重启"
+            >
+              设置
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
-            disabled={!isAdmin}
-            title={isAdmin ? '设置不设密码、全服统一密码或角色独立密码' : '仅管理员可设置玩家加入保护'}
-            onClick={() => setPlayerAuthOpen(true)}
-          >
+          <div className="sd-mctrl-action-row" data-control-action="auth">
             <img className="sd-mctrl-action-icon" src={ICONS.settings} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>玩家加入保护</strong>
               <span>全服或角色独立密码</span>
             </span>
-          </button>
+            <button
+              type="button"
+              className="sd-btn-tan sd-mctrl-action-btn"
+              disabled={!isAdmin}
+              title={isAdmin ? '设置不设密码、全服统一密码或角色独立密码' : '仅管理员可设置玩家加入保护'}
+              onClick={() => setPlayerAuthOpen(true)}
+              aria-label="玩家加入保护"
+            >
+              设置
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
-            disabled={!isAdmin}
-            title={isAdmin ? '配置联机人数上限、小屋策略与广播频率' : '仅管理员可配置联机人数与小屋设置'}
-            onClick={() => void openRuntimeSettings()}
-          >
+          <div className="sd-mctrl-action-row" data-control-action="runtime">
             <img className="sd-mctrl-action-icon" src={ICONS.settings} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>联机人数与小屋设置</strong>
               <span>人数上限 / 小屋策略 / 广播频率</span>
             </span>
-          </button>
+            <button
+              type="button"
+              className="sd-btn-tan sd-mctrl-action-btn"
+              disabled={!isAdmin}
+              title={isAdmin ? '配置联机人数上限、小屋策略与广播频率' : '仅管理员可配置联机人数与小屋设置'}
+              onClick={() => void openRuntimeSettings()}
+              aria-label="联机人数与小屋设置"
+            >
+              设置
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
-            disabled={!isAdmin || !isRunning || saveNowBusy}
-            title={
-              !isAdmin
-                ? '仅管理员可执行此操作'
-                : !isRunning
-                  ? '服务器运行后才能请求游戏内保存'
-                  : '设置游戏内保存请求，并等待 GameLoop.Saved 确认；这不是创建 ZIP 备份'
-            }
-            onClick={() => void handleSaveNow()}
-          >
+          <div className="sd-mctrl-action-row" data-control-action="save">
             <img className="sd-mctrl-action-icon" src={ICONS.quick} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>{saveNowBusy ? '等待保存…' : '请求游戏内保存'}</strong>
               <span>以 Saved 事件确认完成</span>
             </span>
-          </button>
+            <button
+              type="button"
+              className="sd-btn-tan sd-mctrl-action-btn"
+              disabled={!isAdmin || !isRunning || saveNowBusy}
+              title={
+                !isAdmin
+                  ? '仅管理员可执行此操作'
+                  : !isRunning
+                    ? '服务器运行后才能请求游戏内保存'
+                    : '设置游戏内保存请求，并等待 GameLoop.Saved 确认；这不是创建 ZIP 备份'
+              }
+              onClick={() => void handleSaveNow()}
+              aria-label="请求游戏内保存"
+            >
+              {saveNowBusy ? '等待中…' : '保存'}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
-            disabled={!isAdmin || !isRunning || festivalBusy}
-            title={
-              !isAdmin
-                ? '仅管理员可执行此操作'
-                : !isRunning
-                  ? '服务器运行后才能触发节日活动'
-                  : '模拟游戏内 !event 指令，强制开始当天节日的主活动（若当天没有节日则不会生效）'
-            }
-            onClick={() => void handleTriggerFestivalEvent()}
-          >
+          <div className="sd-mctrl-action-row" data-control-action="festival">
             <img className="sd-mctrl-action-icon" src={ICONS.festival} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>{festivalBusy ? '触发中…' : '触发节日活动'}</strong>
               <span>卡住时强制开始</span>
             </span>
-          </button>
+            <button
+              type="button"
+              className="sd-btn-tan sd-mctrl-action-btn"
+              disabled={!isAdmin || !isRunning || festivalBusy}
+              title={
+                !isAdmin
+                  ? '仅管理员可执行此操作'
+                  : !isRunning
+                    ? '服务器运行后才能触发节日活动'
+                    : '模拟游戏内 !event 指令，强制开始当天节日的主活动（若当天没有节日则不会生效）'
+              }
+              onClick={() => void handleTriggerFestivalEvent()}
+              aria-label="触发节日活动"
+            >
+              {festivalBusy ? '触发中…' : '开始'}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="sd-btn-delete sd-mctrl-action-btn"
-            disabled={!isAdmin || !isRunning}
-            title={
-              !isAdmin
-                ? '仅管理员可执行此操作'
-                : !isRunning
-                  ? '服务器运行后才能启用 Joja 路线'
-                  : '永久启用 Joja 路线并禁用标准社区中心，此操作不可撤销'
-            }
-            onClick={openJojaConfirm}
-          >
+          <div className="sd-mctrl-action-row" data-control-action="joja">
             <img className="sd-mctrl-action-icon" src={ICONS.joja} alt="" />
             <span className="sd-mctrl-action-copy">
               <strong>永久启用 Joja 路线</strong>
               <span>不可撤销，请谨慎操作</span>
             </span>
-          </button>
-        </div>
+            <button
+              type="button"
+              className="sd-btn-delete sd-mctrl-action-btn"
+              disabled={!isAdmin || !isRunning}
+              title={
+                !isAdmin
+                  ? '仅管理员可执行此操作'
+                  : !isRunning
+                    ? '服务器运行后才能启用 Joja 路线'
+                    : '永久启用 Joja 路线并禁用标准社区中心，此操作不可撤销'
+              }
+              onClick={openJojaConfirm}
+              aria-label="永久启用 Joja 路线"
+            >
+              启用
+            </button>
+          </div>
+        </SortableControlActions>
         {festivalMessage ? (
           <div className={`sd-notice sd-mctrl-notice ${festivalError ? 'sd-notice--error' : 'sd-notice--ok'}`}>
             {festivalMessage}

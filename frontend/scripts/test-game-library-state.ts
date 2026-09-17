@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { parseAppRoute, stardewInstallPath } from '../src/app-routes.ts'
 import { setDefaultInstanceId } from '../src/api.ts'
+import { formatStardewAddress } from '../src/games/stardew/connection-address.ts'
 import {
   canCreateWorld,
   gameCardNavigationIndex,
@@ -190,21 +191,35 @@ assert.equal(gameCardNavigationIndex(2, [true, false, true], 'first'), 0)
 assert.equal(gameCardNavigationIndex(0, [false, false], 'next'), 0)
 for (const panelURL of ['http://121.40.29.22:8090', 'https://panel.example.com', 'http://192.168.1.20:3000']) {
   const panelAccessHost = new URL(panelURL).hostname
-  const expected = `${panelAccessHost}:24642`
+  const expected = panelAccessHost
   assert.equal(stardewJoinAddress(item(secondInstance, 'running'), panelAccessHost), expected)
   assert.equal(stardewJoinAddressValue(item(secondInstance, 'running'), panelAccessHost), expected)
+  assert.equal(formatStardewAddress(panelAccessHost, 24642), expected)
+  const customPortItem = item(secondInstance, 'running')
+  customPortItem.connection = { ...customPortItem.connection!, gamePort: 24643 }
+  assert.equal(stardewJoinAddress(customPortItem, panelAccessHost), `${panelAccessHost}:24643`)
+  assert.equal(stardewJoinAddressValue(customPortItem, panelAccessHost), `${panelAccessHost}:24643`)
+  assert.equal(formatStardewAddress(panelAccessHost, 24643), `${panelAccessHost}:24643`)
 }
 const ipv6Item = item(secondInstance, 'running')
 ipv6Item.connection = { ...ipv6Item.connection!, gamePort: 24643 }
 for (const panelAccessHost of [new URL('http://[2001:db8::1]:8090').hostname, '2001:db8::1']) {
   assert.equal(stardewJoinAddress(ipv6Item, panelAccessHost), '[2001:db8::1]:24643')
   assert.equal(stardewJoinAddressValue(ipv6Item, panelAccessHost), '[2001:db8::1]:24643')
+  assert.equal(formatStardewAddress(panelAccessHost, 24642), '2001:db8::1')
+  assert.equal(formatStardewAddress(panelAccessHost, 24643), '[2001:db8::1]:24643')
 }
 assert.equal(stardewJoinAddressValue(ipv6Item, ''), null)
-for (const gamePort of [0, -1, 65536, 24642.5]) {
+assert.equal(formatStardewAddress('  localhost  ', 24642), 'localhost')
+assert.equal(formatStardewAddress('localhost', 1), 'localhost:1')
+assert.equal(formatStardewAddress('localhost', 65535), 'localhost:65535')
+assert.equal(formatStardewAddress('  ', 24643), null)
+assert.equal(formatStardewAddress(undefined, 24642), null)
+for (const gamePort of [undefined, NaN, Infinity, 0, -1, 65536, 24642.5]) {
   const invalidPortItem = item(secondInstance, 'running')
   invalidPortItem.connection = { ...invalidPortItem.connection!, gamePort }
   assert.equal(stardewJoinAddressValue(invalidPortItem, 'panel.example.com'), null)
+  assert.equal(formatStardewAddress('panel.example.com', gamePort), null)
 }
 const missingConnection = item(secondInstance, 'running')
 missingConnection.connection = null

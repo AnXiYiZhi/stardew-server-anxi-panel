@@ -66,8 +66,11 @@ jobs:
           npm run test:save-backup-details
           npm run test:mod-list
           npm run test:responsive-layout
+          npm run test:read-requests
           npm run test:player-mods
           npm run build
       - name: Isolated Docker integration
         working-directory: backend
-        run: go test -tags=integration ./internal/docker
+        run: |
+          go test -tags=integration ./internal/docker
+          go test -tags=integration ./internal/web -run '^TestResourceScopesRealDocker$' -count=1 -v

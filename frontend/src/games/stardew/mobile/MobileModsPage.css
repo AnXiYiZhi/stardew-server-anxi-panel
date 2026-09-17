@@ -5,7 +5,8 @@
   max-width: var(--sd-mobile-content-max-width, 1120px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding: 12px;
   box-sizing: border-box;
 }
 
@@ -20,17 +21,16 @@
 .sd-mmods-page-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
-  color: #fff3d6;
-  text-shadow: 1px 1px 0 rgba(32, 13, 3, 0.6);
+  color: var(--sd-brown-dark);
 }
 
 .sd-mmods-page-title img {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   image-rendering: pixelated;
   flex-shrink: 0;
 }
@@ -43,8 +43,9 @@
   flex-shrink: 0;
 }
 
-.sd-mmods-icon-btn {
-  min-width: 52px;
+.sd-mmods-header-actions .sd-mmods-icon-btn {
+  min-width: 48px;
+  width: 48px;
   min-height: 44px;
   padding: 0 6px;
   font-size: 11px;
@@ -52,47 +53,47 @@
 
 .sd-mmods-subtabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid rgba(160, 108, 44, 0.46);
-  border-radius: 9px;
-  background:
-    linear-gradient(180deg, rgba(54, 30, 12, 0.56), rgba(31, 16, 7, 0.5)),
-    rgba(37, 19, 8, 0.48);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(160, 108, 44, 0.3);
   box-sizing: border-box;
 }
 
 .sd-mmods-subtab {
-  min-width: 0;
+  position: relative;
+  min-width: 64px;
   min-height: 44px;
+  padding: 0 12px;
   border: none;
-  border-radius: 7px;
-  background: rgba(255, 239, 190, 0.1);
-  color: #ecd49f;
-  font-size: 12px;
+  background: transparent;
+  color: var(--sd-brown-light);
+  font-size: 13px;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(255, 244, 204, 0.08);
 }
 
 .sd-mmods-subtab.active {
-  background:
-    linear-gradient(180deg, rgba(188, 218, 144, 0.96), rgba(144, 190, 112, 0.94)),
-    #b6d783;
-  color: #203414;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.38),
-    0 1px 0 rgba(44, 86, 34, 0.18);
+  color: #315c28;
+}
+
+.sd-mmods-subtab.active::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 3px;
+  border-radius: 2px;
+  background: #6b9346;
 }
 
 .sd-mmods-card {
   width: 100%;
   box-sizing: border-box;
-  padding: 12px;
+  padding: 0;
 }
 
 .sd-mmods-notice {
+  display: block;
   font-size: 12px;
   line-height: 1.5;
   word-break: break-word;
@@ -102,38 +103,23 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  padding: 5px;
-  border: 2px solid rgba(132, 83, 32, 0.62);
-  border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.92), rgba(238, 204, 143, 0.86)),
-    #f1d292;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 252, 227, 0.72),
-    inset 0 -3px 0 rgba(145, 91, 33, 0.12),
-    0 2px 0 rgba(83, 48, 18, 0.18);
+  gap: 8px;
 }
 
 .sd-input.sd-mmods-search-input {
   min-width: 0;
-  min-height: 40px;
+  min-height: 44px;
   border-color: rgba(120, 75, 29, 0.36);
-  border-radius: 7px;
-  background:
-    linear-gradient(180deg, rgba(255, 252, 233, 0.98), rgba(255, 240, 198, 0.94)),
-    #fff2cc;
+  border-radius: 5px;
+  background: #fff5d8;
   color: #2c1a0a;
-  font-size: 14px;
-  font-weight: 800;
-  box-shadow:
-    inset 0 1px 3px rgba(78, 44, 16, 0.18),
-    0 1px 0 rgba(255, 255, 255, 0.42);
+  font-size: 16px;
+  font-weight: 400;
 }
 
 .sd-input.sd-mmods-search-input::placeholder {
   color: rgba(91, 58, 26, 0.66);
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .sd-input.sd-mmods-search-input:focus,
@@ -148,36 +134,51 @@
 .sd-btn-green.sd-mmods-search-btn {
   flex-shrink: 0;
   min-width: 64px;
+  width: 64px;
   min-height: 44px;
   padding: 0 10px;
-  border-radius: 7px;
   font-size: 12px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 2px 0 rgba(31, 82, 35, 0.34);
 }
 
 .sd-mmods-quick-tags {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin-top: 8px;
-  font-size: 12px;
-  font-weight: 700;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--sd-brown-light);
 }
 
 .sd-mmods-quick-tag {
+  position: relative;
+  isolation: isolate;
   min-height: 44px;
-  padding: 0 9px;
-  border: 1px solid rgba(160, 108, 44, 0.48);
-  border-radius: 999px;
-  background: rgba(255, 245, 214, 0.72);
+  padding: 0 8px;
+  border: none;
+  background: transparent;
   color: #4a3320;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
+}
+
+.sd-mmods-quick-tag::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 8px 0;
+  border: 1px solid rgba(160, 108, 44, 0.3);
+  border-radius: 4px;
+  background: rgba(244, 224, 176, 0.55);
+}
+
+.sd-mmods-subtab:focus-visible,
+.sd-mmods-quick-tag:focus-visible,
+.sd-mmods-required-summary:focus-visible {
+  outline: 2px solid #6b9346;
+  outline-offset: 2px;
 }
 
 .sd-mmods-search-total,
@@ -187,9 +188,9 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 10px 0;
+  margin: 6px 0 8px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--sd-brown-light);
 }
 
@@ -197,12 +198,12 @@
 .sd-mmods-installed-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sd-mmods-installed-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.52fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   margin: 0 0 10px;
@@ -211,6 +212,7 @@
 .sd-mmods-installed-controls .sd-input {
   width: 100%;
   min-width: 0;
+  min-height: 44px;
   box-sizing: border-box;
 }
 
@@ -227,13 +229,31 @@
 
 .sd-mmods-bulk-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
   margin: 0 0 10px;
 }
 
 .sd-mmods-bulk-actions button {
   min-width: 0;
+  min-height: 44px;
+  padding-inline: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sd-input.sd-mmods-sort {
+  justify-self: end;
+  width: 100%;
+  max-width: 112px;
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .sd-mmods-search-card,
@@ -241,18 +261,14 @@
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  border: 2px solid rgba(160, 108, 44, 0.58);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 223, 0.86), rgba(242, 214, 158, 0.76)),
-    #f5dda3;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 252, 222, 0.65),
-    0 2px 0 rgba(99, 59, 22, 0.16);
+  border: var(--stardew-mobile-card-border);
+  border-radius: var(--stardew-mobile-card-radius);
+  background: var(--stardew-mobile-card-bg);
+  box-shadow: var(--stardew-mobile-card-shadow);
 }
 
 .sd-mmods-search-card {
-  padding: 8px;
+  padding: 10px;
 }
 
 .sd-mmods-search-card-top {
@@ -263,10 +279,11 @@
 }
 
 .sd-mmods-search-thumb {
-  width: 54px;
-  height: 54px;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
   flex-shrink: 0;
-  border: 2px solid rgba(143, 91, 35, 0.48);
+  border: 1px solid rgba(143, 91, 35, 0.3);
   border-radius: 5px;
   object-fit: cover;
   background: rgba(255, 242, 202, 0.72);
@@ -281,6 +298,29 @@
   font-weight: 900;
 }
 
+.sd-mmods-search-thumb-empty img {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+.sd-mmods-nexus-id,
+.sd-mmods-no-required {
+  color: var(--sd-brown-light);
+  font-size: 11px;
+}
+
+.sd-mmods-search-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin-top: 7px;
+  color: var(--sd-brown-light);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .sd-mmods-search-main {
   flex: 1;
   min-width: 0;
@@ -291,15 +331,9 @@
   flex: 1;
   min-width: 0;
   color: #2c1a0a;
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 13px;
+  font-weight: 800;
   overflow-wrap: anywhere;
-}
-
-.sd-mmods-status-tag {
-  flex-shrink: 0;
-  margin-left: auto;
-  white-space: nowrap;
 }
 
 .sd-mmods-tags {
@@ -309,30 +343,6 @@
   flex-wrap: wrap;
   margin-top: 4px;
   min-width: 0;
-}
-
-.sd-mmods-info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px 8px;
-  margin-top: 6px;
-}
-
-.sd-mmods-info-grid span {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  color: #2c1a0a;
-  font-size: 11px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.sd-mmods-info-grid b {
-  color: var(--sd-brown-light);
-  font-size: 9px;
-  font-weight: 800;
 }
 
 .sd-mmods-desc {
@@ -350,10 +360,10 @@
 
 .sd-mmods-search-footer {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .sd-mmods-search-footer .sd-mmods-required {
@@ -363,8 +373,12 @@
 }
 
 .sd-mmods-required-summary {
+  display: inline-flex;
+  align-items: center;
   min-height: 44px;
+  padding: 0;
   border: none;
+  background: transparent;
   cursor: pointer;
 }
 
@@ -397,6 +411,7 @@
 }
 
 .sd-mmods-search-footer .sd-mmods-card-actions {
+  align-self: flex-start;
   flex-shrink: 0;
   margin-top: 0;
 }
@@ -407,37 +422,46 @@
   min-width: 0;
 }
 
-.sd-mmods-nexus-link-btn {
-  padding: 0 10px;
+.sd-btn-tan.sd-mmods-nexus-link-btn {
+  width: 64px;
+  min-width: 64px;
+  padding: 0 6px;
   font-size: 11px;
 }
 
 .sd-mmods-pager {
   display: grid;
-  grid-template-columns: auto minmax(58px, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 5px;
   margin-top: 10px;
 }
 
-.sd-mmods-pager > button,
-.sd-mmods-page-jump button {
+.sd-mmods-pager > .sd-btn-tan,
+.sd-mmods-page-jump .sd-btn-tan {
   min-height: 44px;
-  min-width: 0;
+  min-width: 44px;
   padding: 0 7px;
   font-size: 11px;
 }
 
+.sd-mmods-pager > .sd-btn-tan {
+  width: 56px;
+}
+
 .sd-mmods-page-jump {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 44px;
   gap: 5px;
   min-width: 0;
+  width: 100%;
+  max-width: 124px;
+  justify-self: center;
 }
 
 .sd-mmods-page-jump .sd-input {
   min-width: 0;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 5px;
   font-size: 12px;
   text-align: center;
@@ -453,63 +477,68 @@
 }
 
 .sd-mmods-installed-card {
-  position: relative;
-  min-height: 180px;
-  padding: 10px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
 }
 
 .sd-mmods-installed-main {
   min-width: 0;
 }
 
-.sd-mmods-installed-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-}
-
 .sd-mmods-installed-thumb {
-  width: 74px;
-  height: 74px;
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
   flex-shrink: 0;
-  border: 2px solid rgba(143, 91, 35, 0.48);
+  border: 1px solid rgba(143, 91, 35, 0.3);
   border-radius: 5px;
   object-fit: cover;
   background: rgba(255, 242, 202, 0.72);
 }
 
-.sd-mmods-installed-thumb-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #7a5322;
-  font-size: 10px;
-  font-weight: 900;
+.sd-mmods-installed-name {
+  display: block;
+  line-height: 1.4;
 }
 
-.sd-mmods-installed-name-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.sd-mmods-installed-grid {
-  grid-template-columns: 1fr 1fr;
-}
-
-.sd-mmods-link-chip {
-  width: 58px;
-  box-sizing: border-box;
-  justify-content: center;
+.sd-mmods-name-link {
+  min-height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
   font-family: inherit;
-  line-height: normal;
-  background: #c76735;
-  border-color: #853418;
-  color: #fff3d6;
   cursor: pointer;
+}
+
+.sd-mmods-name-link > span {
+  color: var(--sd-brown-light);
+  font-size: 11px;
+}
+
+.sd-mmods-installed-version {
+  margin-top: 2px;
+  color: var(--sd-brown-light);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.sd-mmods-installed-main .sd-mmods-tags:empty {
+  display: none;
+}
+
+.sd-mmods-installed-main .sd-tag {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sd-mmods-installed-state {
+  display: grid;
+  justify-items: center;
 }
 
 .sd-mmods-toggle {
@@ -518,7 +547,7 @@
   justify-content: center;
   margin-left: auto;
   min-width: 44px;
-  min-height: 32px;
+  min-height: 44px;
   padding: 0;
   box-sizing: border-box;
   border: none;
@@ -538,7 +567,7 @@
   height: 24px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: #2f8f42;
+  background: #b9a880;
   box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.32);
 }
 
@@ -565,6 +594,12 @@
 .sd-mmods-toggle.disabled {
   opacity: 0.62;
   cursor: not-allowed;
+}
+
+.sd-mmods-toggle input:focus-visible + .sd-mmods-toggle-track,
+.sd-mmods-name-link:focus-visible {
+  outline: 2px solid #6b9346;
+  outline-offset: 2px;
 }
 
 .sd-mmods-dialog-overlay {
@@ -661,16 +696,6 @@
 @media (max-width: 374px) {
   .sd-mmods-header-actions {
     gap: 4px;
-  }
-
-  .sd-mmods-icon-btn {
-    min-width: 48px;
-    font-size: 10px;
-  }
-
-  .sd-mmods-info-grid,
-  .sd-mmods-installed-grid {
-    grid-template-columns: 1fr;
   }
 
   .sd-mmods-pager {

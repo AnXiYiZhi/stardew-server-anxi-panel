@@ -10,6 +10,23 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 )
 
+func TestUpdateEnvFilePreservesQuotedPasswordAcrossMerges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	password := " keep $quoted#'\\value\" "
+	if err := config.UpdateEnvFile(path, map[string]string{"VNC_PASSWORD": password}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := config.UpdateEnvFile(path, map[string]string{"VNC_PORT": "5801"}); err != nil {
+			t.Fatal(err)
+		}
+		values, err := config.ReadEnvFile(path)
+		if err != nil || values["VNC_PASSWORD"] != password {
+			t.Fatal("env merge changed the password", err)
+		}
+	}
+}
+
 func TestReadEnvFile_NotExist(t *testing.T) {
 	fields, err := config.ReadEnvFile(filepath.Join(t.TempDir(), "missing.env"))
 	if err != nil {

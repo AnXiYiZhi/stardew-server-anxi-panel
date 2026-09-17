@@ -20,6 +20,7 @@ export type StardewNavigateOptions = {
   saveAction?: StardewSaveAction
   playerId?: string
   installJobId?: string
+  jobId?: string
 }
 
 export type StardewSaveActionRequest = {
@@ -125,6 +126,9 @@ export function routeToPath(
     return `/instances/${encodeURIComponent(normalizeInstanceId(instanceId))}/install${search ? `?${search}` : ''}`
   }
   const path = `/instances/${encodeURIComponent(normalizeInstanceId(instanceId))}/${route}`
+  if (route === 'jobs' && options?.jobId) {
+    return `${path}?${new URLSearchParams({ jobId: options.jobId }).toString()}`
+  }
   if (route === 'player-mods' && options?.playerId) {
     const query = new URLSearchParams({ playerId: options.playerId })
     return `${path}?${query.toString()}`

@@ -11,6 +11,7 @@ import {
   submitSteamGuardInput,
 } from '../api'
 import { errorMessage, isTerminalJobStatus } from '../core/helpers'
+import { installationRequestErrorMessage } from '../core/install-error.ts'
 import type { CurrentUser, InstanceState, Job, JobLog } from '../types'
 import {
   GAME_INSTALL_STEPS,
@@ -398,7 +399,7 @@ export function GameInstallRail({
         {user.role !== 'admin' ? (
           <span className="game-install-message" role="status">仅管理员可以安装游戏。</span>
         ) : message ? (
-          <span className="game-install-message is-error" role="alert">{message}</span>
+          <span className="game-install-message is-error" role="alert">{installationRequestErrorMessage(message)}</span>
         ) : (
           <span className="game-install-message" role="status">凭据只用于现有安全安装流程，不会写入日志。</span>
         )}
@@ -444,7 +445,15 @@ export function GameInstallRail({
           </li>
         ))}
       </ol> : null}
-      <p className="game-install-progress-detail">{presentation.detail}</p>
+      <p className="game-install-progress-detail" role={presentation.mode === 'failed' ? 'alert' : undefined}>{presentation.detail}</p>
+      {presentation.mode === 'failed' ? (
+        <details className="game-install-failure-logs">
+          <summary>查看本次任务日志</summary>
+          <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>
+            {logs.filter(log => log.jobId === job?.id).map(log => log.message).join('\n') || '本次任务暂无日志，请在诊断页导出支持包以便排查。'}
+          </pre>
+        </details>
+      ) : null}
 
       {needsGuardCode ? (
         <form className="game-install-guard" onSubmit={(event) => { event.preventDefault(); void submitGuard(guardInput) }}>
@@ -461,7 +470,7 @@ export function GameInstallRail({
       ) : null}
 
       {needsGuardCode && guardSubmitted ? <span className="game-install-message" role="status">验证码已提交，请等待 Steam 验证；若提示无效，请输入最新验证码重新提交。</span> : null}
-      {message || pollError ? <span className="game-install-message is-error" role="alert">{message || pollError}</span> : null}
+      {message || pollError ? <span className="game-install-message is-error" role="alert">{installationRequestErrorMessage(message || pollError)}</span> : null}
 
       {presentation.mode === 'failed' ? (
         <button type="button" className="game-install-retry" disabled={busy || user.role !== 'admin'} onClick={() => void retryWithCredentials()}>{authOnly ? '重新授权' : '重新填写并重试'}</button>

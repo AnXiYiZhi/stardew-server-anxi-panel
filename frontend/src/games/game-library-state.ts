@@ -1,5 +1,6 @@
 import type { CreateInstanceRequest, Instance, InstanceState, Job, PublicIPResult } from '../types'
 import { classifyInstallationState } from './stardew/installation-state.ts'
+import { formatStardewAddress } from './stardew/connection-address.ts'
 
 export const STARDEW_DRIVER_ID = 'stardew_junimo'
 
@@ -226,11 +227,7 @@ export function stardewJoinAddressValue(item: StardewCatalogItem, panelAccessHos
   if (stardewRequiresSave(item)) return null
   if (!classifyInstallationState(item.state, item.hasActiveInstallJob).isInstalled) return null
   if (item.connectionLoading) return null
-  const ip = panelAccessHost.trim()
-  const port = item.connection?.gamePort ?? 0
-  if (!ip || !Number.isInteger(port) || port < 1 || port > 65535) return null
-  const host = ip.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip
-  return `${host}:${port}`
+  return formatStardewAddress(panelAccessHost, item.connection?.gamePort)
 }
 
 export function stardewJoinAddress(item: StardewCatalogItem, panelAccessHost: string): string {

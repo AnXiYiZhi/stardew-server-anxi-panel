@@ -51,6 +51,54 @@ func TestAllocateProvisionPortsRejectsInvalidExistingBinding(t *testing.T) {
 	}
 }
 
+func TestNewWorldTemplateEnvInheritsVNCPassword(t *testing.T) {
+	dataDir := t.TempDir()
+	password := " keep $quoted#'\\value\" "
+	if err := sjconfig.UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"VNC_PASSWORD":         password,
+		"STEAM_USERNAME":       "source-user",
+		"STEAM_PASSWORD":       "source-password",
+		"STEAM_AUTH_COMPLETED": "true",
+		"SERVER_PASSWORD":      "source-game-password",
+		"VNC_PORT":             "5800",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	updates, err := newWorldTemplateEnv(dataDir, "mirror.invalid/server:1.5.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updates["VNC_PASSWORD"] != password {
+		t.Fatal("new world did not inherit the exact VNC password")
+	}
+	for _, key := range []string{"STEAM_USERNAME", "STEAM_PASSWORD", "STEAM_AUTH_COMPLETED", "SERVER_PASSWORD", "VNC_PORT"} {
+		if _, exists := updates[key]; exists {
+			t.Errorf("unexpected inherited field: %s", key)
+		}
+	}
+	targetPath := filepath.Join(t.TempDir(), ".env")
+	if err := sjconfig.UpdateEnvFile(targetPath, updates); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := sjconfig.ReadEnvFile(targetPath)
+	if err != nil || stored["VNC_PASSWORD"] != password {
+		t.Fatal("inherited password did not survive env serialization", err)
+	}
+}
+
+func TestNewWorldTemplateEnvRejectsEmptyVNCPassword(t *testing.T) {
+	for _, password := range []string{"", " \t "} {
+		dataDir := t.TempDir()
+		if err := sjconfig.UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{"VNC_PASSWORD": password}); err != nil {
+			t.Fatal(err)
+		}
+		updates, err := newWorldTemplateEnv(dataDir, "mirror.invalid/server:1.5.0")
+		if !errors.Is(err, ErrInstanceProvisionVNCPasswordRequired) || updates != nil {
+			t.Fatal("empty source password must reject world creation")
+		}
+	}
+}
+
 func TestInstallationTemplateEnvPreservesLegacyInstalledRuntimeIdentity(t *testing.T) {
 	dataDir := t.TempDir()
 	if err := sjconfig.UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
@@ -113,6 +161,7 @@ func TestConvergeProvisionedInstanceTemplateRepairsMissingDefaultImageWithoutCop
 		"SERVER_IMAGE":            "dockerproxy.net/sdvd/server:1.5.0-preview.125",
 		"SERVER_IMAGE_CANDIDATES": "dockerproxy.net/sdvd/server:1.5.0-preview.125,sdvd/server:1.5.0-preview.125",
 		"STEAM_USERNAME":          "template-secret",
+		"VNC_PASSWORD":            "template-vnc-password",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +170,7 @@ func TestConvergeProvisionedInstanceTemplateRepairsMissingDefaultImageWithoutCop
 		"IMAGE_VERSION":    "1.5.0-preview.125",
 		"SERVER_IMAGE":     "sdvd/server:1.5.0-preview.125",
 		"STEAM_USERNAME":   "target-owned",
+		"VNC_PASSWORD":     "target-vnc-password",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +198,9 @@ func TestConvergeProvisionedInstanceTemplateRepairsMissingDefaultImageWithoutCop
 	}
 	if values["STEAM_USERNAME"] != "target-owned" {
 		t.Fatalf("target-owned credential changed: %q", values["STEAM_USERNAME"])
+	}
+	if values["VNC_PASSWORD"] != "target-vnc-password" {
+		t.Fatal("runtime compatibility convergence changed the existing VNC password")
 	}
 	if fake.verifyOpts.ImageRef != "dockerproxy.net/sdvd/server:1.5.0-preview.125" ||
 		len(fake.verifyOpts.Binds) != 1 || fake.verifyOpts.Binds[0] != "stardew-2_game-data:/data/game" {

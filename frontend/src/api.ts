@@ -1,4 +1,5 @@
 import { currentSessionGeneration, markSessionAuthenticated, notifySessionExpired } from './auth-session-events.ts'
+import { clearReadRequests, peekReadRequest, sharedRead } from './core/read-requests.ts'
 import type {
   CommandRunResult,
   CommandsListResult,
@@ -59,6 +60,7 @@ import type {
   RestartScheduleResult,
   RestartScheduleUpdate,
   ResourceMetricsResponse,
+  ResourceOverview,
   SavesListResult,
   SaveImportHostHandling,
   SaveImportJobResponse,
@@ -94,11 +96,42 @@ export class ApiError extends Error {
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown
+  timeoutMs?: number
+  maxAge?: number
 }
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export function invalidateReadCache() { clearReadRequests() }
+
+export function peekInstanceRead<T>(suffix: string, instanceId = defaultInstanceId): T | undefined {
+  return peekReadRequest<T>(`${currentSessionGeneration()}:/api/instances/${encodeURIComponent(instanceId)}/${suffix}`)
+}
+
+function displayCacheAge(path: string) {
+  if (/\/(runtime-components|smapi-update|junimo-update)$/.test(path)) return 30_000
+  if (/\/(health\/diagnostics|docker\/ps)$/.test(path)) return 10_000
+  if (/\/(metrics|resources)$/.test(path)) return 1_000
+  return 0
+}
+
+export function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const sessionGeneration = currentSessionGeneration()
-  const { body, headers: optionHeaders, ...rest } = options
+  const method = (options.method ?? 'GET').toUpperCase()
+  if (method === 'GET') {
+    // Custom headers/cache policies are separate representations. Only ordinary
+    // JSON reads participate in the display cache.
+    const suffix = options.headers || options.cache ? `:${JSON.stringify([Array.from(new Headers(options.headers)), options.cache])}` : ''
+    const key = `${sessionGeneration}:${path}${suffix}`
+    return sharedRead(key, signal => performRequest<T>(path, { ...options, signal }, sessionGeneration), {
+      signal: options.signal, timeoutMs: options.timeoutMs,
+      maxAge: options.cache === 'no-store' ? 0 : options.maxAge ?? displayCacheAge(path),
+    })
+  }
+  clearReadRequests()
+  return performRequest<T>(path, options).finally(clearReadRequests)
+}
+
+async function performRequest<T>(path: string, options: RequestOptions = {}, sessionGeneration = currentSessionGeneration()): Promise<T> {
+  const { body, headers: optionHeaders, timeoutMs: _timeout, maxAge: _maxAge, ...rest } = options
   const headers = new Headers(optionHeaders)
   const init: RequestInit = {
     ...rest,
@@ -132,8 +165,8 @@ export function getDockerStatus() {
   return request<DockerStatusResponse>('/api/docker/status')
 }
 
-export function getComposePs(instanceId = defaultInstanceId) {
-  return request<ComposePsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/docker/ps`)
+export function getComposePs(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<ComposePsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/docker/ps`, { signal })
 }
 
 export function getInstances() {
@@ -160,28 +193,28 @@ export function getInstance(instanceId = defaultInstanceId) {
   return request<Instance>(`/api/instances/${encodeURIComponent(instanceId)}`)
 }
 
-export function getInstanceState(instanceId = defaultInstanceId) {
-  return request<InstanceState>(`/api/instances/${encodeURIComponent(instanceId)}/state`)
+export function getInstanceState(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<InstanceState>(`/api/instances/${encodeURIComponent(instanceId)}/state`, { signal })
 }
 
-export function getJunimoUpdate(instanceId = defaultInstanceId) {
-  return request<JunimoUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update`)
+export function getJunimoUpdate(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<JunimoUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update`, { signal })
 }
 
 export function repairJunimoUpdateConfig(instanceId = defaultInstanceId) {
   return request<JunimoConfigRepairResult>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/repair-config`, { method: 'POST' })
 }
 
-export function getJunimoUpdateDryRun(instanceId = defaultInstanceId) {
-  return request<JunimoUpdateDryRunStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/dry-run`)
+export function getJunimoUpdateDryRun(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<JunimoUpdateDryRunStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/dry-run`, { signal })
 }
 
 export function startJunimoUpdateDryRun(instanceId = defaultInstanceId) {
   return request<JunimoUpdateDryRunStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/dry-run`, { method: 'POST' })
 }
 
-export function getJunimoUpdateApply(instanceId = defaultInstanceId) {
-  return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/apply`)
+export function getJunimoUpdateApply(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/apply`, { signal })
 }
 
 export function startJunimoUpdateApply(instanceId = defaultInstanceId) {
@@ -198,32 +231,32 @@ export function startJunimoUpdateRepair(instanceId = defaultInstanceId) {
   })
 }
 
-export function getRuntimeComponents(instanceId = defaultInstanceId) {
-  return request<RuntimeComponentsInfo>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components`)
+export function getRuntimeComponents(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<RuntimeComponentsInfo>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components`, { signal })
 }
 
-export function getRuntimeComponentsPreflight(instanceId = defaultInstanceId) {
-  return request<RuntimeComponentsPreflight>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components/dry-run`)
+export function getRuntimeComponentsPreflight(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<RuntimeComponentsPreflight>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components/dry-run`, { signal })
 }
 
 export function startRuntimeComponentsPreflight(instanceId = defaultInstanceId) {
   return request<RuntimeComponentsPreflight>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components/dry-run`, { method: 'POST' })
 }
 
-export function getSMAPIUpdate(instanceId = defaultInstanceId) {
-  return request<SMAPIUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update`)
+export function getSMAPIUpdate(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<SMAPIUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update`, { signal })
 }
 
-export function getSMAPIUpdateDryRun(instanceId = defaultInstanceId) {
-  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/dry-run`)
+export function getSMAPIUpdateDryRun(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/dry-run`, { signal })
 }
 
 export function startSMAPIUpdateDryRun(instanceId = defaultInstanceId) {
   return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/dry-run`, { method: 'POST' })
 }
 
-export function getSMAPIUpdateApply(instanceId = defaultInstanceId) {
-  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/apply`)
+export function getSMAPIUpdateApply(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/apply`, { signal })
 }
 
 export function startSMAPIUpdateApply(instanceId = defaultInstanceId) {
@@ -233,12 +266,16 @@ export function startSMAPIUpdateApply(instanceId = defaultInstanceId) {
   })
 }
 
-export function getInstanceMetrics(instanceId = defaultInstanceId) {
-  return request<ResourceMetricsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/metrics`)
+export function getInstanceMetrics(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<ResourceMetricsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/metrics`, { signal })
 }
 
-export function getInstancePlayers(instanceId = defaultInstanceId) {
-  return request<StardewPlayersResponse>(`/api/instances/${encodeURIComponent(instanceId)}/players`)
+export function getResourceOverview(signal?: AbortSignal) {
+  return request<ResourceOverview>('/api/resources', { signal })
+}
+
+export function getInstancePlayers(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<StardewPlayersResponse>(`/api/instances/${encodeURIComponent(instanceId)}/players`, { signal })
 }
 
 export function getPlayerModDetails(
@@ -252,8 +289,8 @@ export function getPlayerModDetails(
   )
 }
 
-export function getJobs() {
-  return request<JobsResponse>('/api/jobs')
+export function getJobs(signal?: AbortSignal) {
+  return request<JobsResponse>('/api/jobs', { signal })
 }
 
 export function clearJobs() {
@@ -282,8 +319,8 @@ export function getLatestJobLogs(id: string, limit = 1000) {
   return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
 }
 
-export function getStardewState(instanceId = defaultInstanceId) {
-  return getInstanceState(instanceId)
+export function getStardewState(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return getInstanceState(instanceId, signal)
 }
 
 export function prepareInstance(instanceId = defaultInstanceId) {
@@ -480,8 +517,8 @@ export function getInstanceRenderingFPS(instanceId = defaultInstanceId) {
   return request<InstanceRenderingResult>(`/api/instances/${encodeURIComponent(instanceId)}/rendering`)
 }
 
-export function getSaves(instanceId = defaultInstanceId) {
-  return request<SavesListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves`)
+export function getSaves(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<SavesListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves`, { signal })
 }
 
 export function selectSave(name: string, instanceId = defaultInstanceId) {
@@ -541,8 +578,8 @@ export function updateSaveBackupPolicy(policy: BackupPolicy, instanceId = defaul
   })
 }
 
-export function getRestartSchedule(instanceId = defaultInstanceId) {
-  return request<RestartScheduleResult>(`/api/instances/${encodeURIComponent(instanceId)}/restart-schedule`)
+export function getRestartSchedule(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<RestartScheduleResult>(`/api/instances/${encodeURIComponent(instanceId)}/restart-schedule`, { signal })
 }
 
 export function updateRestartSchedule(schedule: RestartScheduleUpdate, instanceId = defaultInstanceId) {
@@ -576,8 +613,8 @@ export function deleteSaveBackup(backupName: string, instanceId = defaultInstanc
   )
 }
 
-export function getMods(instanceId = defaultInstanceId) {
-  return request<ModsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods`)
+export function getMods(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<ModsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods`, { signal })
 }
 
 export function getModUpdates(instanceId = defaultInstanceId) {
@@ -772,8 +809,8 @@ export function prepareFarmTypeMods(instanceId: string, farmTypeId: string, sign
   )
 }
 
-export function getControlCommands(instanceId = defaultInstanceId, limit = 50) {
-  return request<ControlCommandsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/control-commands?limit=${limit}`)
+export function getControlCommands(instanceId = defaultInstanceId, limit = 50, signal?: AbortSignal) {
+  return request<ControlCommandsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/control-commands?limit=${limit}`, { signal })
 }
 
 export function getCommandOutcome(commandId: string, instanceId = defaultInstanceId) {
@@ -1043,6 +1080,13 @@ export function disableUser(id: number) {
   return request<OKResponse>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
+export function enableUser(id: number) {
+  return request<{ user: PanelUser }>(`/api/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { isActive: true },
+  })
+}
+
 export function deleteUserHard(id: number) {
   return request<OKResponse>(`/api/users/${encodeURIComponent(id)}?hard=true`, { method: 'DELETE' })
 }
@@ -1086,8 +1130,8 @@ export interface HealthDiagnosticsResponse {
   checks: HealthCheck[]
 }
 
-export function getHealthDiagnostics() {
-  return request<HealthDiagnosticsResponse>('/api/health/diagnostics')
+export function getHealthDiagnostics(signal?: AbortSignal) {
+  return request<HealthDiagnosticsResponse>('/api/health/diagnostics', { signal })
 }
 
 async function toApiError(response: Response): Promise<ApiError> {

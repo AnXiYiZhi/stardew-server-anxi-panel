@@ -279,7 +279,11 @@ func unquoteEnvValue(value string) string {
 	if (quote != '\'' && quote != '"') || value[len(value)-1] != quote {
 		return value
 	}
-	return value[1 : len(value)-1]
+	value = value[1 : len(value)-1]
+	if quote == '"' {
+		value = strings.NewReplacer(`\\`, `\`, `\"`, `"`).Replace(value)
+	}
+	return value
 }
 
 // UpdateEnvFile reads the existing .env, merges updates, and writes back.

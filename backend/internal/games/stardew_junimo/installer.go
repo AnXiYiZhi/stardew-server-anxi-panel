@@ -13,6 +13,7 @@ import (
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/installerrors"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	sharedsteamcmd "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/steamcmd"
@@ -44,6 +45,7 @@ var (
 //   - forceReauth:    AuthLoginOnly resets only its failed/pending session; base
 //     installs reject this internal flag and save shared credentials separately.
 type installRunner struct {
+	failureEvidence  installerrors.Evidence
 	driver           *Driver
 	instance         storage.Instance
 	username         string
@@ -64,7 +66,8 @@ const (
 )
 
 // run is the job.Runner function executed by jobs.Manager in a goroutine.
-func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
+func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) (runErr error) {
+	defer func() { runErr = r.explainFailure(ctx, jobCtx, runErr) }()
 	if !r.authOnly {
 		return r.runPrepared(ctx, jobCtx)
 	}
@@ -408,7 +411,7 @@ func (r *installRunner) ensureCandidateImage(ctx context.Context, jobCtx *jobs.C
 		_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[%s] 本地缺少镜像 %s，正在拉取（%d/%d）。", opts.Service, imageRef, i+1, len(opts.Refs)))
 
 		if _, pullErr := r.driver.docker.PullImageStreaming(ctx, r.instance.DataDir, imageRef,
-			makeImagePullLineHandler(jobCtx, opts.PullLogPrefix, func(done, total int) {
+			r.imagePullLineHandler(jobCtx, opts.PullLogPrefix, func(done, total int) {
 				percent := 0
 				if total > 0 {
 					percent = int(float64(done) * 100 / float64(total))
@@ -543,6 +546,7 @@ func (r *installRunner) waitSteamAuthMode(ctx context.Context, jobCtx *jobs.Cont
 }
 
 func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Context, guardCh chan string, mode steamAuthMode, attempt, maxAttempts int) (bool, error) {
+	r.failureEvidence.Reset()
 	runCtx := ctx
 	stopRun := context.CancelFunc(func() {})
 	if r.authOnly {
@@ -577,6 +581,10 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		defer outputMu.Unlock()
 
 		// Steam Guard and auth prompts are informational (not sensitive).
+		r.failureEvidence.Observe(line)
+		if isSteamAuthLoginSuccessLine(strings.ToLower(line)) {
+			r.failureEvidence.Authenticated()
+		}
 		_, _ = jobCtx.Info(context.Background(), "[steam] "+line)
 
 		lower := strings.ToLower(line)
@@ -1033,6 +1041,7 @@ func (r *installRunner) completeInstall(ctx context.Context, jobCtx *jobs.Contex
 }
 
 func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.Context) error {
+	r.failureEvidence.Reset()
 	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 		"游戏文件和 Steam SDK 已完成，正在检查 SMAPI 安装包缓存...", "smapi_installing", jobCtx.ID)
@@ -1110,6 +1119,7 @@ func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.C
 	}
 	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[smapi] 使用 JunimoServer 镜像 %s 预安装 SMAPI。", imageRef))
 	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSMAPIInstallOpts(imageRef, hostArchivePath), nil, func(line string) {
+		r.failureEvidence.Observe(line)
 		_, _ = jobCtx.Info(context.Background(), "[smapi] "+paneldocker.RedactString(line))
 	})
 	if err != nil {
@@ -1134,6 +1144,7 @@ func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
 }
 
 func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Context, guardCh chan string) error {
+	r.failureEvidence.Reset()
 	releaseDownload, err := r.driver.acquireSharedSteamDownload(ctx)
 	if err != nil {
 		return fmt.Errorf("wait for shared SteamCMD download executor: %w", err)
@@ -1183,6 +1194,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	resetAttemptState := func() {
 		outputMu.Lock()
 		defer outputMu.Unlock()
+		r.failureEvidence.Reset()
 		app413150Done = false
 		app1007Done = false
 		credentialFailed = false
@@ -1203,6 +1215,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 			defer outputMu.Unlock()
 
 			safeLine := sanitizeSteamOutputLine(line, r.password)
+			r.failureEvidence.Observe(safeLine)
 			_, _ = jobCtx.Info(context.Background(), "[steamcmd] "+safeLine)
 			lower := strings.ToLower(line)
 
@@ -1234,19 +1247,25 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 					"SteamCMD 已授权，正在下载并校验游戏文件...", "steamcmd_downloading", jobCtx.ID)
 			case strings.Contains(lower, "success! app '413150' fully installed"):
+				r.failureEvidence.Reset()
 				steamCMDLoggedIn = true
 				app413150Done = true
 				downloadCompleted = true
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 					"SteamCMD 已完成 Stardew Valley 游戏文件下载，正在处理 Steam SDK 运行文件...", "steamcmd_downloading", jobCtx.ID)
 			case strings.Contains(lower, "success! app '1007' fully installed"):
+				if app413150Done {
+					r.failureEvidence.Reset()
+				}
 				app1007Done = true
 				downloadCompleted = true
 			case containsAny(lower, "waiting for user info...ok", "waiting for user info... ok", "logged in ok"):
+				r.failureEvidence.Authenticated()
 				steamCMDLoggedIn = true
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 					"SteamCMD 登录成功，正在准备下载并校验游戏文件。", "steamcmd_downloading", jobCtx.ID)
 			case containsAny(lower, "waiting for confirmation...ok", "waiting for confirmation... ok"):
+				r.failureEvidence.Authenticated()
 				if steamCMDLoggedIn {
 					return
 				}
@@ -1499,7 +1518,7 @@ func (r *installRunner) ensureSteamCMDImage(ctx context.Context, jobCtx *jobs.Co
 			"正在拉取 SteamCMD 安装镜像，请稍候...", "steamcmd_image_pulling", jobCtx.ID)
 		_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 本地缺少 SteamCMD 镜像 %s，正在拉取（%d/%d）。", imageRef, i+1, len(imageRefs)))
 		if _, pullErr := r.driver.docker.PullImageStreaming(ctx, r.instance.DataDir, imageRef,
-			makeImagePullLineHandler(jobCtx, "[steamcmd:pull] ", func(done, total int) {
+			r.imagePullLineHandler(jobCtx, "[steamcmd:pull] ", func(done, total int) {
 				percent := 0
 				if total > 0 {
 					percent = int(float64(done) * 100 / float64(total))

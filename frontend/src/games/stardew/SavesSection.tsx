@@ -753,7 +753,13 @@ export function SavesSection({
 
       {/* ── 游戏日回档 ── */}
       {isAdmin ? (
-        <section className="sd-save-backups-section" aria-label="游戏日回档">
+        <section className="sd-save-backups-section sd-save-gameday-card" aria-label="游戏日回档">
+          <div className="sd-save-backups-header">
+            <div className="sd-save-backup-card-title">游戏日回档</div>
+            <button className="sd-btn-tan sd-btn-utility" type="button" disabled={backupsLoading} onClick={() => void loadBackups()}>
+              {backupsLoading ? '刷新中…' : '刷新'}
+            </button>
+          </div>
           <div className="sd-save-backup-policy-card">
             <div className="sd-save-backup-card-title">自动备份策略</div>
             <div className="sd-save-backup-policy">
@@ -798,17 +804,6 @@ export function SavesSection({
             </div>
           </div>
           <div className="sd-save-backup-list-card">
-            <div className="sd-save-backups-header">
-              <div className="sd-save-backup-card-title">游戏日回档</div>
-              <button
-                className="sd-btn-tan"
-                type="button"
-                disabled={backupsLoading}
-                onClick={() => void loadBackups()}
-              >
-                {backupsLoading ? '刷新中…' : '刷新'}
-              </button>
-            </div>
             {backupMessage ? <div className="sd-saves-error">{backupMessage}</div> : null}
             {backupsLoading ? (
               <div className="sd-srv-empty">读取回档列表中…</div>
@@ -892,7 +887,7 @@ export function SavesSection({
                     <span className="sd-save-backup-file">
                       <span className="sd-save-backup-zip" aria-hidden="true">ZIP</span>
                       <span className="sd-save-backup-file-text">
-                        <span className="sd-save-backup-name">{backup.name}</span>
+                        <span className="sd-save-backup-name" title={backup.name}>{backup.name}</span>
                         <small className="sd-save-backup-kind">{backupKindLabel[backup.kind] ?? backup.kind}</small>
                       </span>
                     </span>

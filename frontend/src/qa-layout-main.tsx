@@ -1,5 +1,6 @@
 // QA harness：mock fetch + 真实桌面/紧凑 Stardew Shell，用于状态与响应式布局回归。
 import { StrictMode, useState } from 'react'
+import { ResourceMonitorQA } from './qa-resource-monitor'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './App.css'
@@ -9,8 +10,9 @@ import { StardewMobileShell } from './games/stardew/StardewMobileShell'
 import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
 import { COMPACT_SHELL_MEDIA_QUERY } from './games/stardew/responsive-layout'
 import { useMediaQuery } from './hooks/useMediaQuery'
-import type { CurrentUser } from './types'
+import type { CurrentUser, ResourceMetricsResponse } from './types'
 import { installWorldDeletionQA } from './qa-world-delete'
+import { installControlActionOrderQA } from './qa-control-action-order'
 
 const params = new URLSearchParams(location.search)
 const SURFACE = params.get('surface') === 'app' ? 'app' : 'shell'
@@ -175,8 +177,15 @@ let qaInstallJob = INVITE_QA || INSTALL_QA === 'progress' || INSTALL_QA === 'aut
   errorMessage: null,
   updatedAt: iso(0),
 } : null
+const installFailureLogs: Record<string, string> = {
+  password: '[steamcmd] ERROR (Invalid Password)',
+  guard: '[steamcmd] That Steam Guard code was invalid.',
+  disk: '[steamcmd] ERROR! Failed to write game files: no space left on device',
+  dns: '[steamcmd] Download failed: lookup download.invalid: no such host',
+  unknown: '[steamcmd] Unrecognized installer failure',
+}
 let qaInstallLogs = INSTALL_QA === 'bad-password'
-  ? [{ id: 1, jobId: qaInstallJobId, sequence: 1, level: 'info', message: '[steamcmd] ERROR (Invalid Password)', createdAt: iso(0) }]
+  ? [{ id: 1, jobId: qaInstallJobId, sequence: 1, level: 'info', message: installFailureLogs[params.get('failureCase') ?? 'password'] ?? installFailureLogs.password, createdAt: iso(0) }]
   : INSTALL_QA === 'auth-method'
   ? [{ id: 1, jobId: qaInstallJobId, sequence: 1, level: 'info', message: '[steam] Waiting for login method choice', createdAt: iso(0) }]
   : [
@@ -247,9 +256,24 @@ const health = {
   ],
 }
 
-const metrics = {
+const metrics: ResourceMetricsResponse = {
   instanceId: 'stardew', service: 'stardew',
-  sample: { timestamp: now.toISOString(), cpuPercent: 18, memoryPercent: 42, memoryUsedBytes: 3.4 * 1073741824, memoryLimitBytes: 8 * 1073741824, diskPercent: 31, diskUsedBytes: 42.6 * 1073741824, diskTotalBytes: 128 * 1073741824, containerRunning: true },
+  machine: { scope: 'machine', timestamp: now.toISOString(), cpuCount: 8, cpuPercent: 32, memoryPercent: 54, memoryUsedBytes: 8.6 * 1024 ** 3, memoryTotalBytes: 16 * 1024 ** 3, diskPercent: 11.3, diskUsedBytes: 105 * 1024 ** 3, diskTotalBytes: 932 * 1024 ** 3, containerRunning: false },
+  sample: { scope: 'world', timestamp: now.toISOString(), cpuCount: 8, cpuCores: 1, cpuPercent: 12.5, memoryPercent: 15, memoryUsedBytes: 2.4 * 1073741824, memoryLimitBytes: 8 * 1073741824, memoryTotalBytes: 16 * 1073741824, storageUsedBytes: 3.8 * 1073741824, diskPercent: null, containerRunning: true },
+}
+switch (params.get('worldResources')) {
+  case 'missing-machine': metrics.machine = undefined; break
+  case 'missing-world': metrics.sample = { ...metrics.sample, cpuPercent: null, memoryPercent: null, storageUsedBytes: null }; break
+  case 'stopped': metrics.sample = { ...metrics.sample, cpuPercent: null, memoryPercent: null, containerRunning: false, containerState: 'stopped' }; break
+  case 'zero':
+    metrics.sample = { ...metrics.sample, cpuPercent: 0, cpuCores: 0, memoryPercent: 0, memoryUsedBytes: 0, storageUsedBytes: 0 }
+    metrics.machine = { ...metrics.machine!, cpuPercent: 0, memoryPercent: 0, memoryUsedBytes: 0, diskPercent: 0, diskUsedBytes: 0 }
+    break
+  case 'full':
+    metrics.sample = { ...metrics.sample, cpuPercent: 100, cpuCores: 8, memoryPercent: 100, memoryUsedBytes: 16 * 1024 ** 3, storageUsedBytes: 932 * 1024 ** 3 }
+    metrics.machine = { ...metrics.machine!, cpuPercent: 100, memoryPercent: 100, memoryUsedBytes: 16 * 1024 ** 3, diskPercent: 100, diskUsedBytes: 932 * 1024 ** 3 }
+    break
+  case 'sampling-skew': metrics.sample = { ...metrics.sample, cpuPercent: 40, cpuCores: 3.2 }; break
 }
 
 const users = {
@@ -581,10 +605,36 @@ let qaLibraryLifecycleReadsRemaining = 0
 let qaLibraryLifecycleFinalState = STATE
 let qaLibraryLifecycleOperation: 'start' | 'stop' | null = null
 let qaWorldDeleteCalls = 0
+let qaPanelResponseAttempts = 0
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
   const path = url.split('?')[0]
+  if (path === '/api/version' && url.includes('panel-response=')) {
+    const mode = params.get('panelResponse')
+    const delay = mode === 'timeout' ? 4000 : mode === 'slow' ? 400 : 45
+    await new Promise<void>((resolve, reject) => {
+      const signal = init?.signal
+      const abort = () => { window.clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(new DOMException('Aborted', 'AbortError')) }
+      const timer = window.setTimeout(() => { signal?.removeEventListener('abort', abort); resolve() }, delay)
+      if (signal?.aborted) abort()
+      else signal?.addEventListener('abort', abort, { once: true })
+    })
+    qaPanelResponseAttempts++
+    if (mode === 'error' || (mode === 'recover' && qaPanelResponseAttempts === 1)) return jsonRes({}, 503)
+    if (mode === 'invalid') return new Response('<html>proxy error</html>', { headers: { 'Content-Type': 'text/html' } })
+    return jsonRes({ version: 'qa' })
+  }
+  if (params.get('userQa') === 'activation' && path === '/api/users/4' && (method === 'PATCH' || method === 'DELETE')) {
+    const target = users.users.find(user => user.id === 4)!
+    if (method === 'PATCH') {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { isActive?: boolean }
+      if (body.isActive !== true) return jsonRes({ error: { message: 'Expected isActive: true' } }, 400)
+    }
+    await new Promise(resolve => window.setTimeout(resolve, 400))
+    target.isActive = method === 'PATCH'
+    return jsonRes(method === 'PATCH' ? { user: target } : { ok: true })
+  }
   if (SURFACE === 'app' && /\/api\/instances\/[^/]+$/.test(path) && method === 'DELETE') {
     qaWorldDeleteCalls++
     const index = instanceListFixture.instances.findIndex((entry) => path.endsWith('/' + entry.id))
@@ -617,6 +667,17 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         role: ROLE,
         isSuperAdmin: ROLE === 'admin',
       },
+    })
+  }
+  if (SURFACE === 'app' && path.endsWith('/api/resources')) {
+    if (params.get('resources') === 'error') return jsonRes({ error: { message: '资源暂不可用' } }, 503)
+    const zero = params.get('resources') === 'zero'
+    const partial = params.get('resources') === 'partial'
+    const full = params.get('resources') === 'full'
+    const tiny = params.get('resources') === 'tiny'
+    return jsonRes({
+      machine: { ...metrics.machine, cpuPercent: zero ? 0 : full ? 100 : 32, memoryPercent: zero ? 0 : full ? 100 : 54, memoryUsedBytes: zero ? 0 : (full ? 16 : 8.6) * 1024 ** 3, diskPercent: zero ? 0 : full ? 100 : 11.3, diskUsedBytes: zero ? 0 : (full ? 932 : 105) * 1024 ** 3 },
+      games: [{ driverId: 'stardew_junimo', worldCount: 2, sample: { ...metrics.sample, scope: 'game', cpuCores: undefined, cpuPercent: zero || partial ? 0 : full ? 100 : tiny ? 0.001 : 18.8, memoryPercent: zero ? 0 : partial ? null : full ? 100 : tiny ? 0.00625 : 22.5, memoryUsedBytes: zero ? 0 : (full ? 16 : tiny ? 0.001 : 3.6) * 1024 ** 3, storageUsedBytes: zero ? 0 : (partial ? 1.9 : full ? 932 : tiny ? 0.001 : 12.6) * 1024 ** 3 } }],
     })
   }
   if (SURFACE === 'app' && path.endsWith('/api/games/stardew/installation')) {
@@ -958,11 +1019,12 @@ function QALayout() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {SURFACE === 'app' ? <App /> : <QALayout />}
+    {params.get('resourceQa') === 'preview' ? <ResourceMonitorQA /> : SURFACE === 'app' ? <App /> : <QALayout />}
   </StrictMode>,
 )
 
 if (params.get('deleteQa') === 'gestures') installWorldDeletionQA(() => qaWorldDeleteCalls)
+if (params.get('controlQa') === 'gestures') installControlActionOrderQA()
 
 if (SURFACE === 'app') {
   window.setTimeout(() => {

@@ -1,5 +1,7 @@
 import { ApiError } from '../api'
+import { installationFailureMessage } from './install-error.ts'
 import type { Job, JobLog, JobStatus } from '../types'
+import { localizedJobName } from './job-presentation'
 
 // Centralized error code → Chinese message mapping.
 // Backend error codes are mapped to user-friendly Chinese messages.
@@ -104,6 +106,9 @@ const errorCodeMap: Record<string, string> = {
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'install_failed' || error.code === 'prepare_failed' || error.code === 'auth_login_failed') {
+      return installationFailureMessage({ error: error.message, phase: error.code === 'prepare_failed' ? 'preparing' : '' })
+    }
     // Try code-based translation first.
     if (error.code && errorCodeMap[error.code]) {
       return errorCodeMap[error.code]
@@ -130,7 +135,7 @@ export function shortJobID(id: string): string {
 }
 
 export function jobDisplayName(job: Job): string {
-  return job.displayName?.trim() || job.type
+  return localizedJobName(job)
 }
 
 export function statusClass(status: string): string {

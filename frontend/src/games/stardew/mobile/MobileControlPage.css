@@ -77,21 +77,17 @@
   gap: 8px;
 }
 
-/* 下面两条都写成两个类叠加的复合选择器（`.sd-input.sd-mctrl-say-input`、
-   `.sd-btn-restart.sd-mctrl-say-btn`），不要简化成单类——原因和上面 `.sd-mctrl-action-btn--card`
-   的注释一样：全局 `.sd-input`（640px 断点内 min-height:32px）和 `.sd-btn-restart` 所在的
-   共享规则（min-width:112px）在打包后实际排在这个文件之后，单类选择器优先级相同时会被
-   源码顺序更靠后的全局规则覆盖回去，必须靠类叠加把优先级提高到稳赢。 */
+/* 使用复合选择器，避免公共输入框及按钮规则受构建顺序影响。 */
 .sd-input.sd-mctrl-say-input {
   flex: 1;
   min-width: 0;
   min-height: 44px;
 }
 
-.sd-btn-restart.sd-mctrl-say-btn {
+.sd-btn-green.sd-mctrl-say-btn {
   flex-shrink: 0;
   min-height: 44px;
-  min-width: 72px;
+  min-width: 64px;
   image-rendering: pixelated;
 }
 
@@ -104,43 +100,95 @@
 
 /* 快捷操作卡 */
 
+.sd-mctrl-sort-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+}
+
+.sd-mctrl-sort-heading .sd-mctrl-card-title {
+  margin: 0;
+}
+
+.sd-mctrl-sort-hint {
+  margin: 0 0 0 auto;
+  color: var(--sd-brown-light);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.sd-mctrl-sort-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .sd-mctrl-action-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  isolation: isolate;
 }
 
-.sd-mctrl-action-list .sd-mctrl-action-btn {
-  width: 100%;
-  min-height: 56px;
+.sd-mctrl-action-row {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  text-align: left;
-  justify-content: flex-start;
-  height: auto;
-  border: 5px solid #80502c;
-  border-image: url('/assets/stardew/ui/buttons/button_frame_warm_9slice.png') 10% / 5px / 0 stretch;
-  border-radius: 0;
-  background: var(--sd-button-fill, #f2d69d);
-  box-shadow: none;
-  image-rendering: pixelated;
+  gap: 8px;
+  padding: 10px;
+  border: var(--stardew-mobile-card-border);
+  border-radius: var(--stardew-mobile-card-radius);
+  background: var(--stardew-mobile-card-bg);
+  box-shadow: var(--stardew-mobile-card-shadow);
+  cursor: grab;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
-.sd-mctrl-action-btn--card .sd-mctrl-action-copy span {
-  color: #7a5322;
+.sd-mctrl-action-row:focus-visible {
+  outline: 2px solid #7e4d1c;
+  outline-offset: 2px;
+}
+
+.sd-mctrl-action-row.is-dragging {
+  z-index: 1;
+  transform: translateY(var(--sd-drag-offset, 0px));
+  background: #fff2c9;
+  border-color: #784617;
+  box-shadow: 0 7px 16px #4b280844, 0 0 0 2px #e4b15a;
+  cursor: grabbing;
+}
+
+.sd-mctrl-action-list.is-sorting .sd-mctrl-action-btn {
+  pointer-events: none;
+}
+
+.sd-mctrl-action-list .sd-mctrl-action-btn {
+  flex-shrink: 0;
+  min-width: 64px;
+  min-height: 44px;
+  padding-inline: 10px;
 }
 
 .sd-mctrl-action-icon {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   image-rendering: pixelated;
 }
 
 .sd-mctrl-action-copy {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -150,12 +198,14 @@
 .sd-mctrl-action-copy strong {
   font-size: 13px;
   font-weight: 800;
+  color: var(--sd-brown-dark);
   white-space: normal;
 }
 
 .sd-mctrl-action-copy span {
   font-size: 11px;
   font-weight: 600;
+  color: var(--sd-brown-light);
   opacity: 0.85;
   white-space: normal;
 }

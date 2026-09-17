@@ -468,8 +468,12 @@ assert_upgraded_world_management() (
     chmod 755 /game/StardewValley /game/StardewModdingAPI
   '
   source_hash="$(docker run --rm --network none --volume "$template_volume:/game:ro" alpine:3.20 sha256sum /game/StardewValley)"
-  sed -i -e '/^SERVER_IMAGE=/d' -e '/^SERVER_IMAGE_CANDIDATES=/d' -e '/^IMAGE_VERSION=/d' -e '/^GAME_DATA_VOLUME=/d' "$template_env"
+  sed -i -e '/^SERVER_IMAGE=/d' -e '/^SERVER_IMAGE_CANDIDATES=/d' -e '/^IMAGE_VERSION=/d' -e '/^GAME_DATA_VOLUME=/d' -e '/^VNC_PASSWORD=/d' "$template_env"
   printf 'SERVER_IMAGE=alpine:3.20\nSERVER_IMAGE_CANDIDATES=alpine:3.20\nIMAGE_VERSION=3.20\nGAME_DATA_VOLUME=%s\n' "$template_volume" >>"$template_env"
+  code="$(curl --silent --show-error --max-time 120 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"name":"Missing VNC fixture","gameId":"stardew"}' "http://127.0.0.1:$panel_port/api/instances")"
+  [[ "$code" == 409 ]]
+  jq -e '.error.code == "vnc_password_required"' "$response_file" >/dev/null
+  printf 'VNC_PASSWORD=Patch7!\n' >>"$template_env"
   code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" -X DELETE "http://127.0.0.1:$panel_port/api/instances/stardew")"
   [[ "$code" == 403 ]]
   code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --header 'Content-Type: application/json' --data '{"name":"Candidate world","gameId":"stardew"}' "http://127.0.0.1:$panel_port/api/instances")"
@@ -486,6 +490,11 @@ assert_upgraded_world_management() (
     created_ids+=("$world_id")
     jq -e '.instance.isDefault == false and .instance.state == "save_required"' "$response_file" >/dev/null
     world_dir="$data_dir/instances/$world_id"
+    grep -Eq '^VNC_PASSWORD="?Patch7!"?$' "$world_dir/.env"
+    if grep -Fq 'Patch7!' "$response_file"; then
+      echo "candidate world E2E: API exposed inherited VNC password" >&2
+      return 1
+    fi
     [[ "$(sqlite3 "$data_dir/panel.db" 'SELECT count(*) FROM instance_provisions;')" == 0 ]]
     code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' -X PATCH --data '{"name":"Renamed candidate world"}' "http://127.0.0.1:$panel_port/api/instances/$world_id")"
     [[ "$code" == 200 ]]
@@ -509,6 +518,45 @@ assert_upgraded_world_management() (
   [[ "$(docker run --rm --network none --volume "$template_volume:/game:ro" alpine:3.20 sha256sum /game/StardewValley)" == "$source_hash" ]]
   echo "candidate world E2E: migrated creation, rename, routing, deletion, idempotency, ID monotonicity and template preservation passed"
 )
+
+assert_patch_features() {
+  python3 /workspace/scripts/tests/release_patch_features.py \
+    --url "http://127.0.0.1:$panel_port" --cookies "$cookie_file" \
+    --data-dir "$data_dir" --error-image "$project/patch-steamcmd:error" --owner "$project"
+}
+
+assert_fresh_patch_features() {
+  local root="$root/patch-fresh"
+  local data_dir="$root/data"
+  local cookie_file="$root/admin.cookies"
+  local response_file="$root/response.json"
+  local panel_container="$project-patch-fresh"
+  local panel_port=18081
+  (
+  set -Eeuo pipefail
+  mkdir -p "$data_dir"
+  # shellcheck disable=SC2317 # Invoked by the subshell EXIT trap.
+  cleanup_fresh_patch() {
+    local status=$?
+    docker rm -f "$panel_container" >/dev/null || status=1
+    exit "$status"
+  }
+  trap cleanup_fresh_patch EXIT
+  docker run -d --name "$panel_container" --label "com.anxi-panel.test-owner=$owner" \
+    -p "127.0.0.1:$panel_port:8090" --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
+    --mount "type=bind,src=$data_dir,dst=/data" --env "PANEL_HOST_DATA_DIR=$data_dir" \
+    "$candidate_image" >/dev/null
+  wait_version "$version" 120
+  curl --silent --show-error --fail --cookie-jar "$cookie_file" --header 'Content-Type: application/json' \
+    --data '{"username":"admin","password":"patch-fixture-password","confirmPassword":"patch-fixture-password"}' \
+    "http://127.0.0.1:$panel_port/api/setup/admin" >"$response_file"
+  curl --silent --show-error --fail --cookie "$cookie_file" -X POST \
+    "http://127.0.0.1:$panel_port/api/instances/stardew/prepare" >"$response_file"
+  assert_upgraded_world_management
+  assert_patch_features
+  echo "candidate patch E2E: fresh installation feature matrix passed"
+  )
+}
 
 assert_upgraded_mod_update_check() {
   local instance_dir="$data_dir/instances/stardew"
@@ -1347,6 +1395,18 @@ EOF
   echo "candidate upgrade E2E: legacy third-attempt repair restored Junimo from the immutable original image ID"
 }
 
+mkdir -p "$root/patch-image"
+cat >"$root/patch-image/steamcmd" <<'EOF'
+#!/bin/sh
+echo 'ERROR (Invalid Password)'
+exit 5
+EOF
+cat >"$root/patch-image/Dockerfile" <<'EOF'
+FROM alpine:3.20
+COPY --chmod=755 steamcmd /usr/local/bin/steamcmd
+EOF
+docker build --network none --pull=false --tag "$project/patch-steamcmd:error" "$root/patch-image" >/dev/null
+assert_fresh_patch_features
 wait_version "$previous_version" 120
 
 setup_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie-jar "$cookie_file" --header 'Content-Type: application/json' --data '{"username":"admin","password":"release-candidate-password","confirmPassword":"release-candidate-password"}' "http://127.0.0.1:$panel_port/api/setup/admin")"
@@ -2005,6 +2065,7 @@ if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_befor
   exit 1
 fi
 assert_upgraded_world_management
+assert_patch_features
 assert_upgraded_mod_update_check
 assert_upgraded_legacy_junimo_repair
 assert_upgraded_stopped_compose_save_import_submission

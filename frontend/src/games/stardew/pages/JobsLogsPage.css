@@ -1726,8 +1726,16 @@
 
 @container sd-main-scroll (max-width: 620px) {
 
+  .sd-jobs-page .sd-jobs-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .sd-jobs-toolbar-actions .sd-btn-tan,
   .sd-jobs-toolbar-actions .sd-btn-delete {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 44px;
   }
 }

@@ -1,3 +1,4 @@
+import { LifecycleIcon } from '../LifecycleIcon'
 import { Fragment, useState } from 'react'
 import { stateLabel, formatDate } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
@@ -63,6 +64,9 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       : dashboardData.loading
         ? '读取中…'
         : '未知'
+  const showStartControl = !waitingForStop && !restartInProgress && (
+    startupInProgress || showSaveRequiredPrompt || state === 'ready_to_start' || state === 'stopped' || state === 'game_installed'
+  )
   const lifecycleDotClass = restartInProgress || isStarting || startupInProgress || waitingForStop
     ? 'sd-dot sd-dot-yellow sd-dot-pulse'
     : isRunning
@@ -214,7 +218,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           <span className="sd-server-title-sprout" aria-hidden="true">⌘</span>
         </div>
         <div className="sd-ctrl-row">
-          {!waitingForStop ? (
+          {showStartControl ? (
             <button
               key="start"
               className={`sd-btn-start${startupInProgress ? ' sd-btn-loading' : ''}`}
@@ -233,7 +237,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               {startupInProgress ? (
                 <span className="sd-btn-spinner" aria-hidden="true" />
               ) : (
-                <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
+                <LifecycleIcon action="start" />
               )}
               {startupInProgress || (actionBusy && canStart) ? '启动中…' : '启动'}
             </button>
@@ -258,7 +262,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               <span className="sd-btn-spinner" aria-hidden="true" />
               停止中…
             </button>
-          ) : !startupInProgress ? (
+          ) : isRunning && !startupInProgress ? (
             <Fragment key="running-actions">
               <button
                 key="stop"
@@ -267,7 +271,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 onClick={() => requestConfirm('stop')}
                 title={!isAdmin ? '仅管理员可停止服务器' : !isRunning ? '服务器未运行' : '停止服务器（需确认）'}
               >
-                <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
+                <LifecycleIcon action="stop" />
                 停止
               </button>
 
@@ -278,7 +282,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 onClick={() => requestConfirm('restart')}
                 title={!isAdmin ? '仅管理员可重启服务器' : !isRunning ? '服务器未运行' : '重启服务器（需确认）'}
               >
-                <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
+                <LifecycleIcon action="restart" />
                 重启
               </button>
             </Fragment>

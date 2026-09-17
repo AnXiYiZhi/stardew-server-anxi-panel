@@ -1,4 +1,5 @@
 import type { InstanceState, Job, JobLog } from '../../types'
+import { installationFailureMessage } from '../../core/install-error.ts'
 import {
   extractPullProgress,
   extractSMAPIArchiveProgress,
@@ -213,7 +214,7 @@ export function gameInstallProgressPresentation(
       mode,
       title: mode === 'complete' ? 'Steam 邀请授权完成' : mode === 'failed' ? 'Steam 邀请授权未完成' : phaseTitle(phase, mode),
       detail: mode === 'complete' ? '此世界的 Steam 邀请授权已完成。'
-        : mode === 'failed' ? job.errorMessage || state?.stateMessage || '请重新授权。'
+        : mode === 'failed' ? installationFailureMessage({ job, logs, phase: 'steam_invite_auth_failed' })
           : state?.stateMessage || phaseDetail(phase),
       stepIndex: 2, steps: stepStatuses(mode, 2), percent: mode === 'complete' ? 100 : null,
       approximate: false, overallPercent: mode === 'complete' ? 100 : 0,
@@ -237,19 +238,8 @@ export function gameInstallProgressPresentation(
         : 'idle'
   const stepIndex = complete ? 4 : requiredFilesMissing ? 3 : phaseStepIndex(phase)
   const progress = mode === 'complete' ? { percent: 100, approximate: false } : exactPhaseProgress(phase, job?.type, logs)
-  const invalidPassword = mode === 'failed' && job?.type === 'stardew_install' && logs.some((log) =>
-    log.jobId === job.id && /invalid password|incorrect password|password check for user failed/i.test(log.message),
-  )
   const detail = mode === 'failed'
-    ? invalidPassword
-      ? 'Steam 账号或密码错误，请修改后重试。'
-      : /SteamCMD install authorization confirmation timed out/i.test(job?.errorMessage ?? '')
-        ? 'Steam 登录授权确认超时，请重新安装并及时完成 Steam 验证。'
-      : requiredFilesMissing
-      ? '游戏运行文件不完整，请重新安装或修复。'
-      : phase === 'credentials_required' && state?.stateMessage
-        ? state.stateMessage
-      : job?.errorMessage || state?.stateMessage || '安装任务失败，请核对当前步骤后重试。'
+    ? installationFailureMessage({ job, logs, phase, stateMessage: state?.stateMessage, requiredFilesMissing })
     : mode === 'complete'
       ? '游戏本体、Steamworks SDK 与运行环境均已就绪。'
       : state?.stateMessage || phaseDetail(phase)

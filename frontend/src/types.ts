@@ -535,6 +535,13 @@ export type InstanceState = {
 }
 
 export type ResourceMetricSample = {
+  containerState?: 'running' | 'stopped' | 'unprepared' | 'unavailable'
+  scope?: 'machine' | 'game' | 'world'
+  cpuCount?: number
+  cpuCores?: number
+  memoryTotalBytes?: number
+  storageUsedBytes?: number | null
+  storageTimestamp?: string
   timestamp: string
   cpuPercent: number | null
   memoryPercent: number | null
@@ -551,6 +558,12 @@ export type ResourceMetricsResponse = {
   instanceId: string
   service: string
   sample: ResourceMetricSample
+  machine?: ResourceMetricSample
+}
+
+export type ResourceOverview = {
+  machine: ResourceMetricSample
+  games: { driverId: string; worldCount: number; sample: ResourceMetricSample }[]
 }
 
 export type StardewPlayerInfo = {

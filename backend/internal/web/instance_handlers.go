@@ -235,6 +235,8 @@ func (s *server) handleInstanceCreate(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "game_installation_required", "请先完成该游戏的全局安装")
 		case errors.Is(provisionErr, sj.ErrInstanceProvisionTemplateBusy):
 			writeError(w, http.StatusConflict, "game_installation_busy", "游戏安装环境正在维护，请稍后再创建世界")
+		case errors.Is(provisionErr, sj.ErrInstanceProvisionVNCPasswordRequired):
+			writeError(w, http.StatusConflict, "vnc_password_required", "请先为第一个世界配置 VNC 密码，新世界将继承该密码")
 		case errors.Is(provisionErr, sj.ErrInstanceProvisionDockerUnsupported):
 			writeError(w, http.StatusNotImplemented, "instance_creation_unavailable", "当前环境不支持安全复制游戏运行文件")
 		default:

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -32,6 +33,9 @@ func (f *provisionRecoveryDocker) CleanupInstanceGameData(_ context.Context, _, 
 
 func TestProvisionOwnsTemplateUntilPublication(t *testing.T) {
 	s, template, dir := newInstalledAuthOnlyFixture(t)
+	if err := sjconfig.UpdateEnvFile(filepath.Join(dir, ".env"), map[string]string{"VNC_PASSWORD": "template-vnc-password"}); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	root := filepath.Dir(filepath.Dir(dir))
 	target, err := s.CreateInstance(ctx, storage.CreateInstanceParams{ID: "copy-world", DriverID: DriverID, Name: "copy", DataDir: filepath.Join(root, "instances", "copy-world"), State: storage.InstanceStateAdminCreated, DriverPhase: "instance_provisioning"})
@@ -71,6 +75,10 @@ func TestProvisionOwnsTemplateUntilPublication(t *testing.T) {
 	}
 	if _, err := os.Stat(target.DataDir); err != nil {
 		t.Fatal(err)
+	}
+	values, err := sjconfig.ReadEnvFile(filepath.Join(target.DataDir, ".env"))
+	if err != nil || values["VNC_PASSWORD"] != "template-vnc-password" {
+		t.Fatal("published world must require the inherited VNC password", err)
 	}
 }
 

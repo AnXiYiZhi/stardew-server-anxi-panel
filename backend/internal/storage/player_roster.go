@@ -33,6 +33,32 @@ type UpsertPlayerRosterParams struct {
 }
 
 func (s *Store) UpsertPlayerRoster(ctx context.Context, params UpsertPlayerRosterParams) error {
+	return s.UpsertPlayerRosterBatch(ctx, []UpsertPlayerRosterParams{params})
+}
+
+// UpsertPlayerRosterBatch commits one observed roster atomically, including its
+// identity and join/leave events. Invalid entries roll back the whole batch.
+func (s *Store) UpsertPlayerRosterBatch(ctx context.Context, params []UpsertPlayerRosterParams) error {
+	if len(params) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin player roster upsert: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, item := range params {
+		if err := upsertPlayerRosterTx(ctx, tx, item); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit player roster upsert: %w", err)
+	}
+	return nil
+}
+
+func upsertPlayerRosterTx(ctx context.Context, tx *sql.Tx, params UpsertPlayerRosterParams) error {
 	e := params.Entry
 	e.InstanceID = strings.TrimSpace(e.InstanceID)
 	e.StableSaveID = strings.TrimSpace(e.StableSaveID)
@@ -57,18 +83,13 @@ func (s *Store) UpsertPlayerRoster(ctx context.Context, params UpsertPlayerRoste
 		baseID = e.StableSaveID
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin player roster upsert: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	var previousStatus string
 	lookupErr := tx.QueryRowContext(ctx, `SELECT current_status FROM player_roster WHERE instance_id=? AND stable_save_id=? AND player_id=?`, e.InstanceID, e.StableSaveID, e.PlayerID).Scan(&previousStatus)
 	isNew := lookupErr == sql.ErrNoRows
 	if lookupErr != nil && lookupErr != sql.ErrNoRows {
 		return fmt.Errorf("read previous player status: %w", lookupErr)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO save_identities
+	_, err := tx.ExecContext(ctx, `INSERT INTO save_identities
 (instance_id, stable_save_id, base_save_id, full_save_id, first_seen_at, last_seen_at)
 VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)
 ON CONFLICT(instance_id, stable_save_id) DO UPDATE SET
@@ -126,9 +147,6 @@ character_deleted_at=NULL, character_delete_operation_id=NULL`,
 		if err := insertPlayerEventTx(ctx, tx, PlayerRosterEvent{InstanceID: e.InstanceID, StableSaveID: e.StableSaveID, Type: "left", PlayerID: e.PlayerID, PlayerName: e.DisplayName, IsHost: e.IsHost, Location: e.Location, LocationName: e.LocationName, LocationDisplayName: e.LocationDisplayName, OccurredAt: observedAt}); err != nil {
 			return err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit player roster upsert: %w", err)
 	}
 	return nil
 }

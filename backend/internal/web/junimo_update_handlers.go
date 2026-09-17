@@ -315,6 +315,17 @@ func (s *server) handleInstanceRuntimeComponents(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusConflict, "unsupported/driver", "实例 driver 不支持游戏运行文件版本检测")
 		return
 	}
+	if display, supported := driver.(interface {
+		InspectRuntimeDisplay(context.Context, registry.Instance) (sj.RuntimeDisplayInspection, error)
+	}); supported {
+		inspection, err := display.InspectRuntimeDisplay(r.Context(), makeRegistryInstance(instance))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "runtime_components_failed", "读取游戏运行文件版本失败")
+			return
+		}
+		writeJSON(w, http.StatusOK, inspection)
+		return
+	}
 	inspection, err := inspector.InspectRuntimeComponents(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
 		s.logger.Error("failed to inspect runtime components", "instance", instance.ID, "error", err)
@@ -355,6 +366,17 @@ func (s *server) handleInstanceSMAPIUpdate(w http.ResponseWriter, r *http.Reques
 	inspector, ok := driver.(smapiUpdateDriver)
 	if !ok {
 		writeError(w, http.StatusConflict, "unsupported/driver", "实例 driver 不支持 SMAPI 实际版本检测")
+		return
+	}
+	if display, supported := driver.(interface {
+		InspectRuntimeDisplay(context.Context, registry.Instance) (sj.RuntimeDisplayInspection, error)
+	}); supported {
+		inspection, err := display.InspectRuntimeDisplay(r.Context(), makeRegistryInstance(instance))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "smapi_update_failed", "读取 SMAPI 版本失败")
+			return
+		}
+		writeJSON(w, http.StatusOK, inspection.SMAPI)
 		return
 	}
 	inspection, err := inspector.InspectSMAPIUpdate(r.Context(), makeRegistryInstance(instance))

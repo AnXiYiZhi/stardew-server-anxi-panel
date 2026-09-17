@@ -241,6 +241,7 @@ function App() {
 
   const authShellClass = [
     'sd-auth-shell',
+    view === 'booting' ? 'sd-auth-shell--booting' : '',
     view === 'login' || view === 'setup' ? 'sd-auth-shell--image-login' : '',
     view === 'login' ? 'sd-auth-shell--login' : '',
     view === 'setup' ? 'sd-auth-shell--setup' : '',

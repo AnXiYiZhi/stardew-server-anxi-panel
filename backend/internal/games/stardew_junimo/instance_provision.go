@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	ErrInstanceProvisionTemplateRequired  = errors.New("an installed game template is required")
-	ErrInstanceProvisionTemplateBusy      = errors.New("game template has an active task")
-	ErrInstanceProvisionDockerUnsupported = errors.New("instance game-data provisioning is unavailable")
+	ErrInstanceProvisionTemplateRequired    = errors.New("an installed game template is required")
+	ErrInstanceProvisionTemplateBusy        = errors.New("game template has an active task")
+	ErrInstanceProvisionDockerUnsupported   = errors.New("instance game-data provisioning is unavailable")
+	ErrInstanceProvisionVNCPasswordRequired = errors.New("the first world's VNC password is required")
 )
 
 type instanceGameDataProvisionDocker interface {
@@ -111,7 +112,7 @@ func (d *Driver) ProvisionInstance(ctx context.Context, req registry.InstancePro
 	}); err != nil {
 		return registry.InstanceProvisionResult{}, fmt.Errorf("assign target instance ports: %w", err)
 	}
-	installEnv, err := installationTemplateEnv(req.Template.DataDir, templateImage)
+	installEnv, err := newWorldTemplateEnv(req.Template.DataDir, templateImage)
 	if err != nil {
 		return registry.InstanceProvisionResult{}, fmt.Errorf("read game installation template configuration: %w", err)
 	}
@@ -157,6 +158,26 @@ func (d *Driver) ProvisionInstance(ctx context.Context, req registry.InstancePro
 	return registry.InstanceProvisionResult{
 		GamePort: ports.game, QueryPort: ports.query, VNCPort: ports.vnc, APIPort: ports.api, Protocol: "udp",
 	}, nil
+}
+
+// newWorldTemplateEnv inherits the first world's VNC password when creating a
+// world. Runtime compatibility convergence uses installationTemplateEnv alone
+// so it preserves passwords already configured on existing worlds.
+func newWorldTemplateEnv(dataDir, verifiedImage string) (map[string]string, error) {
+	values, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		return nil, err
+	}
+	password := values["VNC_PASSWORD"]
+	if strings.TrimSpace(password) == "" {
+		return nil, ErrInstanceProvisionVNCPasswordRequired
+	}
+	updates, err := installationTemplateEnv(dataDir, verifiedImage)
+	if err != nil {
+		return nil, err
+	}
+	updates["VNC_PASSWORD"] = password
+	return updates, nil
 }
 
 // installationTemplateEnv carries only the installed game runtime identity to

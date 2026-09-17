@@ -32,11 +32,7 @@ type NexusSearchSessionState = {
 const NEXUS_PAGE_SIZE = 4
 const NEXUS_SEARCH_SESSION_KEY = 'stardew-anxi:mobile-nexus-search-state:v2'
 const NEXUS_QUICK_TAGS = ['UI Info', 'Fishing Mod', 'Tractor']
-const SYNC_KIND_LABELS: Record<string, string> = {
-  server_only: '服务器专用',
-  client_required: '玩家需同步',
-  unknown: '待确认',
-}
+const MOD_FALLBACK_ICON = '/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png'
 
 const DEPENDENCY_LABELS: Record<string, string> = {
   'Pathoschild.ContentPatcher': 'Content Patcher',
@@ -170,17 +166,20 @@ function NexusRequiredModsBadge({
   open: boolean
   onToggle: () => void
 }) {
-  if (requiredMods.length === 0) return <span className="sd-tag sd-tag-gold">前置：无</span>
+  if (requiredMods.length === 0) return <span className="sd-mmods-no-required">无前置依赖</span>
   const missing = missingNexusRequiredMods({ requiredMods } as NexusModSearchResult)
   return (
     <div className="sd-mmods-required">
       <button
         type="button"
-        className={`sd-tag ${missing.length > 0 ? 'sd-tag-red' : 'sd-tag-green'} sd-mmods-required-summary`}
+        className="sd-mmods-required-summary"
         onClick={onToggle}
         aria-expanded={open}
       >
-        {missing.length > 0 ? '缺少前置mod' : '前置已满足'}
+        <span className={`sd-tag ${missing.length > 0 ? 'sd-tag-red' : 'sd-tag-green'}`}>
+          {missing.length > 0 ? '缺少前置' : '前置已满足'}
+          <span aria-hidden="true"> {open ? '▴' : '▾'}</span>
+        </span>
       </button>
       {open ? (
         <div className="sd-mmods-required-list">
@@ -475,19 +474,19 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
   }
 
   return (
-    <div className="sd-mmods-wrap">
+    <div className="sd-panel sd-mmods-wrap">
       <div className="sd-mmods-page-header">
         <div className="sd-mmods-page-title">
           <img src="/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png" alt="" />
           模组
         </div>
         <div className="sd-mmods-header-actions">
-          <button type="button" className="sd-btn-tan sd-mmods-icon-btn" onClick={() => void handleRefresh()} disabled={loading || nexusLoading} title="刷新">
+          <button type="button" className="sd-btn-tan sd-btn-utility sd-mmods-icon-btn" onClick={() => void handleRefresh()} disabled={loading || nexusLoading} title="刷新">
             刷新
           </button>
           <button
             type="button"
-            className="sd-btn-tan sd-mmods-icon-btn"
+            className="sd-btn-tan sd-btn-utility sd-mmods-icon-btn"
             onClick={() => void handleExport()}
             disabled={exportBusy || visibleModCount === 0}
             title={visibleModCount === 0 ? '暂无 Mod 可导出' : '导出全部 Mod 为 ZIP'}
@@ -496,7 +495,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
           </button>
           <button
             type="button"
-            className="sd-btn-green sd-mmods-icon-btn"
+            className="sd-btn-tan sd-btn-utility sd-mmods-icon-btn"
             onClick={() => setShowUpload(true)}
             disabled={writeDisabled}
             title={writeTitle || MOD_UPLOAD_TOOLTIP}
@@ -538,12 +537,13 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
       ))}
 
       {activeTab === 'search' ? (
-        <section className="sd-panel sd-mmods-card">
+        <section className="sd-mmods-card" aria-label="搜索模组">
           <div className="sd-mmods-search-row">
             <input
               className="sd-input sd-mmods-search-input"
               type="text"
               placeholder="英文名称、ID 或关键词"
+              aria-label="搜索 Nexus 模组"
               value={nexusQuery}
               onChange={(e) => setNexusQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void handleNexusSearch(1) }}
@@ -553,7 +553,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
             </button>
           </div>
           <div className="sd-mmods-quick-tags">
-            <span>热门标签</span>
+            <span>热门</span>
             {NEXUS_QUICK_TAGS.map((tag) => (
               <button key={tag} type="button" className="sd-mmods-quick-tag" disabled={nexusLoading} onClick={() => { setNexusQuery(tag); void handleNexusSearch(1, tag) }}>
                 {tag}
@@ -583,12 +583,14 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                           {result.pictureUrl ? (
                             <img className="sd-mmods-search-thumb" src={result.pictureUrl} alt="" />
                           ) : (
-                            <div className="sd-mmods-search-thumb sd-mmods-search-thumb-empty">NEXUS</div>
+                            <div className="sd-mmods-search-thumb sd-mmods-search-thumb-empty" aria-hidden="true">
+                              <img src="/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png" alt="" />
+                            </div>
                           )}
                           <div className="sd-mmods-search-main">
                             <div className="sd-mmods-search-name">{result.name}</div>
                             <div className="sd-mmods-tags">
-                              <span className="sd-tag sd-tag-blue">Nexus:{result.modId}</span>
+                              <span className="sd-mmods-nexus-id">Nexus #{result.modId}</span>
                               {result.installed ? (
                                 <span className={`sd-tag ${result.installedEnabled === false ? 'sd-tag-gold' : 'sd-tag-green'}`}>
                                   {result.installedEnabled === false ? '已安装未启用' : '已安装'}
@@ -597,9 +599,9 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                             </div>
                           </div>
                         </div>
-                        <div className="sd-mmods-info-grid">
-                          <span><b>版本</b>{result.version || '—'}</span>
-                          <span><b>更新</b>{result.updatedAt ? formatDate(result.updatedAt) : '—'}</span>
+                        <div className="sd-mmods-search-meta">
+                          <span>版本 {result.version || '—'}</span>
+                          <span>更新 {result.updatedAt ? <time dateTime={result.updatedAt} title={formatDate(result.updatedAt)}>{new Date(result.updatedAt).toLocaleDateString()}</time> : '—'}</span>
                         </div>
                         {result.summary ? <p className="sd-mmods-desc">{result.summary}</p> : null}
                         <div className="sd-mmods-search-footer">
@@ -611,11 +613,12 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                           <div className="sd-mmods-card-actions">
                             <button
                               type="button"
-                              className="sd-btn-tan sd-mmods-nexus-link-btn"
+                              className="sd-btn-tan sd-btn-utility sd-mmods-nexus-link-btn"
                               disabled={!result.nexusUrl}
                               onClick={() => result.nexusUrl && window.open(result.nexusUrl, '_blank', 'noopener,noreferrer')}
+                              aria-label={`在 Nexus Mods 查看 ${result.name}`}
                             >
-                              跳转 N站
+                              N站 ↗
                             </button>
                           </div>
                         </div>
@@ -624,7 +627,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                   })}
                 </div>
                 <div className="sd-mmods-pager">
-                  <button type="button" className="sd-btn-tan" disabled={nexusLoading || nexusPage <= 1} onClick={() => jumpToNexusPage(nexusPage - 1)}>上一页</button>
+                  <button type="button" className="sd-btn-tan sd-btn-utility" disabled={nexusLoading || nexusPage <= 1} onClick={() => jumpToNexusPage(nexusPage - 1)}>上一页</button>
                   <div className="sd-mmods-page-jump">
                     <input
                       className="sd-input"
@@ -637,9 +640,9 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                       onKeyDown={(e) => { if (e.key === 'Enter') handleNexusPageInputJump() }}
                       aria-label="跳转页码"
                     />
-                    <button type="button" className="sd-btn-tan" disabled={nexusLoading} onClick={handleNexusPageInputJump}>跳转</button>
+                    <button type="button" className="sd-btn-tan sd-btn-utility" disabled={nexusLoading} onClick={handleNexusPageInputJump}>跳转</button>
                   </div>
-                  <button type="button" className="sd-btn-tan" disabled={nexusLoading || nexusPage >= nexusTotalPages || !nexusHasMore} onClick={() => jumpToNexusPage(nexusPage + 1)}>下一页</button>
+                  <button type="button" className="sd-btn-tan sd-btn-utility" disabled={nexusLoading || nexusPage >= nexusTotalPages || !nexusHasMore} onClick={() => jumpToNexusPage(nexusPage + 1)}>下一页</button>
                 </div>
               </>
             )
@@ -648,7 +651,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
           )}
         </section>
       ) : (
-        <section className="sd-panel sd-mmods-card">
+        <section className="sd-mmods-card" aria-label="服务器模组">
           <div className="sd-mmods-installed-summary">
             <span className="sd-tag sd-tag-blue">已安装 {visibleModCount} 个</span>
             <span className={`sd-tag ${isRunning ? 'sd-tag-green' : 'sd-tag-gold'}`}>{isRunning ? '运行中' : '已停止'}</span>
@@ -664,17 +667,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
               placeholder="搜索名称、ID、文件夹或 Nexus ID"
               aria-label="搜索已安装模组"
             />
-            <select
-              className="sd-input"
-              value={installedSort}
-              onChange={(event) => setInstalledSort(event.currentTarget.value as InstalledModSort)}
-              aria-label="已安装模组排序"
-            >
-              {INSTALLED_MOD_SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <span>{installedQuery.trim() ? `${installedMods.length} / ${visibleModCount} 个` : `${visibleModCount} 个`}</span>
+            {installedQuery.trim() ? <span>{installedMods.length} / {visibleModCount} 个</span> : null}
           </div>
           <div className="sd-mmods-bulk-actions">
             <button
@@ -683,7 +676,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
               disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || allInstalledMods.every((mod) => mod.enabled || !mod.canToggle)}
               onClick={() => void handleAllEnabledChange(true)}
             >
-              {enableAllUpdating === true ? '正在全部启用…' : '一键启用全部'}
+              {enableAllUpdating === true ? '启用中…' : '一键启用'}
             </button>
             <button
               type="button"
@@ -691,8 +684,18 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
               disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || allInstalledMods.every((mod) => !mod.enabled || !mod.canToggle)}
               onClick={() => void handleAllEnabledChange(false)}
             >
-              {enableAllUpdating === false ? '正在全部禁用…' : '一键禁用全部'}
+              {enableAllUpdating === false ? '禁用中…' : '一键禁用'}
             </button>
+            <select
+              className="sd-input sd-mmods-sort"
+              value={installedSort}
+              onChange={(event) => setInstalledSort(event.currentTarget.value as InstalledModSort)}
+              aria-label="已安装模组排序"
+            >
+              {INSTALLED_MOD_SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
           {enableError ? <div className="sd-notice sd-notice--error sd-mmods-notice">{enableError}</div> : null}
           {enableMessage ? <div className="sd-notice sd-notice--ok sd-mmods-notice">{enableMessage}</div> : null}
@@ -714,55 +717,48 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                 const dependency = dependencyDisplay(mod)
                 const externalUrl = modExternalUrl(mod)
                 const isBuiltIn = mod.builtIn === true
-                const nexusId = modNexusId(mod)
                 return (
                   <article className="sd-mmods-installed-card" key={mod.id}>
-                    <div className="sd-mmods-installed-head">
-                      {mod.pictureUrl ? (
-                        <img className="sd-mmods-installed-thumb" src={mod.pictureUrl} alt="" />
-                      ) : (
-                        <div className="sd-mmods-installed-thumb sd-mmods-installed-thumb-empty">{nexusId > 0 ? 'NEXUS' : 'MOD'}</div>
-                      )}
-                      <div className="sd-mmods-installed-main">
-                        <div className="sd-mmods-installed-name-row">
-                          <span className="sd-mmods-installed-name">{modDisplayName(mod)}</span>
-                          <span className={`sd-tag ${mod.enabled ? 'sd-tag-green' : 'sd-tag-gold'} sd-mmods-status-tag`}>{mod.enabled ? '已启用' : '已禁用'}</span>
-                        </div>
-                        <div className="sd-mmods-info-grid sd-mmods-installed-grid">
-                          <span><b>版本</b>{mod.version || '—'}</span>
-                          <span><b>文件夹</b>{mod.folderName || '—'}</span>
-                          <span><b>安装</b>{mod.installedAt ? formatDate(mod.installedAt) : '历史记录未知'}</span>
-                          <span><b>更新</b>{mod.updatedAt ? formatDate(mod.updatedAt) : '—'}</span>
-                          <span><b>同步</b>{SYNC_KIND_LABELS[mod.syncKind] ?? mod.syncKind}</span>
-                        </div>
-                      </div>
-                    </div>
+                    <img
+                      className="sd-mmods-installed-thumb"
+                      src={mod.pictureUrl || MOD_FALLBACK_ICON}
+                      alt=""
+                      loading="lazy"
+                      onError={(event) => {
+                        const image = event.currentTarget
+                        const fallback = new URL(MOD_FALLBACK_ICON, window.location.href).href
+                        if (image.src !== fallback) image.src = fallback
+                      }}
+                    />
                     <div className="sd-mmods-installed-main">
-                      {mod.description || mod.nexusSummary ? <p className="sd-mmods-desc">{mod.description || mod.nexusSummary}</p> : null}
+                      {externalUrl ? (
+                        <button type="button" className="sd-mmods-installed-name sd-mmods-name-link" title={modDisplayName(mod)} aria-label={`查看 ${modDisplayName(mod)} 的来源页面`} onClick={() => window.open(externalUrl, '_blank', 'noopener,noreferrer')}>
+                          {modDisplayName(mod)} <span aria-hidden="true">↗</span>
+                        </button>
+                      ) : <span className="sd-mmods-installed-name" title={modDisplayName(mod)}>{modDisplayName(mod)}</span>}
+                      {mod.version ? <div className="sd-mmods-installed-version">v{mod.version}</div> : null}
                       <div className="sd-mmods-tags">
                         {isBuiltIn ? <span className="sd-tag sd-tag-blue">内置</span> : null}
                         {modIsSmapi(mod) ? <span className="sd-tag sd-tag-gold">玩家需先安装</span> : null}
                         {modIsPanelControl(mod) ? <span className="sd-tag sd-tag-blue">服务端控制</span> : null}
                         {dependency ? <span className={`sd-tag ${dependency.className}`} title={dependency.title}>{dependency.label}</span> : null}
-                        {mod.parseError ? <span className="sd-tag sd-tag-red">解析失败</span> : null}
-                        {externalUrl ? (
-                          <button type="button" className="sd-tag sd-mmods-link-chip" onClick={() => window.open(externalUrl, '_blank', 'noopener,noreferrer')}>
-                            {nexusId > 0 ? '跳转N站' : '链接'}
-                          </button>
-                        ) : null}
-                        <label className={`sd-mmods-toggle${mod.enabled ? ' on' : ''}${toggleDisabled ? ' disabled' : ''}`} title={title}>
-                          <input
-                            type="checkbox"
-                            checked={mod.enabled}
-                            disabled={toggleDisabled}
-                            onChange={(e) => void handleEnabledChange(mod, e.currentTarget.checked)}
-                            aria-label={mod.enabled ? '禁用此 Mod' : '启用此 Mod'}
-                          />
-                          <span className="sd-mmods-toggle-track" aria-hidden="true">
-                            <span className="sd-mmods-toggle-thumb" />
-                          </span>
-                        </label>
+                        {mod.parseError ? <span className="sd-tag sd-tag-red" title={mod.parseError}>解析失败</span> : null}
                       </div>
+                    </div>
+                    <div className="sd-mmods-installed-state">
+                      <span className={`sd-tag ${mod.enabled ? 'sd-tag-green' : 'sd-tag-gold'}`}>{mod.enabled ? '已启用' : '已禁用'}</span>
+                      <label className={`sd-mmods-toggle${mod.enabled ? ' on' : ''}${toggleDisabled ? ' disabled' : ''}`} title={title}>
+                        <input
+                          type="checkbox"
+                          checked={mod.enabled}
+                          disabled={toggleDisabled}
+                          onChange={(e) => void handleEnabledChange(mod, e.currentTarget.checked)}
+                          aria-label={`${modDisplayName(mod)}：${mod.enabled ? '禁用此 Mod' : '启用此 Mod'}`}
+                        />
+                        <span className="sd-mmods-toggle-track" aria-hidden="true">
+                          <span className="sd-mmods-toggle-thumb" />
+                        </span>
+                      </label>
                     </div>
                   </article>
                 )

@@ -10,7 +10,13 @@ import type {
   SaveInfo,
 } from '../../types'
 import { getInstanceMetrics, getRestartSchedule } from '../../api'
+import { subscribeVisiblePoll } from '../../core/visible-polling'
+import { currentSessionGeneration } from '../../auth-session-events'
+import { resourceComparison, type ResourceKind } from '../resource-presentation'
+import { ResourceHint, ResourcePair } from '../ResourceHint'
+import { PanelResponse } from './PanelResponse'
 import { jobDisplayName, stateLabel } from '../../core/helpers'
+import { jobStatusLabel } from '../../core/job-presentation'
 import { ModalPortal } from '../../core/ModalPortal'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
@@ -21,17 +27,29 @@ import { panelUpdateSurface } from './panel-update-machine'
 import { calculateShellViewport, shouldAutoCollapseOpsRail } from './responsive-layout'
 import './StardewPanel.css'
 
-const OverviewPage = lazy(() => import('./pages/OverviewPage').then((m) => ({ default: m.OverviewPage })))
-const ServerControlPage = lazy(() =>
-  import('./pages/ServerControlPage').then((m) => ({ default: m.ServerControlPage })),
-)
-const SavesPage = lazy(() => import('./pages/SavesPage').then((m) => ({ default: m.SavesPage })))
-const JobsLogsPage = lazy(() => import('./pages/JobsLogsPage').then((m) => ({ default: m.JobsLogsPage })))
-const PlayersPage = lazy(() => import('./pages/PlayersPage').then((m) => ({ default: m.PlayersPage })))
-const PlayerModsPage = lazy(() => import('./pages/PlayerModsPage').then((m) => ({ default: m.PlayerModsPage })))
-const ModsPage = lazy(() => import('./pages/ModsPage').then((m) => ({ default: m.ModsPage })))
-const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then((m) => ({ default: m.DiagnosticsPage })))
-const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const pageLoaders = {
+  overview: () => import('./pages/OverviewPage').then((m) => ({ default: m.OverviewPage })),
+  server: () => import('./pages/ServerControlPage').then((m) => ({ default: m.ServerControlPage })),
+  saves: () => import('./pages/SavesPage').then((m) => ({ default: m.SavesPage })),
+  jobs: () => import('./pages/JobsLogsPage').then((m) => ({ default: m.JobsLogsPage })),
+  players: () => import('./pages/PlayersPage').then((m) => ({ default: m.PlayersPage })),
+  'player-mods': () => import('./pages/PlayerModsPage').then((m) => ({ default: m.PlayerModsPage })),
+  mods: () => import('./pages/ModsPage').then((m) => ({ default: m.ModsPage })),
+  diagnostics: () => import('./pages/DiagnosticsPage').then((m) => ({ default: m.DiagnosticsPage })),
+  settings: () => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+}
+function preloadPage(route: StardewRoute) {
+  if (route in pageLoaders) void pageLoaders[route as keyof typeof pageLoaders]().catch(() => undefined)
+}
+const OverviewPage = lazy(pageLoaders.overview)
+const ServerControlPage = lazy(pageLoaders.server)
+const SavesPage = lazy(pageLoaders.saves)
+const JobsLogsPage = lazy(pageLoaders.jobs)
+const PlayersPage = lazy(pageLoaders.players)
+const PlayerModsPage = lazy(pageLoaders['player-mods'])
+const ModsPage = lazy(pageLoaders.mods)
+const DiagnosticsPage = lazy(pageLoaders.diagnostics)
+const SettingsPage = lazy(pageLoaders.settings)
 
 function PageLoadingFallback() {
   return (
@@ -59,9 +77,9 @@ const NAV_ENTRIES: NavEntry[] = [
 ]
 
 const RIGHT_RAIL_TITLE_ICONS = {
-  health: '/assets/stardew/ui/icons/icon_right_rail_health_heart_image2.png',
-  active: '/assets/stardew/ui/icons/icon_right_rail_in_progress_clock_image2.png',
-  recent: '/assets/stardew/ui/icons/icon_right_rail_recent_tasks_clipboard_image2.png',
+  health: '/assets/stardew/ui/icons/icon_right_rail_health_heart_image2.optimized.webp',
+  active: '/assets/stardew/ui/icons/icon_right_rail_in_progress_clock_image2.optimized.webp',
+  recent: '/assets/stardew/ui/icons/icon_right_rail_recent_tasks_clipboard_image2.optimized.webp',
 } as const
 
 const JOB_STATUS_DOT: Record<string, string> = {
@@ -70,10 +88,6 @@ const JOB_STATUS_DOT: Record<string, string> = {
   succeeded: 'sd-dot sd-dot-green',
   failed: 'sd-dot sd-dot-red',
   canceled: 'sd-dot sd-dot-gray',
-}
-
-function metricPercentText(value: number | null | undefined): string {
-  return value == null ? '—' : `${Math.round(value)}%`
 }
 
 function metricPercentWidth(value: number | null | undefined): number {
@@ -90,18 +104,11 @@ function usageLevel(value: number | null | undefined): HealthStatLevel {
   return 'ok'
 }
 
-function latencyLevel(ms: number | null): HealthStatLevel {
-  if (ms == null) return 'ok'
-  if (ms >= 300) return 'crit'
-  if (ms >= 100) return 'warn'
-  return 'ok'
-}
-
 const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_JOB_DURATION_MS = 60_000
 const REMOTE_INSTALL_JOB_TYPES = new Set(['mod_remote_install', 'mod_nexus_install'])
 const DOWNLOAD_PROGRESS_RE = /下载进度：已下载[\s\S]*?[（(]\s*([0-9]+(?:\.[0-9]+)?)%\s*[）)]/
-const OPS_RAIL_METRICS_REFRESH_MS = 2000
+const OPS_RAIL_METRICS_REFRESH_MS = 8000
 const DESKTOP_SHELL_MOUNTED_CLASS = 'sd-desktop-shell-mounted'
 const ACTIVE_INSTALL_JOB_STATUSES = new Set(['queued', 'running'])
 
@@ -387,26 +394,8 @@ function OpsRailActiveCard({
   }, [])
 
   useEffect(() => {
-    let alive = true
-    let timer: number | undefined
-
-    async function loadConfig() {
-      try {
-        const res = await getRestartSchedule(instanceId)
-        if (alive) setSchedule(res.schedule)
-      } catch {
-        if (alive) setSchedule(null)
-      }
-      if (alive) {
-        timer = window.setTimeout(() => void loadConfig(), 60_000)
-      }
-    }
-
-    void loadConfig()
-    return () => {
-      alive = false
-      if (timer != null) window.clearTimeout(timer)
-    }
+    return subscribeVisiblePoll(`restart-schedule:${currentSessionGeneration()}:${instanceId}`, 60_000,
+      signal => getRestartSchedule(instanceId, signal), { data: res => setSchedule(res.schedule), error: () => setSchedule(null) })
   }, [instanceId])
 
   const { rows: restartRows, hiddenJobIds } = maintenanceRows(schedule, now, jobs, jobLogsByJobId, instanceState)
@@ -549,6 +538,23 @@ export function StardewPanel({
   const [installPromptPending, setInstallPromptPending] = useState(true)
   const [showMissingGameInstallPrompt, setShowMissingGameInstallPrompt] = useState(false)
   const [railMetric, setRailMetric] = useState<ResourceMetricSample | null>(null)
+  const [railMachine, setRailMachine] = useState<ResourceMetricSample | undefined>()
+
+  useEffect(() => {
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection
+    if (connection?.saveData || connection?.effectiveType === '2g') return
+    const preload = () => {
+      if (document.visibilityState === 'hidden') return
+      preloadPage('diagnostics')
+      preloadPage('mods')
+    }
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(preload, { timeout: 3000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const id = setTimeout(preload, 1500)
+    return () => clearTimeout(id)
+  }, [])
 
   useLayoutEffect(() => {
     const appRoot = document.getElementById('root')
@@ -648,54 +654,11 @@ export function StardewPanel({
   }, [])
 
   useEffect(() => {
-    let alive = true
-    let timer: number | undefined
-
-    function clearTimer() {
-      if (timer != null) {
-        window.clearTimeout(timer)
-        timer = undefined
-      }
-    }
-
-    function scheduleNext() {
-	  if (!alive || document.visibilityState !== 'visible') return
-      clearTimer()
-      timer = window.setTimeout(() => {
-        void loadMetrics()
-      }, OPS_RAIL_METRICS_REFRESH_MS)
-    }
-
-    async function loadMetrics() {
-	  if (document.visibilityState !== 'visible') return
-      try {
-        const res = await getInstanceMetrics(instanceId)
-        if (!alive) return
+    return subscribeVisiblePoll(`metrics:${currentSessionGeneration()}:${instanceId}`, OPS_RAIL_METRICS_REFRESH_MS,
+      signal => getInstanceMetrics(instanceId, signal), { data: res => {
         setRailMetric(res.sample)
-      } catch {
-        // Keep the previous sample so the right rail does not flicker during brief Docker/API hiccups.
-      } finally {
-        scheduleNext()
-      }
-    }
-
-	function handleVisibilityChange() {
-	  if (document.visibilityState === 'visible') {
-		void loadMetrics()
-		return
-	  }
-	  clearTimer()
-	}
-
-	document.addEventListener('visibilitychange', handleVisibilityChange)
-	if (document.visibilityState === 'visible') {
-	  void loadMetrics()
-	}
-    return () => {
-      alive = false
-      clearTimer()
-	  document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
+        setRailMachine(res.machine)
+      }, error: () => { setRailMetric(null); setRailMachine(undefined) } })
   }, [instanceId])
 
   function navigate(next: StardewRoute, options?: StardewNavigateOptions) {
@@ -760,14 +723,13 @@ export function StardewPanel({
 
   const activeSaveName = saves?.activeSaveName
   const railResourceStats = [
-    { label: 'CPU 使用率', value: null },
-    { label: '内存使用率', value: null },
-    { label: '磁盘使用率', value: null },
+    { label: 'CPU', kind: 'cpu' },
+    { label: '内存', kind: 'memory' },
+    { label: '存储', kind: 'storage' },
   ]
-  const railMetricValues = [railMetric?.cpuPercent, railMetric?.memoryPercent, railMetric?.diskPercent]
-  const liveRailResourceStats = railResourceStats.map((stat, index) => ({
+  const liveRailResourceStats = railResourceStats.map((stat) => ({
     ...stat,
-    value: railMetricValues[index] ?? null,
+    reading: resourceComparison(stat.kind as ResourceKind, railMetric ?? undefined, railMachine, 'world'),
   }))
   const onlineCount = dashboardData.players?.onlineCount
   const maxPlayers = dashboardData.players?.maxPlayers
@@ -778,7 +740,6 @@ export function StardewPanel({
         : String(onlineCount)
       : '—'
   const railPlayerLevel: HealthStatLevel = onlineCount === 0 ? 'crit' : 'ok'
-  const railLatencyLevel = latencyLevel(null)
   const activeSave = activeSaveName
     ? saves?.saves.find((save) => save.isActive || save.name === activeSaveName) ?? null
     : null
@@ -786,7 +747,7 @@ export function StardewPanel({
   const topbarSaveTime = topbarSaveTimeLabel(activeSave)
   const topbarSaveTitle = topbarSaveTime ? `${topbarSaveName}：${topbarSaveTime}` : topbarSaveName
   const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, versionInfo)
-  const topbarVersion = updateSurface.topbarText
+  const topbarVersion = updateSurface.topbarText === 'vdev' ? '开发版本' : updateSurface.topbarText
   const topbarStateLabel = topbarStatusText(instanceState?.state, dashboardData.loading)
   const topbarStatusDotClass = topbarStatusDotClassName(instanceState?.state, dashboardData.loading)
   const topbarStatusUsesGreenIcon = topbarStatusDotClass.includes('sd-dot-green')
@@ -947,6 +908,9 @@ export function StardewPanel({
                 aria-current={route === entry.route || (route === 'player-mods' && entry.route === 'players') ? 'page' : undefined}
                 aria-label={entry.label}
                 title={entry.label}
+                onPointerEnter={() => preloadPage(entry.route)}
+                onFocus={() => preloadPage(entry.route)}
+                onTouchStart={() => preloadPage(entry.route)}
                 onClick={() => navigate(entry.route)}
               >
                 <img className="sd-nav-icon" src={entry.icon} alt="" />
@@ -991,20 +955,23 @@ export function StardewPanel({
           <section className="sd-ops-card sd-ops-card-health sd-opsrail-section sd-opsrail-health">
             <h2 className="sd-opsrail-heading">
               <img className="sd-opsrail-title-icon" src={RIGHT_RAIL_TITLE_ICONS.health} alt="" />
-              <span>系统健康</span>
+              <span>当前世界</span>
             </h2>
+            <div className="sd-opsrail-resource-key" aria-label="进度条图例"><span><i />当前世界</span><span><i className="is-machine" />整机总占用</span></div>
             <div className="sd-opsrail-hstat-list">
               {liveRailResourceStats.map((stat) => (
-                <div key={stat.label} className={`sd-opsrail-hstat sd-opsrail-hstat--${usageLevel(stat.value)}`}>
+                <div key={stat.label} className={`sd-opsrail-hstat sd-opsrail-hstat--${usageLevel(stat.reading.percent)}`}>
                   <div className="sd-opsrail-hstat-row">
                     <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
                     <span className="sd-opsrail-hstat-label">{stat.label}</span>
-                    <span className="sd-opsrail-hstat-value">{metricPercentText(stat.value)}</span>
+                    <ResourceHint className="sd-opsrail-hstat-value" label={stat.reading.accessible} detail={stat.reading.detail}><ResourcePair {...stat.reading} /></ResourceHint>
                   </div>
-                  <div className="sd-opsrail-hstat-bar">
+                  <div className="sd-opsrail-hstat-bar sd-opsrail-hstat-bar--resources" role="img" aria-label={stat.reading.accessible}>
+                    <span className="sd-opsrail-hstat-machine" aria-hidden="true" style={{ width: `${metricPercentWidth(stat.reading.machinePercent)}%` }} />
                     <span
                       className="sd-opsrail-hstat-fill"
-                      style={{ width: `${metricPercentWidth(stat.value)}%` }}
+                      aria-hidden="true"
+                      style={{ width: `${metricPercentWidth(stat.reading.percent)}%` }}
                     />
                   </div>
                 </div>
@@ -1016,13 +983,7 @@ export function StardewPanel({
                   <span className="sd-opsrail-hstat-value">{railPlayerSummary}</span>
                 </div>
               </div>
-              <div className={`sd-opsrail-hstat sd-opsrail-hstat--${railLatencyLevel}`}>
-                <div className="sd-opsrail-hstat-row">
-                  <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
-                  <span className="sd-opsrail-hstat-label">网络延迟</span>
-                  <span className="sd-opsrail-hstat-value">按需诊断</span>
-                </div>
-              </div>
+              <PanelResponse />
             </div>
             <button type="button" className="sd-opsrail-link" onClick={() => navigate('diagnostics')}>
               查看详情 →
@@ -1055,7 +1016,7 @@ export function StardewPanel({
                         className={JOB_STATUS_DOT[job.status] ?? 'sd-dot sd-dot-gray'}
                         aria-hidden="true"
                       />
-                      {job.status}
+                      {jobStatusLabel(job.status)}
                     </div>
                   </div>
                 ))

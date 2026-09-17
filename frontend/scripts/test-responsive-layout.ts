@@ -414,7 +414,7 @@ assert.match(gameLibraryCss, /\.game-world-rail\.is-open \.world-choice-list li\
 assert.match(gameLibraryCss, /\.game-world-rail\.is-open\.is-closing \.world-choice-list li\s*\{[^}]*opacity:\s*0[^}]*transform:\s*translateX\(-50px\)[^}]*opacity 220ms ease-in 90ms[^}]*transform 360ms cubic-bezier\(0\.33, 0, 0\.67, 1\)/s)
 assert.doesNotMatch(gameLibraryCss, /\.world-chooser-backdrop|\.world-chooser-panel/)
 assert.match(gameLibraryCss, /@media\s*\(max-width:\s*700px\)[\s\S]*?\.game-picker\s*\{[^}]*--game-card-width:\s*min\(78vw, 320px\)[^}]*--game-card-gap:\s*0px[^}]*calc\(\(100vw - var\(--game-card-width\)\) \/ 2\)/)
-assert.match(gameLibraryCss, /@media\s*\(max-width:\s*700px\)[\s\S]*?\.world-choice\s*\{[^}]*width:\s*min\(72vw, 278px\)/)
+assert.match(gameLibraryCss, /@media\s*\(max-width:\s*700px\)[\s\S]*?\.world-choice\s*\{[^}]*width:\s*min\(72vw, 240px\)/)
 assert.match(gameLibraryCss, /\.world-create-card\s*\{[^}]*width:\s*clamp\(190px, 15vw, 210px\)[^}]*min-height:\s*0[^}]*aspect-ratio:\s*1 \/ 1[^}]*align-self:\s*center/s)
 assert.match(gameLibraryCss, /@media\s*\(max-width:\s*700px\)[\s\S]*?\.world-create-card\s*\{[^}]*width:\s*min\(60vw, 232px\)/s)
 assert.match(gameLibraryCss, /\.world-create-card--form\s*\{[^}]*width:\s*clamp\(238px, 18vw, 268px\)[^}]*min-height:\s*210px[^}]*aspect-ratio:\s*auto/s)
@@ -435,8 +435,8 @@ assert.match(gameLibraryCss, /\.game-hub--background-night \.world-choice-scene\
 assert.match(gameLibraryCss, /\.world-copy-button\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/s)
 assert.match(gameLibraryCss, /\.world-copy-button,[\s\S]*?\.world-lifecycle-button\s*\{[^}]*min-height:\s*44px/s)
 assert.match(gameLibraryCss, /\.world-lifecycle-button\s*\{[^}]*width:\s*100%/s)
-assert.match(gameLibraryCss, /\.world-choice-heading\s*\{[^}]*min-height:\s*64px/s, 'names and the inline editor reserve the same header height')
-assert.match(gameLibraryCss, /\.world-choice-name\s*\{[^}]*-webkit-line-clamp:\s*2[^}]*overflow:\s*hidden[^}]*line-height:\s*1\.35/s, 'long names cannot grow the card')
+assert.match(gameLibraryCss, /\.world-choice-heading\s*\{[^}]*min-height:\s*52px[^}]*flex-direction:\s*column/s, 'the status has its own row below the full-width name')
+assert.match(gameLibraryCss, /\.world-choice-name\s*\{[^}]*-webkit-line-clamp:\s*1[^}]*overflow:\s*hidden[^}]*line-height:\s*1\.35/s, 'long names remain on one line without growing the card')
 assert.match(gameLibraryCss, /\.world-name-row\s*\{[^}]*flex:\s*1[^}]*min-width:\s*0/s)
 assert.match(gameLibraryCss, /\.world-name-editor\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s)
 assert.match(gameLibrarySource, /className="world-choice-open"\s+title=\{worldName\}/, 'the full name remains available on hover and in the accessible label')
@@ -601,7 +601,7 @@ assert.match(diagnosticsPageCss, /@media\s*\(max-width:\s*760px\)[\s\S]*?\.sd-di
 assert.match(diagnosticsPageCss, /@media\s*\(max-width:\s*460px\)[\s\S]*?\.sd-diag-page \.sd-diag-header-actions\s*{[^}]*grid-template-columns:\s*1fr/s)
 assert.match(
   modsPageCss,
-  /\.sd-mods-nexus-card \.sd-mods-card-actions > \.sd-btn-delete\s*{[^}]*background-color:\s*var\(--sd-button-fill\);[^}]*color:\s*#8b2020;/s,
+  /\.sd-mods-nexus-card \.sd-mods-card-actions > \.sd-btn-delete\s*{[^}]*background-color:\s*transparent;[^}]*color:\s*#fff5d6;/s,
 )
 assert.match(qaSource, /SURFACE === 'app'/)
 assert.match(qaSource, /\/\\\/control-commands\$\//)

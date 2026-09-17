@@ -6,6 +6,7 @@ import {
   updateUserRole,
   updateUserPassword,
   disableUser,
+  enableUser,
   deleteUserHard,
   getInstanceVNCConfig,
   updateInstanceVNCPort,
@@ -83,19 +84,20 @@ type ConfirmDialogProps = {
   onConfirm: () => void
   onCancel: () => void
   danger?: boolean
+  busy?: boolean
 }
 
-function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCancel, danger }: ConfirmDialogProps) {
+function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCancel, danger, busy = false }: ConfirmDialogProps) {
   const titleId = useId()
   return (
-    <ModalPortal className="sd-confirm-overlay" ariaLabelledBy={titleId} onEscape={onCancel}>
+    <ModalPortal className="sd-confirm-overlay" ariaLabelledBy={titleId} onEscape={busy ? undefined : onCancel}>
       <div className="sd-confirm-dialog">
         <h3 id={titleId}>{title}</h3>
         <p>{body}</p>
         <div className="sd-confirm-actions">
-          <button className="sd-btn-tan" onClick={onCancel}>取消</button>
-          <button className="sd-btn-delete" onClick={onConfirm} aria-label={confirmLabel}>
-            {danger ? '⚠ ' : ''}{confirmLabel}
+          <button className="sd-btn-tan" onClick={onCancel} disabled={busy}>取消</button>
+          <button className={danger ? 'sd-btn-delete' : 'sd-btn-green'} onClick={onConfirm} aria-label={confirmLabel} disabled={busy}>
+            {busy ? '处理中…' : `${danger ? '⚠ ' : ''}${confirmLabel}`}
           </button>
         </div>
       </div>
@@ -385,12 +387,14 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
   }
 
   async function handleDelete() {
-    if (!deleteConfirm) return
+    if (!deleteConfirm || deleteBusy) return
     setDeleteBusy(true)
     setActionError(null)
     try {
       if (deleteConfirm.hard) {
         await deleteUserHard(deleteConfirm.user.id)
+      } else if (!deleteConfirm.user.isActive) {
+        await enableUser(deleteConfirm.user.id)
       } else {
         await disableUser(deleteConfirm.user.id)
       }
@@ -544,12 +548,12 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
                   </button>
                 )}
                 <button
-                  className="sd-btn-delete sd-btn--sm"
+                  className={`${u.isActive ? 'sd-btn-delete' : 'sd-btn-green'} sd-btn--sm`}
                   disabled={roleBusy || deleteBusy || !canManageTarget}
                   title={manageTitle}
                   onClick={() => setDeleteConfirm({ user: u, hard: false })}
                 >
-                  禁用
+                  {u.isActive ? '禁用' : '启用'}
                 </button>
                 <button
                   className="sd-btn-delete sd-btn--sm"
@@ -628,16 +632,19 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
 
       {deleteConfirm && (
         <ConfirmDialog
-          title={deleteConfirm.hard ? '永久删除用户' : '禁用用户'}
+          title={deleteConfirm.hard ? '永久删除用户' : deleteConfirm.user.isActive ? '禁用用户' : '启用用户'}
           body={
             deleteConfirm.hard
               ? `确认永久删除用户 "${deleteConfirm.user.username}"？此操作不可恢复。`
-              : `确认禁用用户 "${deleteConfirm.user.username}"？禁用后该用户将无法登录。`
+              : deleteConfirm.user.isActive
+                ? `确认禁用用户 "${deleteConfirm.user.username}"？禁用后该用户将无法登录。`
+                : `确认启用用户 "${deleteConfirm.user.username}"？启用后该用户可使用原账号登录。`
           }
-          confirmLabel={deleteConfirm.hard ? '永久删除' : '确认禁用'}
+          confirmLabel={deleteConfirm.hard ? '永久删除' : deleteConfirm.user.isActive ? '确认禁用' : '确认启用'}
           onConfirm={() => void handleDelete()}
           onCancel={() => setDeleteConfirm(null)}
-          danger
+          danger={deleteConfirm.hard || deleteConfirm.user.isActive}
+          busy={deleteBusy}
         />
       )}
     </section>

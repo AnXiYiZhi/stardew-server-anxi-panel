@@ -275,11 +275,47 @@
 
 .sd-mods-extension-check {
   min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid #b99b63;
+  border-radius: 4px;
+  background: #f5e7c4;
+  color: #715329;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sd-mods-extension-check::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  background: currentColor;
+}
+
+.sd-mods-extension-check:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.sd-mods-extension-check:focus-visible {
+  outline: 2px solid #6e4416;
+  outline-offset: 3px;
+}
+
+.sd-mods-extension-check:disabled {
+  cursor: wait;
 }
 
 .sd-mods-extension-check-connected {
   color: #1f5f2a;
   border-color: #6fac58;
+  background: #e9efd5;
 }
 
 .sd-mods-extension-check-disconnected {
@@ -1680,9 +1716,8 @@
 }
 
 .sd-mods-nexus-card .sd-mods-card-actions > .sd-btn-delete {
-  background-color: var(--sd-button-fill);
-  color: #8b2020;
-  text-shadow: none;
+  background-color: transparent;
+  color: #fff5d6;
 }
 
 .sd-mods-search-footer {

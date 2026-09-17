@@ -34,6 +34,8 @@ export function readableStardewLocation(location: StardewLocationLike, labels: R
   for (const raw of [location.locationDisplayName, location.locationName, location.location]) {
     const exact = (raw ?? '').trim()
     if (exact && (labels[exact] || CORE_LOCATION_ZH[exact])) return labels[exact] ?? CORE_LOCATION_ZH[exact]
+    const namedFarm = /^(.*?)\s+Farm$/i.exec(exact)
+    if (namedFarm?.[1]) return `${namedFarm[1]} 农场`
     const key = normalizeStardewLocationKey(raw)
     if (!key) continue
     const mapped = labels[key] ?? CORE_LOCATION_ZH[key]

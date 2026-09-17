@@ -6,6 +6,39 @@ import (
 	"testing"
 )
 
+func TestPlayerRosterBatchIsAtomic(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+	ctx := context.Background()
+	if _, err := store.EnsureDefaultInstance(ctx, EnsureDefaultInstanceParams{ID: "batch", DriverID: DefaultDriverID, Name: "test", DataDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	first := UpsertPlayerRosterParams{Entry: PlayerRosterEntry{InstanceID: "batch", StableSaveID: "farm_1", PlayerID: "1", DisplayName: "host", SnapshotObservedAt: "2026-09-17T00:00:00Z"}, Online: true}
+	invalid := first
+	invalid.Entry.PlayerID = ""
+	if err := store.UpsertPlayerRosterBatch(ctx, []UpsertPlayerRosterParams{first, invalid}); err == nil {
+		t.Fatal("invalid batch succeeded")
+	}
+	rows, err := store.ListPlayerRoster(ctx, "batch", "farm_1")
+	if err != nil || len(rows) != 0 {
+		t.Fatal("partial roster committed", err)
+	}
+	events, err := store.ListPlayerRosterEvents(ctx, "batch", "farm_1", 100)
+	if err != nil || len(events) != 0 {
+		t.Fatal("partial events committed", err)
+	}
+	second := first
+	second.Entry.PlayerID = "2"
+	second.Entry.DisplayName = "guest"
+	if err := store.UpsertPlayerRosterBatch(ctx, []UpsertPlayerRosterParams{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = store.ListPlayerRoster(ctx, "batch", "farm_1")
+	if err != nil || len(rows) != 2 {
+		t.Fatal("batch did not commit both players", err)
+	}
+}
+
 func TestPlayerRosterUpsertPreservesIdentityHistoryAndLatestSnapshot(t *testing.T) {
 	store, closeStore := newStorageTestStore(t)
 	defer closeStore()

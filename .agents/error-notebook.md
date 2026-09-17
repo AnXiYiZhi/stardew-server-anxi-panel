@@ -1,7 +1,102 @@
 # 项目执行错题本
 
+## 2026-09-17：v0.7.1 发布预检
+
+- 只读路径定位再次把 compatibility.yml、player_handlers.go、shared_steam.go、stardew_routes.go 等职责名称当作真实文件名，探针均 fail-fast、未取得证据；已改用已确认目录内的精确符号检索和 rg --files，读取只使用真实命中。继续执行 AGENTS.md 已提升的单目录、真实路径规则，不能凭职责补猜文件名。
+- 多文档/长 ShellCheck 输出合并再次超出预算；后续完整输出落 output/v071-preflight-20260917，再读取精确主题、终态或短尾段；截断内容不作为已读证据。ShellCheck 对在子 shell 内改写共享变量报 SC2030/SC2031，改为外层函数先声明局部变量、内层子 shell 仅执行夹具及清理，未禁用对应检查。
+
+## 2026-09-17：游戏库只读诊断检索路径
+
+- Go 格式终验补充：对已恢复原 CRLF 的文件用 `gofmt -l` 判定无输出，会把纯换行差异误报为格式失败。已按精确文件清单运行 gofmt，再恢复原换行，终验比较 formatter 输出与规范化 LF 后的源文本；新增集成测试有一处 gofmt 排版调整，其余均仅换行差异。不能为满足 gofmt 的 LF 输出而重编码既有 CRLF 文件。
+
+- 五项整改终验补充：把认证源码猜成 `steam_auth.go` 导致 `rg` 退出 2，随后又把诊断目录文件猜成 `catalog.go` 导致 Get-Content 失败（实际为 errors.go/catalog.json），宽泛检索错题本再次超出预算。均属于已有规则复发；余下检索仅允许一个已确认目录作为位置参数，必须限制匹配数和字符数，读取文件只接受该检索的真实命中；错题本仅读取顶部当前章节。认证函数实际位于 `installer.go`，未依据失败探针修改业务代码。长输出不得把每文件匹配上限当全局上限，必须先完整收集再投影有界结果。
+
+- 五项整改文档补丁补充：JavaScript 自动拼接 prepend hunk 时，原章节的新增行漏加 `+`，apply_patch 拒绝整个文档补丁、零修改；先核对该文件 diff，再把完整新增文本逐行映射为带 `+` 的行后提交独立补丁。生成补丁不得用尾部正则删除行前缀；适用于动态生成 Markdown prepend hunk。
+
+- 五项性能整改补充（Windows / PowerShell 7 / Linux Go 容器）：长行文档合并读取再次超过输出预算，后续改成单主题短段；Linux 全量测试首轮因 `modernc.org/libc@v1.74.1` ZIP 下载 `unexpected EOF`，5 个依赖该模块的包在 setup 阶段未执行，其他包已通过。保留完整 JSON/stderr 日志与任务缓存，核对容器已退出后，从宿主 Go 缓存导入同版本 ZIP，由 `go mod download` 按项目校验和验证，再只续跑未执行的包及 vet/build；不把依赖下载失败当成产品测试失败，也不重复已通过的独立包。
+
+- 性能复审补充（Windows / PowerShell 7）：首轮标题检索和多文件合并读取再次超过输出预算；只补读目标主题短段，不将截断内容作为已读证据。随后 `git diff ... | Select-Object -First 102` 提前关闭原生命令输出管道，使 Git 非零退出并触发包装器失败，后续读取未执行；改为先用任务变量完整收集 diff、检查 `$LASTEXITCODE`，再对变量做有界投影。适用于所有原生命令输出限量场景，禁止将消费者提前结束误判为 Git 或产品故障。后续把 Docker 客户端文件猜作 `backend/internal/docker/client.go`，`rg` 退出 2 并 fail-fast；该探针未取得证据，已停止使用猜测路径，后续检索仅向已确认目录传入位置参数并从命中结果读取。继续强制执行 AGENTS.md 已有的真实路径与有界读取规则。
+
+- 审计滑条验收补充（Windows / PowerShell 7 / Chrome CUA）：合并多个 CSS/文档片段时输出超过预算，后续只补读目标 override 短段。首次即时 DOM 矩形裁剪未覆盖完整组件，改用普通视口截图配合滚动尺寸核对。切换 820px 并导航后立即定位表格超时；fresh AX 证明页面就绪，随后只读 DOM 查询取得表格，焦点导航和尺寸检查通过。样式补丁出现混合 CRLF/LF 时应先归一化明确修改文件再构建；本次首轮构建已先启动，随后恢复 CRLF 并确认忽略行尾的语义 diff 不变，最终构建重新通过。
+
+- 性能验证补充：Linux 全包测试使用 `-timeout=180s`，Junimo 包的既有维护回滚夹具累计等待超过该预算，触发包级超时；单项用例并未报告新性能链路失败。修正为完整包 10 分钟预算，只续跑被中断包及未执行的 vet/build。浏览器移动模组验收误用猜测的 `.sd-mmods` 根类导致定位超时；桌面导航/缓存与共享指标检查此前已通过，浏览器和 HTTP 服务由 finally 清理。按真实 JSX 根容器修正定位，禁止根据类名前缀推断根类。
+
+- 安装错误解释补充（Windows / PowerShell 7）：首次对错题本以通用「错误/日志」宽匹配，及后续合并多文件片段输出超过预算被截断；均为只读。改为唯一主题、先收集命中后限量投影、每次短段读取并核对总字符数，只补读缺失范围；沿用 AGENTS.md 已提升的 80 行/12000 字符双重限制，不将退出 0 当作完整阅读证据。
+- 安装整包日志补充：首轮 Linux Junimo 整包失败输出夹杂大量 INFO，工具截断了中间失败原因，且 `--rm` 容器已清理；无法将截断摘要当成已定位证据。随后改为 `go test -json` 完整输出落任务专属系统临时日志，再投影 Action=fail/包终态与原始退出码；最终 1378 个用例/子用例通过、2 个既有条件跳过、零失败，vet/build 通过。已将长测试先落完整日志、再有界投影的规则提升到 AGENTS.md；本轮独立通过的前端与 Web 检查未因该日志问题重跑。
+- 安装测试执行补充：只读组合误添不存在的前端 `installer.go`、猜测 `steam_auth_handlers.go`，均 fail-fast，后续统一从已确认根目录检索命中再读取。新持久化夹具用 `ListJobLogs(..., 2000)` 被存储层回退为 200 条，错误地认为缺少尾部诊断；改用已核对契约的 `ListLatestJobLogs(..., 1000)` 并断言 hasEarlier。完整 Install 允许已有授权卷清理，夹具应断言游戏数据卷保持，不能假定所有 volume 操作均为新增副作用。临时 Node ESM 脚本首次用 `C:/...` import 被解析成 URL scheme，改用 `file:///C:/...` 后成功；脚本与截图放系统临时目录。移动截图首次处于展开动画中，改为等待有限动画结束并复核实际视口；随后修复了真实的小屏错误详情裁切。Browser 插件未提供，使用工作区自带 Playwright/独立 Chrome 验证，未使用真实凭据。
+- 同轮编辑补充：测试补丁的旧行在执行时已变化，匹配失败后读取当前行及 diff，仅补剩余修改；共享工作区不得假定早先快照仍可匹配。按已确认清单恢复 CRLF 时，`WriteAllText` 对 `frontend/tsconfig.app.json` 报“使用用户映射区域打开的文件”并 fail-fast，构建未开始；根因为文件映射占用导致原位截断被拒绝。核对原文件完整后改为先比较是否需要修改、写同目录唯一临时文件、再次比较原文未变、用精确绝对路径原子替换；未停止其他任务进程。以后遇到该类文件映射锁使用内容校验后的原子替换，不重复原位截断，也不删除目录。
+
+- VNC 继承验收补充（Chrome / CUA）：复用数分钟前用户标签的 AX 节点点击服务器入口，返回 `No node found for given backend id`，操作未生效；期间用户正在导航和启停世界。未重放旧节点，改用任务独立标签、fresh AX 与每次动作后状态确认，最终确认保存、重启成功和 VNC 密码提示。后续与用户并行操作时使用独立任务标签，不复用长时间前的节点编号。
+
+- API 取消参数补充：同一 `apply_patch` 中按业务组列出函数 hunk，顺序与文件中函数顺序不同，后置 hunk 回指前面的 `getComposePs` 导致匹配失败、零修改。独立读取真实函数与差异后，改为逐函数补丁。生成多 hunk 时必须按源码顺序或拆分执行，不将工具确认的零修改当部分成功。
+
+- 总览批准入口补充（Windows / PowerShell 7）：宽泛标题检索、多份文档合并读取，以及包含既有未提交大改的完整 `git diff` 超过输出预算；命令退出 0 但内容被截断。改为按唯一目标短段读取，差异先收集并检查退出码后仅投影本次审批标记；截断部分不作为已读依据。继续执行已提升至 AGENTS.md 的 80 行/12000 字符和精确范围规则，编排合并输出也须核对总预算，预先考虑既有差异规模。Browser 插件未提供，按前端验证技能使用已安装 Playwright/Chrome；临时脚本与截图位于系统临时目录，隔离夹具未操作真实认证数据。
+
+- VNC 只读排查补充（Windows / PowerShell 7 / Docker Desktop）：首次 `docker top <container> -eo args` 返回 `Couldn't find PID field in ps output` / 退出 1，因为 Docker top 解析输出需要 PID 列；改为 `docker top <container> -eo pid,args` 成功，再仅投影认证类型和是否配置密码文件。后续自定义 ps 列必须保留 PID，环境变量只输出密码是否配置，不输出秘密值。首轮对大错题本宽匹配标题和常见词再次导致截断；改为唯一主题 `rg -m` 和精确短段补读，继续执行 AGENTS.md 已有双重输出上限。
+
+- 控制页终态截图补充：桌面重新导航后等待「停止」按钮返回 selector deadline exceeded，随后 fresh AX 已显示运行态与按钮。未重放等待或业务点击，按实际就绪状态完成截图与控制台检查。导航后的状态相关按钮只有在对应实例状态加载后才可用于断言，超时须先检查当前 UI。
+
+- 八项性能优化补充（Windows / PowerShell 7）：首轮对大错题本使用标题和多个常见词宽匹配，输出严重截断；随后合并读取多份长行接手文档也超过总预算。均为只读、未据截断内容编辑。停止宽匹配，改用 `rg -m` 定位、单个主题短段及工具调用总字符预算，只补读缺失范围；继续遵守已提升到 AGENTS.md 的有界读取规则。
+
+- 控制页横排补充（Windows / PowerShell 7 / CUA）：大型错题本宽泛检索与多文档合并输出再次超过预算，改用唯一章节和有界短段分别读取，继续执行已有 80 行/12000 字符双重上限。快捷操作标题带装饰字符，`getByText('快捷操作', { exact: true })` 两次无匹配；fresh DOM 确认页面已加载，改用源码确认的区块 selector、唯一按钮或 heading 验证。已在 AGENTS.md 补强此类就绪检查，未据定位误差改动业务行为。首次写错题本返回 Failed to write file，核对文件存在、可写属性与内容完整后改用仓库相对路径补丁；写入失败的具体底层原因工具未提供。CUA `fill('')` 清空消息未改变字段实际值，后续只读复查确认仍为原文，改用 `press('ControlOrMeta+A')` 与 `press('Backspace')` 后 fresh AX 确认 0/120 和发送禁用；未发送测试消息，清理输入必须以实际值为准。
+
+- 玩家事件移位补充（Windows / PowerShell 7）：首轮对大型错题本使用宽泛标题与常见词检索，输出超过预算被截断；后续改为唯一章节、`rg -m` 和精确短行段读取。继续执行 AGENTS.md 已有的行数与字符双重上限，截断部分不视为已读，不据此编辑。
+
+- 直连端口调整补充（Windows / PowerShell 7 / CUA）：读取 CSS 长行与技能时合并输出再次超出预算，后续单独补读缺失邻域；既有断言的可选 `rg` 检索无匹配返回 1，被包装器误当执行失败，后续区分无匹配 1 与路径/执行错误 2。复制按钮首次自动指针点击未取得剪贴板内容，fresh DOM 确认页面与按钮后改用 `press('Enter')`，实际读到 `localhost:24643`；默认世界同样读到 `localhost`。继续执行已提升的有界输出和 UI 操作后状态核对规则，不将自动化指针无效归为产品缺陷。
+
+- 背景竖线修复补充（Windows / PowerShell 7 / CUA）：批量标题检索及多文件片段再次超出输出预算；改为任务唯一章节与短段分开读取。曾猜测 `stardew-assets.css` 路径，rg 退出 2；改用已确认 `frontend/src` 目录加 `-g '*.css'`，实际变量位于 `stardew-theme.css`。继续执行已提升的精确路径与有界输出规则，未将截断内容作为补丁锚点。
+- 同轮工具契约补充：`rg ... | Select-Object -First` 提前关闭管道造成原生命令非零；需截取原生输出时先收集完整结果、检查退出码，再切片。CUA 只读 evaluate 的 `parseFloat` 不可用，改用已返回的 CSS 字符串判断。apply_patch 后一个 hunk 重复前方 `.sd-main` 跳转锚点导致零修改，改为仅首个 hunk 使用唯一锚点、后续顺序匹配。同轮错题本被其它任务插入内容后旧相邻上下文失配，重读首段后以唯一标题插入，保留已有内容；编辑后按精确差异确认落点。
+
+- 性能审查补充（Windows / PowerShell 7）：批量读取标题索引和长行文档超过输出预算，改为按文件、精确行段及总字符量分别读取；只补读缺失范围。随后将聚合列表中的文件名误归到 `backend/internal/web/static.go`、`backend/internal/web/instance_state.go`，两次 `Get-Content` fail-fast 退出 1；实际路径为 `internal/static/static.go` 与 `internal/storage/instance_state.go`。根因是聚合投影丢失父目录后仍凭职责拼路径。已补强 AGENTS.md：聚合文件名不能作为路径证据，必须重新检索完整路径，并在批量读取前逐项验证存在。
+- 性能浏览器夹具补充：首次把实例页面写成 `/games/stardew/instances/stardew/overview`，应用按未知路由回到游戏库，侧栏等待 30 秒超时；夹具自动关闭浏览器和 HTTP server，无业务数据操作。核对 `app-routes.ts` 后改用 `/instances/stardew/overview`，增加 boot URL/DOM 投影，独立 Chrome 生产构建的六次导航通过。后续性能计时与功能验收共用源码确认的路由契约，夹具错误不得当成产品加载失败。
+
+- 总览弹窗验收补充：点击「停止」后，用 `getByRole('dialog')` 读取既有确认框超时。fresh DOM 确认实际角色为 `alertdialog`，弹窗已成功打开且服务仍运行；按实际「取消」按钮关闭并确认 `alertdialog` 数量为 0。验收先区分普通详情框与警示确认框，不根据页面用途猜测 ARIA 角色，也不重复触发停止操作。
+
+- 总览布局验收补充：Windows / PowerShell 7 批量读取大型文档与错题本时，虽限制行数但长行仍多次超过工具输出预算，结果被截断；命令退出 0 不代表内容已完整读取。正确方式为先按唯一章节检索，再分别读取小段并限制总字符量，补读缺失范围。该问题已复发，将「默认最多 80 行或 12000 字符、截断后不得重复整读」提升至 AGENTS.md，适用于所有长期文档和日志检索。
+- 最近复发/补充：同日总览精简时，将多个源码段、CSS 长行和技能文档合并读取，超过 4300 token 输出预算；改为只补读缺失的 CSS/JSX 精确邻域，后续每次仅读取当前补丁所需短段，技能与源码分开。继续执行已提升的有界读取规则。
+
+- 世界卡片比例验收补充：首轮整读大文档超过工具输出预算，改为实际章节附近的短行段；沿用完整行和输出截断不构成已确认锚点的规则。同轮其它工作更新错题本后，旧相邻行补丁失配，零修改；重新读取后仅以唯一章节标题插入。Chrome 主题切换后误将下一状态名称写成「星夜」，旧「暖昼」定位随后超时；fresh DOM 确认为「静夜」，实际切换已成功，改用真实名称恢复。手机游戏库有既有旋转壳，boundingClientRect 的宽高会交换，布局尺寸使用 clientWidth/clientHeight；跨断点重新导航完整 QA URL 并核对展开态。后续先读当前 DOM 再断言动态名称和页面布局，未据编排误差修改业务逻辑。
+- 联机接口核实补充：Windows / PowerShell 7 已读容器 `pwd` 为 `/data`，仍探测猜测的 `/app` 导致 `ls` 退出 2，未修改服务。改为列举 `/data`，只读实际 OpenAPI 与已确认游戏路径；任务 DLL 副本已按精确路径清理。继续执行已提升的“先清单、后真实路径”规则，容器路径同样适用。面板响应浏览器 QA 中两个标签均报告 visible，故未把跨标签读取当作 hidden 暂停验证；隐藏分支仅代码审查，待真实切后台验收。
+- 网络延迟方案检索补充：Windows / PowerShell 7 在尚未取得目录清单时对猜测的 `mods` 运行 `rg --files`，返回路径不存在/退出 2，后续成功读取掩盖了该失败；无业务修改。改用已确认仓库根的 `rg --files -g '*.cs' .` 定位实际 Control 源码。继续执行已提升的真实命中路径和原生命令退出码规则；方案调研同样不允许猜目录。批量文档读取再次超过输出预算，后续仅按已定位行段读取，避免以截断结果确认事实。
+- 背景修复验收补充：Windows / CUA 在用户标签等待玩家 `host` 超时，fresh AX 确认该标签已切到诊断页，属于页面身份变化，未据此修改业务逻辑。改用任务独立标签，先核对 URL/heading 再读取实际数据与截图。首轮整读大错题本和长文档导致输出截断，后续按目标章节有界读取；此类文件检索继续执行已提升的路径和输出范围规则。
+- 悬浮资源明细补充：恢复上下文后凭组件名读取不存在的 `frontend/src/components/ResourceMonitor.tsx`，fail-fast 退出 1，零修改。改用 `rg --files frontend/src -g '*Resource*'` 定位实际 `games/stardew/ResourceMonitor.tsx` 后读取。后续路径必须来自本轮真实文件清单；大型错题本只读目标章节，不对常见词全库输出。
+- 悬浮验收定位补充：世界侧栏 `.sd-opsrail-hstat-value` 同时包含玩家数、诊断状态等 6 项，不能直接当作三项资源集合；首次断言因此退出 1。改为 `.sd-opsrail-hstat-value.resource-hint` 精确圈定三项资源后重验。提示在轮播自动滚动时消失则为本轮实际交互缺陷，已改为滚动时更新浮层位置。
+- 占比展示验收补充：三项都改为百分比后，旧 Playwright 的唯一 `getByText('0%', exact:true)` 同时命中三列，strict mode 拒绝。先确认三列实际均为 0%，改为等待首项并完整断言三项文本；没有改产品值规避定位问题。语义重复文案必须限定列或断言集合，不能继续复用旧唯一性假设。
+- 资源分层实现补充：同轮又凭职责猜测 `config/compose.go` 和 `games/GamesPage.tsx`，前者 fail-fast 终止，后者 rg 退出 2；均未修改数据。真实 Compose 模板由检索定位为 `compose_template.go`。已有 AGENTS.md 的精确路径规则继续强制执行，本轮后续 rg 统一只传已确认的 `frontend/src`、`backend` 等目录，文件范围仅使用 `-g`，禁止追加记忆推导的路径。
+- 验证权限补充：受限沙箱内 `Get-NetTCPConnection -State Listen` 返回拒绝访问，后续预览端口探针未执行。按工具权限协议单独请求只读提升后成功取得 5173/8090 监听及系统排除范围；用户随后切换到完全访问。中断后先接续原 exec cell，确认端口探针和两个门禁终态，未重复启动构建或测试。恢复后 `git -c core.excludesFile=NUL status` 报 cannot use NUL as an exclude file；移除临时 override 后普通 `git status` 正常，不修改用户 Git 配置。不得把 Windows 设备名当可读 Git 配置文件。
+- 资源浏览器验收补充：卡片的选中伪元素向外延伸 3px，`scrollHeight > clientHeight` 误报内容溢出；改为资源行与卡片实际 bounding box 的包含关系，并检查 root 横向溢出。截图与点击必须等有限动画 finished 后执行，不能在展开动画中把裁切截图当最终布局。自动点击在提示框/轮播定位变化后无效果，fresh ARIA 确认后用 Enter 验证原生卡片展开/收起；独立 pointer 事件诊断确认等待动画后的真实 click 可进入收起。未据测试编排假设修改产品导航。
+- Go 测试辅助返回值补充：新测试误把 `doJSON` 的第二返回值当 JSON map，编译提示其类型为 `*http.Cookie`；改为从 response.Body 用 `json.Unmarshal` 解码。后续复用测试 helper 先读签名，不凭名称推导返回契约。资源单测和真实 Docker E2E 修正后通过。
+- 文档锚点复发：一次批量输出截断后仍把联调文档首标题复用到路线图，前三份独立补丁成功、路线图补丁零修改。按文件名与首行做短 JSON 投影后才补齐路线图/接手文档。继续强制 AGENTS.md 的“当前完整行、唯一语义锚点”规则；输出截断不算已确认目标行，不得用相邻文档标题替代。
+- 临时容器终态补充：Linux 验证使用 `--rm`，查询 `docker top` 时容器已随门禁终止自动删除，返回 No such container；不能据此判断门禁通过/失败。随后接续原 session 取得完整退出码，确认 web/docker 通过及 Junimo 一条既有 100ms 测试超时；仅独立复核失败项 5 次并跑最终资源专项/vet/build，均通过。后续优先接续 session；读取可自动清理的容器前先列表核对存在。
+- Windows / PowerShell 7：检索时误用未经文件清单确认的 `frontend/src/games/use-stardew-catalog.ts`，rg 返回路径不存在；后续成功读取不能代表该检索成功。没有修改产品代码或业务数据。
+- 根因：依据职责猜测 hook 文件名。停止该路径检索，直接读取已确认的 `game-library-state.ts`、`stardew/installation-state.ts`，结合实际诊断页和 `docker info` 确认 Docker Linux engine 管道不存在。
+- 预防：继续执行 AGENTS.md 的精确命中路径规则；rg 位置参数只使用一个已确认目录，先取得真实路径再读取。大型文档按相关章节有界读取，避免输出截断。
+
+## 2026-09-15：按钮验收截图的页面就绪与裁切
+
+- 资源位置示意补充：Windows PowerShell 7 只读检索误用未经文件清单确认的 `frontend/src/games/stardew/StardewShell.tsx`，rg 退出 2；该路径不存在。停止原检索，改用 `rg --files -g '*Shell*' -g '*Library*' frontend/src` 获取真实文件，再读取 `frontend/src/games/GameLibrary.tsx`。沿用 AGENTS.md 已提升的精确命中路径规则；组件职责不能用来推导文件名，后续 rg 位置参数只使用一个已确认目录。
+- 资源仪表设计补充：Image Gen 返回对象包含大段 data URI，直接 `text(result)` 使工具输出严重截断；生成本身成功。后续只 `store` 结果，用 `generatedImage(result)` 展示，文本仅投影 output_hint 或文件路径。使用已返回的 PNG 路径完成 `view_image` 复核；不把 Base64 媒体当作普通日志输出。
+- 同轮文档补丁补充：将前端接手文档的章节标题复用于路线图，路线图当前标题不同，第三个独立补丁未修改，后续构建尚未执行。读取路线图实际首行后单独补齐；前两份文档已成功，未重复写入。跨文档批处理仍必须分别核对锚点。
+- 移动模组验收补充：HMR 后曾落到真实登录页，fresh DOM 确认后重新进入完整 QA URL 恢复夹具；历史 createRoot 警告与当前页面内容分开判断。另一次 `fill('')` 返回后输入框仍保留测试词，读取 DOM 的 value 确认无变化后改用 `ControlOrMeta+A`、`Backspace` 清除并再次读取 value，未重放原调用或据此改动产品搜索逻辑。清理测试输入必须核对实际值，不能仅凭工具成功返回。
+- 用户启用入口修复：只读检索误将 `backend/internal/web/users*` 作为 rg 路径，Windows 返回 123。随即改为已确认目录 `backend/internal/web` 加 `-g '*user*'`，命中 `users_handlers.go` 后读取；未修改数据。沿用 AGENTS.md 已提升的「一个已确认目录位置参数、glob 只放 -g」规则。
+- 快捷排序夹具补充：回归运行按钮最初固定在左下角，遮挡移动「控制」导航，locator 点击后实际触发夹具并报“先打开控制页”。将夹具按钮移至右上方、结果层设为 pointer-events:none，重新导航并核对列表就绪后再运行，全部通过。夹具浮层不得覆盖待验收导航，错误应归因于夹具而不是产品。修改 QA 入口触发 HMR 时出现既有 createRoot 重复挂载警告；最终检查区分热更新历史告警和完整导航后的新错误。
+- 备份卡片调整补充：只读检索误传猜测的 `frontend/src/qa-layout.tsx`，rg 退出 2；真实入口由已存在的 `frontend/qa-layout.html` 确认为 `src/qa-layout-main.tsx`。未重复失败调用，后续只读取该真实入口。继续执行 AGENTS.md 已提升的精确命中路径规则；批量读取大型文档输出遭截断时改为按任务章节有界读取，避免丢失关键状态。
+- 跨页样式补丁补充：模组 CSS 补丁末尾误附不存在的单类 `.sd-mmods-search-btn` hunk（真实声明为复合选择器），该文件零修改。移除与本次改动无关的尾部 hunk，仅提交已读取的完整标题规则后成功；逐文件核对 diff，不把同一编排中前一个 TSX 补丁成功当成后续 CSS 已修改。
+- 导航补充：玩家状态布局验收的 `Page.navigate` 等待 20 秒超时；先核对 5173 的既有监听仍正常，再读取 browser tab inventory 和 fresh DOM，确认目标页已加载最新布局。属于导航回执超时，不是页面未更新；无需重放导航或重启用户服务。导航终态不确定时先读取实际页面再决定后续动作。
+- 同轮刷新样式验收：fresh DOM 已出现「刷新」，随后 role locator evaluate 仍触发 3 秒定位超时；未重复原定位，以普通截图及只读 `.sd-mplay-refresh-btn` DOM 投影确认 56×44px 点击框、上下 6px 皮肤内缩和最新样式。工具定位超时根因未确认，不能据此判定按钮不可用。视口切换后另发现页面处于总览，先读 fresh DOM、通过玩家导航返回，再进行非空卡片度量，避免把空结果当通过。
+- 环境：Codex CUA 应用内 Browser。切回桌面并导航后，未先等待惰性页面 heading，就对 `.sd-server-lifecycle` 执行 locator evaluate，3 秒超时；fresh DOM 随后确认页面正常。
+- 正确做法：导航后读取 DOM 并等待唯一可见“服务器控制” heading，再进行只读布局度量。此为验收编排等待不足，不是按钮功能失败。
+- 补充：对该带缩放 Shell 的截图传入 clip，返回图像实际取到左上顶栏，未符合目标区域。后续使用已验证的 `tab.screenshot({ fullPage: false })` 普通视口截图，不依赖当前后端 clip 的定位结果；交付前始终目视核对截图区域。
+
+## 2026-09-15：Docker 镜像拉取受本地代理端口阻塞
+
+- 环境：Windows / PowerShell 7，Docker Desktop。首次 `docker info` 发现引擎未启动，启动已安装 Desktop 后复查为 Linux。
+- `docker pull mcr.microsoft.com/dotnet/sdk:6.0` 失败：Docker 配置的环回代理 `127.0.0.1:10801` 拒绝连接；不是镜像不存在。未重复拉取、修改代理配置或认证。当前玩家修复复用已有 Junimo 诊断能力，无需更改 Control 制品。
+- 后续确需拉取镜像时先检查已配置代理的可用性；恢复网络后才能继续需要新镜像的构建。不得将下载失败当作编译失败或成功。本次未创建任务容器/卷。
+
 ## 2026-09-05：彻底删除世界任务检索补充
 
+- 2026-09-15 补充：玩家按钮验收中误读未经检索确认的 `frontend/.gitignore`，并使用 `-ErrorAction SilentlyContinue` 掩盖路径错误；组合命令后段成功不代表该读取成功。该读取与任务无关，已移除后续流程；继续严格执行先以 `rg --files` 确认真实路径、读取 fail-fast 的既有规则，不猜测或静默探测子项目配置。
 - Review 修复补充：一次多 hunk 补丁把较早的 GameInstallRail 锚点放到较晚章节之后，补丁零修改失败；按源码顺序拆分后成功。两次混用仓库根与 backend workdir 导致 Go 无 module/读取 frontend 路径不存在，均为 fail-fast、未修改数据。余下命令统一仓库根 workdir，Go 使用 `go -C backend ...`，npm 使用 `npm --prefix frontend ...`；该约束已提升到 AGENTS.md，跨子项目读文件不再切换 workdir。
 - Review Linux 回归补充：隔离 Go 容器从 proxy.golang.org 下载 modernc SQLite 1.54.0 时发生 unexpected EOF，相关包在 setup 阶段失败，未运行其测试。任务容器已随 --rm 退出；改用已验证宿主 Go 下载缓存作为只读 file GOPROXY，在独立容器中解压和编译，避免重复下载同一大制品。此方式仅复用模块制品，测试临时目录与编译缓存仍位于 Linux 容器；不得把环境依赖失败记为产品测试失败或成功。
 - 浏览器收尾补充：上下文恢复后误用不存在的 `tab.getState()`，返回 TypeError，未执行页面交互。重新调用 `cua.getState()` 盘点，再用已支持的 `cua.getTab(id, { browser })` 读取 AX 状态，使用已验证 locator `press('Escape')` 完成验收；恢复上下文时不猜 tab 方法。
@@ -1585,7 +1680,7 @@
 
 ## 2026-08-11：仓库文本检索误用了不存在的顶层目录
 
-- 最近复发/补充：2026-08-14 核对 Issue #8 的睡觉/主机语义时，把猜测且不存在的顶层 `control-mod` 与已确认的 `docs`、`backend`、`frontend` 一起传给 `rg`；有效路径已经输出命中，但 `rg` 最终以 2 退出。随后查询真实 Control 源路径时，第二段筛选无命中属于正常候选排除，却没有显式把 `rg` 的退出 1 归一化为成功，导致整个只读包装再次报告失败；两次均未修改产品或远端。后续先以 `rg --files`/`Test-Path` 生成真实搜索根，对“允许无命中”的候选筛选明确保存退出码并在 0/1 后 `exit 0`，不得只写 `if ($LASTEXITCODE -gt 1)` 后让最后一个 1 泄漏成包装终态。
+- 最近复发/补充：2026-08-14 核对 Issue #8 的睡觉/主机语义时，把猜测且不存在的顶层 `control-mod` 与已确认的 `docs`、`backend`、`frontend` 一起传给 `rg`；有效路径已经输出命中，但 `rg` 最终以 2 退出。随后查询真实 Control 源路径时，第二段筛选无命中属于正常候选排除，却没有显式把 `rg` 的退出 1 归一化为成功，导致整个只读包装再次报告失败；两次均未修改产品或远端。后续先以 `rg --files`/`Test-Path` 生成真实搜索根，对“允许无命中”的候选筛选明确保存退出码并在 0/1 后 `exit 0`，不得只写 `if ($LASTEXITCODE -gt 1)` 后让最后一个 1 泄漏成包装终态。 2026-09-17 性能收尾再次在已确认文件内做候选检索时将 rg 的无命中 1 统一 throw，导致只读包装退出 1；实际 preflight 位于首个搜索已返回的 smapi_update_workflow.go。改按真实命中路径读取并区分 0/1/>1，已在 AGENTS.md 提升为统一检索退出码规则。
 - 最近复发/补充：2026-08-13 生产 VNC 5800 根因已在远端确认后，为核对本地 Compose 模板又把不存在的顶层 `internal` 与有效的 `docs`、`deploy`、`frontend` 一起传给 `rg`；前序文档与前端命中已输出，但命令最终因 `internal` 不存在退出 1，没有新增远端操作或产品文件修改。随后停止猜路径，改为先用仓库根 `rg --files` 发现真实 `backend/internal/...` 文件，再按精确命中读取。
 - 最近复发/补充：2026-08-13 核对邀请码持久化实现时，把不存在的 `backend/internal/store` 与真实的 `backend/internal/storage` 候选混入同一条 `rg`，有效路径先返回命中，后续 `Select-Object` 又让包装命令表面退出 0。没有文件或远端状态变化。随后只从已确认的 `backend/internal/storage` 读取；以后即使是只读候选搜索，也必须先用 `rg --files backend/internal` 发现实际包名，并在接管道前保存和检查 `rg` 的原始退出码。
 - 最近复发/补充：2026-08-12 排查 Panel 自动更新时，把未先由 `rg --files` 或 `Test-Path` 确认的 `backend/internal/versioninfo` 与多个有效目录一起传给 `rg`；有效目录先产生大量命中，命令最后仍因不存在路径退出 2。随后又猜测不存在的 `backend/internal/web/setup_handlers.go` 和 `backend/internal/updatecheck/types.go`；实际 updatecheck 类型位于 `service.go`，前一个 updater 文件已输出但组合命令仍失败。后续跨模块检索或读取只使用已经列出的实际路径，候选目录和文件不得混入正式命令参数。
@@ -4345,6 +4440,7 @@
 - 正确做法：完成全部文本补丁后，对明确列出的受影响文件执行一次 UTF-8 无 BOM、CRLF 的机械归一化；归一化前后用 `git diff --ignore-space-at-eol` 核对语义不变，再复跑 BOM、U+FFFD 与混合换行审计。
 - 预防检查：Windows 上修改 CRLF 为主的 Markdown 后，进入长门禁前就运行逐文件字节级换行统计；发现混合换行立即修复，不能等到最终交付。
 - 适用范围：Windows 工作树内以 CRLF 检出的 Markdown、文本接手文档和错题本。
+- 最近复发/补充：2026-09-17 总览改版最终字节审计发现文档、路由与公共组件等受补丁影响文件混合 CRLF/LF。根因仍为补丁新增行 LF；使用任务脚本的显式文件清单机械恢复 CRLF，逐次比较忽略行尾后的 Git diff，保证语义与已有修改不变。构建前执行换行审计已提升到 AGENTS.md，适用范围补充为 TS/TSX/JSON/CSS 等 Windows 检出文本。
 
 # 2026-08-26：隔离预览核对不得整文件输出含密钥的 `.env`
 

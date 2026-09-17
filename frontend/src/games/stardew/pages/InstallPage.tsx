@@ -28,6 +28,7 @@ import {
 import { canonicalInstallJobs, canonicalInstallPageJobs, installJobForDisplay, latestInstallLogsFirst } from '../install-state'
 import { classifyInstallationState } from '../installation-state'
 import { useSteamAuthLogin } from '../useSteamAuthLogin'
+import { installationFailureMessage, installationRequestErrorMessage } from '../../../core/install-error.ts'
 
 // ── 进度工具 ──────────────────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
   if (phase === 'steamcmd_failed') return 'SteamCMD 安装或修复失败，请查看任务日志后重试'
   if (phase === 'steamcmd_image_pull_failed') return 'SteamCMD 工具镜像拉取失败，请检查 Docker 网络'
   if (phase === 'qr_auth_failed') return '旧版登录授权失败，请使用账号密码重新登录'
-  if (phase === 'credentials_required' && authFailed) return 'SteamCMD 登录失败，账号或密码错误'
+  if (phase === 'credentials_required' && authFailed) return 'SteamCMD 登录验证未通过'
   if (phase === 'install_interrupted') return '安装任务已中断，请重新发起安装'
   if (STEAM_INVITE_AUTH_FAILED_PHASES.includes(phase)) return 'Steam 邀请码授权失败，基础安装与局域网/IP 直连不受影响'
   if (authFailed) return 'SteamCMD 授权失败，请查看任务日志'
@@ -658,6 +659,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
   const needsInstallRepair = installation.kind === 'repair_required'
   const needsInstallationDiagnosis = installation.kind === 'runtime_error' || installation.kind === 'unknown'
   const installWorkflowFailed = installation.kind === 'install_failed'
+  const failureMessage = latestSteamTaskJob?.status === 'failed' || authFailed || installWorkflowFailed || needsInstallRepair
+    ? installationFailureMessage({ phase: effectivePhase, stateMessage, job: latestSteamTaskJob, logs, requiredFilesMissing: needsInstallRepair })
+    : ''
   const showPrimaryInstallAction = installation.kind === 'not_installed'
     || installWorkflowFailed
     || needsInstallRepair
@@ -817,7 +821,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
             <div className="sd-state-row">
               <span className="sd-state-label">状态说明</span>
               <span className="sd-install-state-msg">
-                {stateMessage || (installation.kind === 'installed'
+                {failureMessage || stateMessage || (installation.kind === 'installed'
                   ? 'Stardew Valley Dedicated Server 已成功安装并可运行！'
                   : needsInstallRepair
                     ? '安装文件或运行栈不完整，请执行校验与修复。'
@@ -1148,7 +1152,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
                 ) : null}
 
                 {installError ? (
-                  <div className="sd-install-error-bar" style={{ marginTop: 8 }}>{installError}</div>
+                  <div className="sd-install-error-bar" style={{ marginTop: 8 }}>{installationRequestErrorMessage(installError)}</div>
                 ) : null}
 
                 <div className="sd-install-form-actions">
@@ -1376,7 +1380,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
                           </form>
                         </>
                       )}
-                      {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
+                      {guardError ? <div className="sd-install-guard-error">{installationRequestErrorMessage(guardError)}</div> : null}
                     </>
                   ) : null}
                   {effectivePhase === 'steam_guard_mobile_required' ? (
@@ -1430,7 +1434,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
                           </form>
                         </>
                       )}
-                      {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
+                      {guardError ? <div className="sd-install-guard-error">{installationRequestErrorMessage(guardError)}</div> : null}
                     </>
                   ) : null}
                   {effectivePhase === 'steamcmd_guard_mobile_required' ? (

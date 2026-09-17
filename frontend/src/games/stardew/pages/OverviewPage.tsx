@@ -1,8 +1,10 @@
+import { LifecycleIcon } from '../LifecycleIcon'
 import { useEffect, useState } from 'react'
 import './OverviewPage.css'
-import { getJunimoUpdate, getRuntimeComponents } from '../../../api'
-import type { JunimoUpdateInfo, RuntimeComponentsInfo } from '../../../types'
-import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
+import { approvePlayerAuth, getInstancePasswordStatus, getJunimoUpdate, getRuntimeComponents, peekInstanceRead } from '../../../api'
+import type { InstancePasswordStatus, Job, JunimoUpdateInfo, RuntimeComponentsInfo, StardewPlayerInfo } from '../../../types'
+import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
+import { jobErrorSummary, jobEventLabel, jobStatusLabel, shortEventTime } from '../../../core/job-presentation'
 import { ModalPortal } from '../../../core/ModalPortal'
 import { InviteCodeCard } from '../InviteCodeCard'
 import { LanDirectConnectCard } from '../LanDirectConnectCard'
@@ -15,20 +17,30 @@ import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
 import { formatStardewLocation } from '../location-format'
 import { shouldShowRuntimeComponentsUpdate } from '../runtime-components-status'
 import { shouldShowSMAPIUpdate } from '../smapi-update-status'
+import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
 
 const OVERVIEW_ICONS = {
   server: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
   saves: '/assets/stardew/ui/icons/icon_nav_saves_chest_image2.png',
   mods: '/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png',
-  health: '/assets/stardew/ui/icons/icon_right_rail_health_heart_image2.png',
+  health: '/assets/stardew/ui/icons/icon_right_rail_health_heart_image2.optimized.webp',
   tasks: '/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png',
   players: '/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png',
 } as const
 
-export function OverviewPage({ user, instanceState, onNavigate, dashboardData }: StardewPageProps) {
+function isPendingApproval(player: StardewPlayerInfo) {
+  return !player.isHost && player.status === 'online' && player.isAuthenticated === false
+}
+
+export function OverviewPage({ user, instanceId, instanceState, onNavigate, dashboardData }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
-  const [junimoUpdate, setJunimoUpdate] = useState<JunimoUpdateInfo | null>(null)
-  const [runtimeComponents, setRuntimeComponents] = useState<RuntimeComponentsInfo | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<Job | null>(null)
+  const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
+  const [approveTarget, setApproveTarget] = useState<StardewPlayerInfo | null>(null)
+  const [approveBusyId, setApproveBusyId] = useState<string | null>(null)
+  const [approveFeedback, setApproveFeedback] = useState<PlayerCommandFeedback | null>(null)
+  const [junimoUpdate, setJunimoUpdate] = useState<JunimoUpdateInfo | null>(() => isAdmin ? peekInstanceRead<JunimoUpdateInfo>('junimo-update', instanceId) ?? null : null)
+  const [runtimeComponents, setRuntimeComponents] = useState<RuntimeComponentsInfo | null>(() => isAdmin ? peekInstanceRead<RuntimeComponentsInfo>('runtime-components', instanceId) ?? null : null)
   const {
     state,
     isRunning,
@@ -65,12 +77,12 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   })
 
   const activeSave = dashboardData.saves?.activeSaveName ?? null
+  const activeFarm = dashboardData.saves?.saves.find((save) => save.name === activeSave || save.isActive)?.farmName || activeSave || '未选择存档'
   const saveCount = dashboardData.saves?.saves.length ?? 0
   const visibleMods = dashboardData.mods?.mods.filter((m) => !modIsSystemRuntime(m)) ?? []
   const modCount = visibleMods.length
   const enabledModCount = visibleMods.filter((m) => m.enabled).length
   const disabledModCount = modCount - enabledModCount
-  const modRestartRequired = dashboardData.mods?.restartRequired ?? false
   const onlineCount = dashboardData.players?.onlineCount
   const maxPlayers = dashboardData.players?.maxPlayers
   const playerSummary =
@@ -81,9 +93,47 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
       : state === 'running'
         ? '识别中'
         : '—'
-  const onlinePlayers = dashboardData.players?.players.filter((player) => player.status === 'online') ?? []
+  const onlinePlayers = (dashboardData.players?.players.filter((player) => player.status === 'online') ?? [])
+    .sort((a, b) => Number(Boolean(b.isHost)) - Number(Boolean(a.isHost)) || Number(isPendingApproval(b)) - Number(isPendingApproval(a)))
+  const priorityPlayerCount = onlinePlayers.filter((player) => player.isHost || isPendingApproval(player)).length
+  const hasPendingApproval = onlinePlayers.some(isPendingApproval)
+  const canApprove = isAdmin && isRunning && passwordStatus?.enabled === true && passwordStatus.passwordBridgeAvailable === true
+  const approveTargetAvailable = onlinePlayers.some((player) => player.uniqueMultiplayerId === approveTarget?.uniqueMultiplayerId && isPendingApproval(player))
   const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
   const currentPanelVersion = updateSurface.currentVersion || '—'
+
+  useEffect(() => {
+    setPasswordStatus(null)
+    if (!isRunning || !hasPendingApproval || !isAdmin) return
+    let alive = true
+    getInstancePasswordStatus(instanceId).then((result) => {
+      if (alive) setPasswordStatus(result)
+    }).catch(() => {
+      if (alive) setPasswordStatus(null)
+    })
+    return () => { alive = false }
+  }, [instanceId, isRunning, hasPendingApproval, isAdmin])
+
+  async function handleApprove() {
+    const target = approveTarget
+    if (!target?.uniqueMultiplayerId || !canApprove || !approveTargetAvailable || approveBusyId) return
+    setApproveBusyId(target.uniqueMultiplayerId)
+    setApproveFeedback({ kind: 'processing', message: '处理中…' })
+    try {
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => approvePlayerAuth(target.uniqueMultiplayerId!, instanceId),
+        'approve-auth',
+        target.name,
+        setApproveFeedback,
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
+    } catch (error) {
+      setApproveFeedback({ kind: 'failed', message: errorMessage(error) })
+    } finally {
+      setApproveBusyId(null)
+      setApproveTarget(null)
+    }
+  }
 
   useEffect(() => {
     if (!isAdmin) {
@@ -92,26 +142,23 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
       return
     }
     let alive = true
-    getJunimoUpdate().then((result) => {
+    const controller = new AbortController()
+    getJunimoUpdate(instanceId, controller.signal).then((result) => {
       if (alive) setJunimoUpdate(result)
     }).catch(() => {
       if (alive) setJunimoUpdate(null)
     })
-    getRuntimeComponents().then((result) => { if (alive) setRuntimeComponents(result) }).catch(() => { if (alive) setRuntimeComponents(null) })
-    return () => { alive = false }
-  }, [isAdmin])
+    getRuntimeComponents(instanceId, controller.signal).then((result) => { if (alive) setRuntimeComponents(result) }).catch(() => { if (alive) setRuntimeComponents(null) })
+    return () => { alive = false; controller.abort() }
+  }, [instanceId, isAdmin])
 
   const healthChecks = dashboardData.health?.checks ?? []
   const healthStatus = dashboardData.health?.status
   const errorCount = healthChecks.filter((c) => c.status === 'error').length
   const warnCount = healthChecks.filter((c) => c.status === 'warning').length
-  const okCount = healthChecks.filter((c) => c.status === 'ok').length
+  const healthLabel = healthStatus === 'error' ? `${errorCount} 项异常` : healthStatus === 'warning' ? `${warnCount} 项警告` : healthStatus === 'ok' ? '正常' : dashboardData.healthError ? '检查失败' : '待检查'
 
   const recentJobs = dashboardData.jobs.slice(0, 5)
-  const activeJobCount = dashboardData.jobs.filter(
-    (j) => j.status === 'running' || j.status === 'queued',
-  ).length
-  const hasFailedJob = dashboardData.jobs.some((j) => j.status === 'failed')
 
   function renderLifecycleButtons() {
     if (!state) return null
@@ -121,7 +168,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
     if (state === 'save_required') {
       return (
         <button className="sd-btn-start" disabled>
-          <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
+          <LifecycleIcon action="start" />
           启动
         </button>
       )
@@ -153,7 +200,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
           disabled={actionBusy || !isAdmin}
           title={isAdmin ? undefined : '仅管理员可启动服务器'}
         >
-          <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
+          <LifecycleIcon action="start" />
           {actionBusy ? '启动中…' : '启动'}
         </button>
       )
@@ -168,7 +215,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
             disabled={actionBusy || !isAdmin}
             title={isAdmin ? undefined : '仅管理员可停止服务器'}
           >
-            <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
+            <LifecycleIcon action="stop" />
             停止
           </button>
           <button
@@ -177,7 +224,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
             disabled={actionBusy || !isAdmin}
             title={isAdmin ? undefined : '仅管理员可重启服务器'}
           >
-            <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
+            <LifecycleIcon action="restart" />
             重启
           </button>
         </>
@@ -196,340 +243,166 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   }
 
   return (
-    <div className="sd-ov-wrap">
-      {/* 顶部农场横幅：场景图 + 底部信息条 */}
-      <div className="sd-ov-banner">
-        <div className="sd-ov-banner-scene">
-          <div className="sd-ov-banner-bg" />
-          <div className="sd-ov-banner-overlay" />
-        </div>
-        <div className="sd-ov-banner-statbar">
-          <div className="sd-bstat">
-            <img src="/assets/stardew/ui/icons/icon_top_summary_save.png" alt="" />
-            <div className="sd-bstat-tx">
-              <span className="sd-bstat-l">存档</span>
-              <span className="sd-bstat-v">{saveCount}</span>
-            </div>
+    <div className="sd-overview">
+      <header className="sd-overview-banner">
+        <div className="sd-overview-scene" role="img" aria-label="星露谷农场风景" />
+        <div className="sd-overview-identity">
+          <div className="sd-overview-world">
+            <h1 title={instanceState?.name || '星露谷物语'}>{instanceState?.name || '星露谷物语'}</h1>
+            <span className={`sd-overview-state${isRunning ? ' is-running' : ''}`}>
+              <i aria-hidden="true" />{state ? stateLabel(state) : '状态未知'}
+            </span>
           </div>
-          <div className="sd-bstat">
-            <img src="/assets/stardew/ui/icons/icon_top_summary_players.png" alt="" />
-            <div className="sd-bstat-tx">
-              <span className="sd-bstat-l">玩家</span>
-              <span className="sd-bstat-v">{playerSummary}</span>
-            </div>
+          <span className="sd-overview-farm" title={activeFarm}>当前农场 · {activeFarm}</span>
+          <button className="sd-overview-saves" onClick={() => onNavigate('saves')} title="查看存档" aria-label={dashboardData.savesError ? '存档读取失败，打开存档管理' : `存档 ${dashboardData.saves ? saveCount : '读取中'}，打开存档管理`}>
+            <img src={OVERVIEW_ICONS.saves} alt="" />
+            <span>存档</span><strong>{dashboardData.savesError ? '读取失败' : dashboardData.saves ? saveCount : '—'}</strong>
+          </button>
+          <div className="sd-overview-checks">
+            <button className="sd-overview-health" onClick={() => onNavigate('diagnostics')}>
+              <img src={OVERVIEW_ICONS.health} alt="" />健康检查
+              <span className={`sd-overview-health-state is-${healthStatus || 'unknown'}`}>{healthLabel}</span>
+            </button>
+            <button className={`sd-overview-version is-${updateSurface.tone}`} onClick={dashboardData.openUpdateDialog}
+              title={currentPanelVersion === 'dev' ? '开发版本' : `面板版本：${currentPanelVersion}`}>
+              <img src="/assets/stardew/ui/icons/icon_top_summary_version.png" alt="" />
+              {updateSurface.overviewText}
+            </button>
           </div>
-          <button type="button" className="sd-bstat sd-bstat--button" onClick={dashboardData.openUpdateDialog}>
-            <img src="/assets/stardew/ui/icons/icon_top_summary_version.png" alt="" />
-            <div className="sd-bstat-tx">
-              <span className="sd-bstat-l">版本</span>
-              <span className="sd-bstat-v">{currentPanelVersion}</span>
-            </div>
-          </button>
-          <button
-            type="button"
-            className={`sd-bstat sd-bstat--latest sd-bstat--button sd-bstat--${updateSurface.tone}`}
-            onClick={dashboardData.openUpdateDialog}
-          >
-            <span className={`sd-ov-latest sd-ov-latest--${updateSurface.tone}`}>{updateSurface.overviewText}</span>
-          </button>
         </div>
-      </div>
+      </header>
 
       {junimoUpdate?.available ? (
-        <section className="sd-card sd-ov-junimo-update" aria-label="Junimo 运行组件更新提示">
-          <div className="sd-ov-junimo-update-copy">
-            <strong>Junimo 运行组件可更新</strong>
-            <span>{junimoUpdate.current.server.tag || '当前版本'} → {junimoUpdate.recommended.server.tag}。{junimoUpdate.recommended.runtimeUpdatePolicy === 'required' ? '当前 Panel 强制使用此版本，系统会自动完成校验、下载、安装和验收，无需再次确认。' : '这是可选更新；进入版本维护后可一键完成升级。'}</span>
+        <section className="sd-overview-notice" aria-label="游戏运行组件更新提示">
+          <div><strong>游戏运行组件可更新</strong>
+            <p>{junimoUpdate.recommended.runtimeUpdatePolicy === 'required' ? '此版本为当前面板必需版本，系统会自动完成校验、下载、安装和验收。' : '已有可选更新，可进入版本维护完成升级。'}</p>
           </div>
-          <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>
-            进入版本维护
-          </button>
+          <button className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>进入版本维护</button>
         </section>
       ) : null}
-
       {shouldShowRuntimeComponentsUpdate(runtimeComponents) ? (
-        <section className="sd-card sd-ov-junimo-update" aria-label="游戏运行文件更新提示">
-          <div className="sd-ov-junimo-update-copy">
-            <strong>游戏运行文件可更新</strong>
-            <span>已验证的游戏版本或联机运行库与当前实例不一致；本阶段仅提示和预检，不会执行更新。</span>
-          </div>
-          <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>查看详情</button>
+        <section className="sd-overview-notice" aria-label="游戏运行文件更新提示">
+          <div><strong>游戏运行文件可更新</strong><p>游戏版本或联机运行库与推荐版本不一致，可先查看更新预检结果。</p></div>
+          <button className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>查看详情</button>
         </section>
       ) : null}
-
       {shouldShowSMAPIUpdate(runtimeComponents?.smapi) ? (
-        <section className="sd-card sd-ov-junimo-update" aria-label="SMAPI 更新提示">
-          <div className="sd-ov-junimo-update-copy">
-            <strong>游戏模组运行环境可更新</strong>
-            <span>Panel 内置的已验证 SMAPI 推荐版本与实际游戏目录不一致；更新后玩家可能需要重新获取完整同步包。</span>
-          </div>
-          <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>查看详情</button>
+        <section className="sd-overview-notice" aria-label="模组运行环境更新提示">
+          <div><strong>游戏模组运行环境可更新</strong><p>模组运行环境与推荐版本不一致，更新后玩家可能需要重新获取完整同步包。</p></div>
+          <button className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>查看详情</button>
         </section>
       ) : null}
 
-      {/* 服务器控制 */}
-      <div className="sd-ov-section">
-        <div className="sd-ov-title">
-          <img src={OVERVIEW_ICONS.server} alt="" />
-          服务器控制
+      <section className="sd-overview-control" aria-label="服务器控制">
+        <div className="sd-overview-lifecycle">
+          <h2><img src={OVERVIEW_ICONS.server} alt="" />服务器控制</h2>
+          <div className="sd-overview-actions">{renderLifecycleButtons()}</div>
+          {showSaveRequiredPrompt ? (
+            <div className="sd-overview-feedback">
+              <p>请先创建或上传存档，再启动服务器。</p>
+              <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>创建/上传存档</button>
+            </div>
+          ) : null}
         </div>
-        <div className="sd-ctrl-row">
-          <div className="sd-lifecycle-actions">
-            <div className="sd-lifecycle-btns">
-              {renderLifecycleButtons()}
-            </div>
-            <div className="sd-lifecycle-status">
-              状态
-              <span
-                className={
-                  state === 'running' || state === 'starting'
-                    ? 'sd-dot sd-dot-green'
-                    : state === 'stopped' || state === 'error'
-                      ? 'sd-dot sd-dot-red'
-                      : 'sd-dot sd-dot-gray'
-                }
-                aria-hidden="true"
-              />
-              <span className={`sd-lifecycle-status-val sd-lifecycle-status-val-${state ?? 'unknown'}`}>
-                {state ? stateLabel(state) : '未知'}
-              </span>
-            </div>
-            {showSaveRequiredPrompt ? (
-              <div className="sd-start-save-required">
-                <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
-                <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
-                  创建/上传存档
-                </button>
+        <div className="sd-overview-connections">
+          <LanDirectConnectCard dashboardData={dashboardData} />
+          {instanceState?.steamInviteEnabled === true ? (
+            <InviteCodeCard instanceState={instanceState} dashboardData={dashboardData} canManageSteamInvite={isAdmin} onNavigate={onNavigate} />
+          ) : null}
+        </div>
+        {actionError ? <p className="sd-overview-error" role="alert">{jobErrorSummary(actionError)}</p> : null}
+      </section>
+
+      <div className="sd-overview-bottom">
+        <section className="sd-overview-panel sd-overview-players">
+          <header className="sd-overview-panel-head">
+            <h2><img src={OVERVIEW_ICONS.players} alt="" />在线玩家</h2>
+            <span className="sd-overview-player-count">{playerSummary}</span>
+            {isAdmin ? <button className="sd-overview-detail" onClick={() => { void openRuntimeSettings() }} aria-label="修改联机人数上限">修改上限</button> : null}
+          </header>
+          <div className="sd-overview-player-list">
+            {onlinePlayers.length ? onlinePlayers.slice(0, Math.max(4, priorityPlayerCount)).map((player) => (
+              <div className="sd-overview-player" key={player.uniqueMultiplayerId || player.name}>
+                <span className="sd-overview-avatar" aria-hidden="true">{player.name.slice(0, 1)}</span>
+                <span className="sd-overview-player-info"><strong>{player.name}</strong>
+                  <span>{isPendingApproval(player) ? '待批准' : formatStardewLocation(player, { fallback: player.isHost ? '农场主' : '在线' })}</span>
+                </span>
+                {isPendingApproval(player) && isAdmin ? (
+                  <button
+                    type="button"
+                    className="sd-btn-green sd-overview-approve"
+                    disabled={!canApprove || !player.uniqueMultiplayerId || approveBusyId !== null}
+                    title={!isRunning ? '服务器运行后可批准' : !passwordStatus ? '暂未获取认证状态，请稍后重试或前往玩家页刷新' : !passwordStatus.enabled ? '服务器未开启密码认证' : !passwordStatus.passwordBridgeAvailable ? '密码认证反射桥不可用' : !player.uniqueMultiplayerId ? '缺少玩家联机 ID' : '批准该玩家认证'}
+                    aria-label={`批准 ${player.name}`}
+                    onClick={() => { setApproveFeedback(null); setApproveTarget(player) }}
+                  >{approveBusyId === player.uniqueMultiplayerId ? '批准中…' : '批准'}</button>
+                ) : null}
+                <i className={`sd-overview-online-dot${isPendingApproval(player) ? ' is-pending' : ''}`} aria-label={isPendingApproval(player) ? '待批准' : '在线'} />
               </div>
-            ) : null}
+            )) : <p className="sd-overview-empty">{dashboardData.playersError ? '在线玩家读取失败，请稍后重试。' : onlineCount === 0 ? '暂无在线玩家。' : isRunning ? '正在读取玩家信息…' : '服务器运行后显示在线玩家。'}</p>}
           </div>
-          <div className="sd-overview-invite-card sd-overview-connection-cards">
-            <LanDirectConnectCard dashboardData={dashboardData} />
-            {instanceState?.steamInviteEnabled === true ? (
-              <InviteCodeCard
-                instanceState={instanceState}
-                dashboardData={dashboardData}
-                canManageSteamInvite={isAdmin}
-                onNavigate={onNavigate}
-              />
-            ) : null}
-          </div>
-        </div>
-        {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
-      </div>
-
-      <div className="sd-metric-grid sd-ov-metric-strip" aria-label="服务器摘要">
-        <div className={`sd-mc${dashboardData.savesError ? ' sd-mc--error' : !activeSave ? ' sd-mc--warn' : ''}`}>
-          <div className="sd-mc-name">
-            <img src={OVERVIEW_ICONS.saves} alt="" />
-            存档
-          </div>
-          <div className="sd-mc-val">{saveCount}</div>
-          <div className="sd-mc-unit">个存档</div>
-          <div className="sd-mc-sub">
-            {activeSave
-              ? `当前: ${activeSave}`
-              : dashboardData.savesError
-                ? '读取失败'
-                : '暂无激活存档'}
-          </div>
-          <span className={`sd-mc-pill${activeSave ? ' sd-mc-pill--ok' : ' sd-mc-pill--warn'}`}>
-            {activeSave ? '正常' : '待选择'}
-          </span>
-        </div>
-
-        <div className={`sd-mc${dashboardData.modsError ? ' sd-mc--error' : modRestartRequired ? ' sd-mc--warn' : ''}`}>
-          <div className="sd-mc-name">
-            <img src={OVERVIEW_ICONS.mods} alt="" />
-            模组
-          </div>
-          <div className="sd-mc-val">{modCount}</div>
-          <div className="sd-mc-unit">个模组</div>
-          <div className="sd-mc-sub">
-            {dashboardData.modsError ? '读取失败' : modRestartRequired ? '有模组变更待应用' : `已启用 ${enabledModCount} 个`}
-          </div>
-          <span className={`sd-mc-pill${dashboardData.modsError ? ' sd-mc-pill--error' : modRestartRequired ? ' sd-mc-pill--warn' : ' sd-mc-pill--ok'}`}>
-            {dashboardData.modsError ? '异常' : modRestartRequired ? '待应用' : '健康'}
-          </span>
-        </div>
-
-        <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus === 'warning' ? ' sd-mc--warn' : healthStatus === 'error' ? ' sd-mc--error' : ''}`}>
-          <div className="sd-mc-name">
-            <img src={OVERVIEW_ICONS.health} alt="" />
-            系统健康
-          </div>
-          <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : healthStatus === 'warning' ? '#d08010' : healthStatus === 'error' ? '#c02020' : '#2c1a0a' }}>
-            {healthStatus === 'ok' ? '100%' : healthStatus === 'warning' ? `${warnCount}警告` : healthStatus === 'error' ? `${errorCount}错误` : '—'}
-          </div>
-          <div className="sd-mc-unit">健康评分</div>
-          <div className="sd-mc-sub">
-            {healthStatus === 'ok'
-              ? `${okCount}项全部通过`
-              : healthStatus === 'warning'
-                ? `${errorCount === 0 ? '' : `${errorCount}错误 · `}${okCount}正常`
-                : healthStatus === 'error'
-                  ? `${warnCount}警告 · ${okCount}正常`
-                  : dashboardData.healthError
-                    ? '健康检查失败'
-                    : '进入诊断页后检查'}
-          </div>
-          <span className={`sd-mc-pill${healthStatus === 'error' ? ' sd-mc-pill--error' : healthStatus === 'warning' ? ' sd-mc-pill--warn' : healthStatus === 'ok' ? ' sd-mc-pill--ok' : ''}`}>
-            {healthStatus === 'error' ? '异常' : healthStatus === 'warning' ? '警告' : healthStatus === 'ok' ? '优秀' : '未检查'}
-          </span>
-        </div>
-
-        <div className={`sd-mc${hasFailedJob ? ' sd-mc--error' : ''}`}>
-          <div className="sd-mc-name">
-            <img src={OVERVIEW_ICONS.tasks} alt="" />
-            运行任务
-          </div>
-          <div className="sd-mc-val" style={{ color: hasFailedJob ? '#c02020' : '#2c1a0a' }}>
-            {activeJobCount}
-          </div>
-          <div className="sd-mc-unit">个任务</div>
-          <div className="sd-mc-sub">
-            {hasFailedJob ? '最近有失败任务' : activeJobCount > 0 ? '进行中' : '无异常'}
-          </div>
-          <span className={`sd-mc-pill${hasFailedJob ? ' sd-mc-pill--error' : ' sd-mc-pill--ok'}`}>
-            {hasFailedJob ? '异常' : '正常'}
-          </span>
-        </div>
-      </div>
-
-      <div className="sd-ov-summary-grid">
-        <section className="sd-ov-card">
-          <div className="sd-player-hd">
-            <img src={OVERVIEW_ICONS.players} alt="" />
-            在线玩家
-            {onlineCount != null && maxPlayers != null ? <span>{onlineCount}/{maxPlayers}</span> : null}
-            {isAdmin ? (
-              <button
-                type="button"
-                className="sd-ov-player-limit-btn"
-                onClick={() => { void openRuntimeSettings() }}
-                aria-label="修改联机人数上限"
-                title="修改联机人数上限"
-              >
-                修改上限
-              </button>
-            ) : null}
-          </div>
-          <div className="sd-ov-player-body">
-            {onlinePlayers.length > 0 ? (
-              <div className="sd-ov-player-list">
-                {onlinePlayers.slice(0, 4).map((player) => (
-                  <div className="sd-ov-player-row" key={player.uniqueMultiplayerId || player.name}>
-                    <span className="sd-ov-player-avatar" aria-hidden="true">{player.name.slice(0, 1)}</span>
-                    <span className="sd-ov-player-main">
-                      <span className="sd-ov-player-name">{player.name}</span>
-                      <span className="sd-ov-player-meta">
-                        {formatStardewLocation(player, { fallback: player.isHost ? '农场主' : '在线' })}
-                      </span>
-                    </span>
-                    <span className="sd-dot sd-dot-green" aria-hidden="true" />
-                  </div>
-                ))}
+          {approveFeedback ? <p className={approveFeedback.kind === 'failed' ? 'sd-overview-error' : 'sd-overview-approval-feedback'} role={approveFeedback.kind === 'failed' ? 'alert' : 'status'}>{approveFeedback.message}</p> : null}
+          <button className="sd-overview-link sd-overview-player-more" onClick={() => onNavigate('players')}>查看全部玩家 →</button>
+        </section>
+        <section className="sd-overview-events sd-overview-panel">
+          <header className="sd-overview-panel-head">
+            <h2><img src={OVERVIEW_ICONS.tasks} alt="" />近期事件</h2>
+            <button className="sd-overview-link" onClick={() => onNavigate('jobs')}>查看全部 →</button>
+          </header>
+          <div className="sd-overview-event-list">
+            {recentJobs.length ? recentJobs.map((job) => (
+              <div key={job.id} className={`sd-overview-event is-${job.status}`}>
+                <i className="sd-overview-event-dot" aria-hidden="true" />
+                <span className="sd-overview-event-name" title={jobEventLabel(job)}>{jobEventLabel(job)}</span>
+                <time dateTime={job.createdAt} title={formatDate(job.createdAt)}>{shortEventTime(job.createdAt)}</time>
+                {job.status === 'failed' ? <button className="sd-overview-detail" onClick={() => setSelectedEvent(job)} aria-label={`查看${jobDisplayName(job)}的失败详情`}>查看详情</button> : null}
               </div>
-            ) : dashboardData.playersError ? (
-              <span>在线玩家读取失败。</span>
-            ) : onlineCount === 0 ? (
-              <span>暂无在线玩家。</span>
-            ) : state === 'running' ? (
-              <span>已接入在线人数，玩家姓名等待控制文件或 Junimo info 输出。</span>
-            ) : (
-              <span>服务器运行后显示在线玩家。</span>
-            )}
+            )) : <p className="sd-overview-empty">{dashboardData.loading ? '正在读取事件…' : '暂无事件记录'}</p>}
           </div>
-          <button className="sd-all-logs-btn" onClick={() => onNavigate('players')}>
-            查看全部玩家 →
-          </button>
         </section>
-
-        <section className="sd-ov-card">
-          <div className="sd-ev-title">
-            <img src={OVERVIEW_ICONS.tasks} alt="" />
-            近期事件
+        <section className="sd-overview-panel sd-overview-mods">
+          <header className="sd-overview-panel-head"><h2><img src={OVERVIEW_ICONS.mods} alt="" />模组状态</h2></header>
+          <div className="sd-overview-mod-grid">
+            <div><strong>{dashboardData.mods ? enabledModCount : '—'}</strong><span>已启用</span></div>
+            <div><strong>{dashboardData.mods ? disabledModCount : '—'}</strong><span>已禁用</span></div>
+            <div><strong>—</strong><span>更新待检查</span></div>
+            <div><strong>{dashboardData.modsError ? '失败' : dashboardData.mods ? '正常' : '—'}</strong><span>读取状态</span></div>
           </div>
-          <div className="sd-ev-list">
-            {recentJobs.length > 0 ? (
-              recentJobs.map((j) => (
-                <div key={j.id} className="sd-ev-item">
-                  <div className="sd-ev-time">
-                    {j.createdAt ? formatDate(j.createdAt).slice(5) : '—'}
-                  </div>
-                  <div className="sd-ev-text">
-                    <span
-                      className={
-                        j.status === 'succeeded'
-                          ? 'sd-dot sd-dot-green'
-                          : j.status === 'failed'
-                            ? 'sd-dot sd-dot-red'
-                            : j.status === 'running'
-                              ? 'sd-dot sd-dot-green sd-dot-pulse'
-                              : j.status === 'queued'
-                                ? 'sd-dot sd-dot-yellow'
-                                : 'sd-dot sd-dot-gray'
-                      }
-                      aria-hidden="true"
-                      style={{ marginRight: 4 }}
-                    />
-                    <span title={jobDisplayName(j)}>{jobDisplayName(j)}</span>
-                    {j.status === 'failed' && j.errorMessage ? (
-                      <span style={{ color: '#c02020', fontSize: 9, marginLeft: 4 }}>
-                        {j.errorMessage}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            ) : dashboardData.loading ? (
-              <div className="sd-ov-empty">读取中…</div>
-            ) : (
-              <div className="sd-ov-empty">暂无事件记录</div>
-            )}
-          </div>
-          <button className="sd-all-logs-btn" onClick={() => onNavigate('jobs')}>
-            查看全部事件 →
-          </button>
-        </section>
-
-        <section className="sd-ov-card">
-          <div className="sd-pack-title">
-            <img src={OVERVIEW_ICONS.mods} alt="" />
-            模组状态
-            <button className="sd-pack-more" onClick={() => onNavigate('mods')}>查看更多 →</button>
-          </div>
-          <div className="sd-pack-section">
-            <div className="sd-pack-row">
-              <span className="sd-pack-name">
-                <span className="sd-dot sd-dot-green" aria-hidden="true" />已启用
-              </span>
-              <span className="sd-pack-count">{dashboardData.mods ? enabledModCount : '—'}</span>
-            </div>
-            <div className="sd-pack-row">
-              <span className="sd-pack-name">
-                <span className="sd-dot sd-dot-yellow" aria-hidden="true" />已禁用
-              </span>
-              <span className="sd-pack-count">{dashboardData.mods ? disabledModCount : '—'}</span>
-            </div>
-            <div className="sd-pack-row">
-              <span className="sd-pack-name">
-                <span className="sd-dot sd-dot-yellow" aria-hidden="true" />可更新
-              </span>
-              <span className="sd-pack-count">{dashboardData.mods ? 0 : '—'}</span>
-            </div>
-            <div className="sd-pack-row">
-              <span className="sd-pack-name">
-                <span className="sd-dot sd-dot-red" aria-hidden="true" />异常
-              </span>
-              <span className="sd-pack-count">{dashboardData.modsError ? 1 : 0}</span>
-            </div>
-          </div>
-          <button className="sd-pack-manage sd-btn-tan" onClick={() => onNavigate('mods')}>
-            管理模组
-          </button>
+          <button className="sd-btn-tan sd-overview-manage" onClick={() => onNavigate('mods')}>管理模组</button>
         </section>
       </div>
+
+      {selectedEvent ? (
+        <ModalPortal className="sd-confirm-overlay" role="dialog" ariaLabelledBy="overview-event-title" onEscape={() => setSelectedEvent(null)}>
+          <div className="sd-confirm-dialog sd-overview-event-dialog">
+            <h3 id="overview-event-title">{jobEventLabel(selectedEvent)}</h3>
+            <p>{jobErrorSummary(selectedEvent.errorMessage)}</p>
+            <p>任务状态：{jobStatusLabel(selectedEvent.status)} · {formatDate(selectedEvent.createdAt)}</p>
+            {selectedEvent.errorMessage ? <details><summary>原始诊断信息</summary><pre>{selectedEvent.errorMessage}</pre></details> : null}
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setSelectedEvent(null)}>关闭</button>
+              <button className="sd-btn-green" onClick={() => { setSelectedEvent(null); onNavigate('jobs', { jobId: selectedEvent.id }) }}>查看任务日志</button>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      {approveTarget ? (
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="overview-approve-title"
+          onEscape={approveBusyId ? undefined : () => setApproveTarget(null)}
+        >
+          <div className="sd-confirm-dialog">
+            <h3 id="overview-approve-title">确认批准认证</h3>
+            <p>批准玩家 {approveTarget.name} 的密码认证？该操作会立即让玩家进入正式农场，等同于服务器替其正确输入了一次密码。</p>
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setApproveTarget(null)} disabled={approveBusyId !== null}>取消</button>
+              <button className="sd-btn-green" onClick={() => { void handleApprove() }} disabled={!canApprove || !approveTargetAvailable || approveBusyId !== null}>{approveBusyId ? '批准中…' : '确认批准'}</button>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
 
       {runtimeSettingsOpen ? (
         <ServerRuntimeSettingsDialog

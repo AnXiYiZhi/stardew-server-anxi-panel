@@ -9,6 +9,8 @@
 
 ## 工作开始前
 
+大型长期文档、接手记录和错题本先用 `rg -n` 定位任务章节，再按精确行段读取；单次默认不超过 80 行或 12000 字符，长行文档还须限制字符总量。输出被截断时只补读缺失范围，不将截断内容视为已读，也不再次批量整读。
+
 每次工作开始前先阅读 `docs/01-project-overview.md` 和 `.agents/error-notebook.md`，再按任务范围阅读：
 
 - 后端任务：`docs/02-backend.md` 和 `docs/backend-handoff/` 下最新的后端接手文档。
@@ -89,12 +91,14 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - 正式候选预取上一正式版和固定 fixture 镜像时，每个精确引用必须使用最多三次的有界 `docker pull`，单次 GHCR/Docker Hub token、TLS 或 EOF 失败不得直接判成镜像缺失；成功后必须 `docker image inspect` 再打包进入隔离 DinD。重试不关闭 TLS/认证、不改变引用，也不得重放 push、tag 或 workflow dispatch。
 - 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前同时检查 `Get-NetTCPConnection -State Listen` 和 `netsh interface ipv4 show excludedportrange protocol=tcp`，默认端口也必须不在排除范围内；清理后再次检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留。清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。
 - 正式发布门禁不得在同一个工具编排调用中以 `Promise.all` 等方式并发启动多个长运行 Shell；必须逐项使用可等待、可取得完整退出码与输出的独立调用。编排层异常、超时或提前返回后，先核对精确宿主进程、容器和 volume，再决定恢复或重跑，禁止在终态未知时重复启动同一门禁。
+- 长测试预期输出超过工具预算时，启动前先确定任务专属完整日志路径；Go 整包优先 `go test -json` 落盘，再向工具投影失败用例、包终态和退出码。不能仅依赖工具截断后的输出或 `--rm` 容器结束后的日志恢复；失败原因未完整读取前不宣称已定位，也不机械重跑独立通过的检查。
 - Windows `exec_command` 内部 `Start-Sleep`/轮询等待必须明显短于对应 `yield_time_ms`，禁止用 30 秒 sleep 吃满 30000 ms 工具上限；状态复查默认立即查询。长命令返回 session 时必须保留完整返回对象并用 `write_stdin(session_id)` 续接，不能只投影 output 或把缺失 exit code 当失败。
 - Windows 上 `npm ci` 若因现有 `node_modules` 文件锁报 `EPERM`，不得强删目录或反复重试；改用与发布版本一致的 Node Linux 容器和独立 `node_modules` volume 完成门禁，再按精确名称清理测试 volume。
 - 进入任一 Node 子项目执行门禁前必须先读取该目录当前 `package.json.scripts`，只能调用实际声明的脚本；不得把相邻 package 的脚本名直接复用。官网正式构建入口是 `website` 下的 `npm run docs:build`，不是 `npm run build`。
 - 前端洁净发布门禁必须把完整仓库挂到容器内稳定根目录，并从 `<repo>/frontend` 运行；`test:responsive-layout` 会读取仓库根 `.github/workflows`，禁止只挂 `frontend/` 后把它误解析成 `/.github`。`frontend/node_modules` 与 `frontend/dist` 使用任务专属独立 volume。
 - `TestSMAPIArchiveRealDownload` 会断言 Linux `0600` 权限，正式发布门禁只能在任务专属 Linux 容器与独立 Go module/build cache 中运行；禁止先在 Windows 宿主试跑并把必然的 `0666` 当成产品失败。其它涉及 `Mode().Perm()`、UID/GID、symlink 或 Unix socket 的发布测试同样先选择目标 Linux 文件系统。
 - 应用内 Browser 验证本地 Vite/VitePress 时使用 `domcontentloaded` 后等待唯一可见 DOM，不使用当前后端不支持的 `networkidle`；导航断言只传文档支持的精确 URL，不能传正则/predicate。静态站的精确目标必须从当前 DOM `href` 与实际 SPA/普通文档路由模式解析，不得硬编码 `.html` 规范化假设；主测试与 A/B/补充脚本共用同一目标契约。VitePress 的复合链接可能含图标/箭头，标题 accessible name 可能附带 permalink；定位前先读 DOM snapshot，链接优先用唯一 role/href，标题顺序从 `main h1/h2` 可见文本或首文本节点断言，禁止把肉眼主文案直接传给 `exact:true` 重放已知超时。窄屏固定导航页面不得用 `fullPage` 拼接截图判断渲染，必须结合普通视口截图与 root/body `scrollWidth <= clientWidth` 度量。
+- 带装饰字符的卡片标题同样不得用肉眼主文案加 `getByText(..., { exact: true })` 作为就绪条件。首次无匹配后读取 fresh DOM，并按实际唯一 heading、按钮或已确认区块 selector 验证；AX 中拆开的文本不代表 DOM 元素的完整 textContent。
 - 应用内 Browser 从移动壳恢复桌面验收时不得把 `viewport.reset()` 当成路由或断点恢复保证；必须显式设置已知桌面宽度、重新导航到精确目标 URL、读取当前 DOM snapshot 确认 shell/route，再等待桌面专属 heading。后端重启、HMR reload 或移动壳自动改写内部路由后同样执行此顺序，禁止直接复用上一视口的 locator 假设。
 - 应用内 Browser 的响应式视口覆盖固定先从当前 browser 读取 `browser.capabilities.get("viewport")`，再调用 capability 的 `set({ width, height })` / `reset()`；禁止猜测 `tab.viewport`、`tab.playwright.setViewportSize()` 或其它 Page 级接口。页面只读 `playwright.evaluate()` 不得用 DOM 构造器 `instanceof`、命令式 `.click()`、页面全局写入或未确认存在的 `performance` 做测试编排；交互使用 locator/CUA API，evaluate 只返回当前调用内可序列化的只读状态。
 - 应用内 Browser 当前截图接口固定使用 `tab.screenshot({ fullPage: false })` 并用 `nodeRepl.emitImage` 展示；`tab.playwright` 只用于 DOM/locator，禁止使用不存在的 `tab.playwright.screenshot()`，即使上层技能示例这么写也以 runtime API 为准。
@@ -108,11 +112,13 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - 容器内测试调用宿主 Docker 时，daemon 看不到调用方容器私有的 `t.TempDir()`/`/tmp`。凡测试会把临时路径作为二级容器 bind source，必须改在带所需工具链的任务专属 DinD 容器内执行，或使用双方明确共享的宿主 bind；不能仅挂 Docker Socket后假定路径可见。
 - Windows Docker Desktop 向 DinD 预加载镜像时，优先为任务容器绑定唯一环回 TCP 端口，并用宿主 CLI `docker -H ... image load -i`；若使用 `docker cp`，即使退出 0 也必须立即在目标端核对存在、大小和摘要，不能仅凭退出码继续。
 - `rg` 在 Windows 上不要传递未由 Shell 展开的 `path/*` 或 `Dockerfile*`；使用 `rg -g '<glob>' <pattern> <root>`、明确目录或先用 `rg --files`。搜索模式以 `-` 开头时必须使用 `-e '<pattern>'` 显式声明，或在其它参数后用 `--` 结束选项解析；引号与 `-F` 都不能替代该边界。文本搜索优先 `rg`，文件列表优先 `rg --files`。同一任务一旦复发该错误，余下每条 `rg` 的位置参数只允许一个已确认、无通配的目录；即使组合命令前段已有有效输出，也禁止追加第二个猜测路径或通配路径。
-- 按函数、类型或文本定位源码时，`rg` 返回的真实文件路径是后续读取的唯一依据；禁止在同一组合命令后半继续读取凭记忆猜测的文件名。先完成检索，再以独立 fail-fast 命令读取精确命中路径；PowerShell 只读组合也必须使用 `$ErrorActionPreference='Stop'` 或逐项检查，不能让后续成功命令掩盖 `Get-Content` 失败。
+- 文本检索须区分 `rg` 退出 0（命中）、1（无命中）与大于 1（执行错误）。允许无命中的候选排查不得把 1 直接 throw；保存并判断退出码后明确成功结束包装，避免最后一个原生命令的 1 泄漏。需要精确锚点时，无命中必须重新定位，不得继续猜文件路径。
+- 按函数、类型或文本定位源码时，`rg` 返回的真实文件路径是后续读取的唯一依据；禁止在同一组合命令后半继续读取凭记忆猜测的文件名。先完成检索，再以独立 fail-fast 命令读取精确命中路径；PowerShell 只读组合也必须使用 `$ErrorActionPreference='Stop'` 或逐项检查，不能让后续成功命令掩盖 `Get-Content` 失败。`Group-Object` 等聚合只剩文件名时，必须重新检索完整路径，不得根据模块职责补猜目录；批量读取前逐项用 `Test-Path -LiteralPath` 验证已确认路径。
 - Git tag/ref 发布审计中，`git for-each-ref --format` 禁止使用属于 `git log --format` 的 `%n` 换行占位符；结构化证据默认一字段一命令，只有经过独立探针确认时才使用该子命令支持的 `%0a`。tag type、object、peeled commit、tagger date 与 subject 分别核对，不能让退出 0 的字面量占位符冒充有效格式。
 - Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。`functions.exec` 中编排 `web__run` 对象数组时，只从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
+- Windows 上 `apply_patch` 修改 CRLF 为主的文件后，在构建前按明确文件清单进行字节级换行检查；混合换行仅对该清单机械恢复原 CRLF，并核对 `git diff --ignore-space-at-eol` 语义完全相同。不得改变 `.sh` 的 LF，也不得对整个工作树无差别归一化。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。U+FFFD 审计只检查 `git diff --unified=0` 中单个 `+` 开头且排除 `+++` 文件头的本次新增行，不得扫描整个历史文件后把合法示例误报为新乱码；BOM 仍检查完整变更文件。发现新增 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
 - `gofmt`、`go test` 与其它按相对路径执行的命令在发送前必须同时核对 `exec_command.workdir`：从仓库根执行时使用 `backend/...`，从 `backend` 子目录执行时使用 `internal/...`，禁止把子目录 workdir 与仓库根前缀叠加。需要同时格式化跨包文件时默认从仓库根执行已确认的根相对路径。跨前后端任务及同一 cell 含多子项目读文件时，统一仓库根 workdir，以 `go -C backend ...`、`npm --prefix frontend ...` 调用子项目工具，禁止在该 cell 中再切换子项目工作目录。
 - 发布说明与 Release 资产验收不得把外部更新、下载、校验和 `Remove-Item` 清理合在同一长 Shell cell；先独立完成并确认校验结果。工作区内任务专属的已知文本临时文件使用精确 `apply_patch` 删除，不用动态循环或递归 Shell 删除；空目录不进入 Git，可在不扩大删除权限的前提下保留。

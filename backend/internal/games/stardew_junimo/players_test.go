@@ -505,6 +505,128 @@ func TestListPlayersMergesControlSnapshotWithSaveFarmhands(t *testing.T) {
 	}
 }
 
+func TestListPlayersUnfinishedCharacterLifecycle(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	instance := makeRunningInstance()
+	instance.ID = "unfinished-character"
+	instance.DataDir = dir
+	store, err := storage.Open(ctx, config.Config{DataDir: dir, DBPath: filepath.Join(dir, "panel.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.EnsureDefaultInstance(ctx, storage.EnsureDefaultInstanceParams{ID: instance.ID, DriverID: storage.DefaultDriverID, Name: "test", DataDir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	customized := "true"
+	d := newTestDriver(&fakeConsoleDocker{execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+		if strings.Contains(strings.Join(args, " "), "/diagnostics/state") {
+			return paneldocker.CommandResult{Stdout: `{"farmhandData":[{"uniqueMultiplayerId":2,"isCustomized":` + customized + `},{"uniqueMultiplayerId":4,"isCustomized":false}]}`}, nil
+		}
+		return paneldocker.CommandResult{}, nil
+	}})
+	d.store = store
+	saveFolder := filepath.Join(dir, ".local-container", "saves", "Saves", "test_123")
+	if err := os.MkdirAll(saveFolder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(controlDir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSnapshot := func(state string) {
+		t.Helper()
+		customized = state
+		raw := `{"saveId":"test_123","players":[{"name":"host","uniqueMultiplayerId":"1","isHost":true},{"name":"Guest","uniqueMultiplayerId":"2"},{"name":"New guest","uniqueMultiplayerId":"4"}]}`
+		if err := os.WriteFile(filepath.Join(controlDir(dir), "players.json"), []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Simulate a record written by an older Panel before creation completed.
+	writeSnapshot("true")
+	if _, err := d.ListPlayers(ctx, instance); err != nil {
+		t.Fatal(err)
+	}
+	writeSnapshot("false")
+	xml := `<SaveGame><player><name>host</name><UniqueMultiplayerID>1</UniqueMultiplayerID></player><farmhands><Farmer><name>Guest</name><UniqueMultiplayerID>2</UniqueMultiplayerID><isCustomized>false</isCustomized></Farmer><Farmer><name>Legacy</name><UniqueMultiplayerID>3</UniqueMultiplayerID></Farmer></farmhands></SaveGame>`
+	if err := os.WriteFile(filepath.Join(saveFolder, "test_123"), []byte(xml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{storage.InstanceStateRunning, storage.InstanceStateRunning, storage.InstanceStateStopped} {
+		instance.State = state
+		result, err := d.ListPlayers(ctx, instance)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Players) != 2 {
+			t.Fatalf("%s: expected host and legacy player: %+v", state, result.Players)
+		}
+		for _, player := range result.Players {
+			if player.UniqueMultiplayerID == "2" {
+				t.Fatalf("unfinished player returned: %+v", player)
+			}
+		}
+		for _, event := range result.RecentEvents {
+			if event.UniqueMultiplayerID == "2" {
+				t.Fatalf("unfinished event returned: %+v", event)
+			}
+		}
+		wantOnline := 1
+		if state == storage.InstanceStateStopped {
+			wantOnline = 0
+		}
+		if result.OnlineCount == nil || *result.OnlineCount != wantOnline {
+			t.Fatalf("online count: %+v", result.OnlineCount)
+		}
+	}
+	// Completion must override the earlier disk snapshot before the next save.
+	entries, err := store.ListPlayerRoster(ctx, instance.ID, "test_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.PlayerID == "4" {
+			t.Fatal("unfinished character was persisted")
+		}
+	}
+	instance.State = storage.InstanceStateRunning
+	writeSnapshot("true")
+	result, err := d.ListPlayers(ctx, instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Players) != 3 || result.OnlineCount == nil || *result.OnlineCount != 2 {
+		t.Fatalf("completed character missing: %+v", result)
+	}
+	for _, player := range result.Players {
+		if player.UniqueMultiplayerID == "2" && player.Status != "online" {
+			t.Fatalf("completed player is not online: %+v", player)
+		}
+	}
+}
+
+func TestCharacterCreationEvidenceRequiresExplicitValidState(t *testing.T) {
+	for _, raw := range []string{
+		`invalid`, `{}`, `{"farmhandData":[{"uniqueMultiplayerId":2}]}`,
+		`{"farmhandData":[{"uniqueMultiplayerId":2,"isCustomized":false}],"failedFields":["farmhandData"]}`,
+		`{"farmhandData":[{"uniqueMultiplayerId":2,"isCustomized":false}],"failedFields":["gameThreadTimeout"]}`,
+	} {
+		pending := map[string]bool{}
+		mergeCharacterCreationEvidence(pending, []byte(raw))
+		if len(pending) != 0 {
+			t.Fatalf("unreliable evidence hid a player: %s", raw)
+		}
+	}
+	pending := map[string]bool{"2": true}
+	mergeCharacterCreationEvidence(pending, []byte(`{"farmhandData":[{"uniqueMultiplayerId":2,"isCustomized":true},{"uniqueMultiplayerId":3,"isCustomized":false}]}`))
+	if pending["2"] || !pending["3"] {
+		t.Fatalf("creation state: %+v", pending)
+	}
+}
+
 func TestCacheMatchesSaveAcceptsFolderSuffixIdentity(t *testing.T) {
 	for _, tc := range []struct {
 		cacheID string

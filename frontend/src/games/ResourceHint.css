@@ -1,0 +1,9 @@
+.resource-hint { position: relative; cursor: help; }
+.resource-hint:focus-visible { outline: 1px dashed currentColor; outline-offset: 3px; }
+.resource-hint-popup { position: fixed; z-index: 20000; width: max-content; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 9px 12px; color: #fff3d0; background: #293a32; border: 1px solid #67745d; border-radius: 4px; box-shadow: 0 4px 12px #0003; font: 12px/1.7 system-ui, sans-serif; white-space: pre-line; pointer-events: none; }
+.resource-hint-popup.is-rotated { max-width: calc(100vh - 16px); transform: rotate(90deg); transform-origin: top left; }
+.resource-pair { display: inline-flex; align-items: baseline; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.resource-pair-secondary { font-size: .68em; font-weight: 500; opacity: .75; }
+.resource-pair-slash { margin-inline: 2px; opacity: .65; }
+.resource-pair > small { font-size: .55em; font-weight: 500; margin-left: 2px; opacity: .75; }
+.resource-pair.is-long { font-size: .88em; }

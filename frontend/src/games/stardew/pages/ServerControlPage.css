@@ -463,8 +463,8 @@
 }
 
 .sd-server-quick-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   align-items: stretch;
   gap: 10px;
   min-height: 64px;
@@ -594,7 +594,7 @@
 }
 
 .sd-server-page {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.56fr);
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
   gap: 10px 12px;
 }
 
@@ -607,25 +607,27 @@
   color: #c02020;
 }
 
-.sd-server-lifecycle {
+.sd-server-page > .sd-server-lifecycle {
   grid-column: 1;
   grid-row: 3;
   min-height: 116px;
+  align-self: stretch;
 }
 
-.sd-server-quick {
-  grid-column: 2;
-  grid-row: 3 / span 2;
+.sd-server-page > .sd-server-quick {
+  grid-column: 1 / -1;
+  grid-row: 4;
   min-height: 0;
 }
 
-.sd-server-broadcast {
-  grid-column: 1;
-  grid-row: 4;
+.sd-server-page > .sd-server-broadcast {
+  grid-column: 2;
+  grid-row: 3;
   min-height: 116px;
+  align-self: stretch;
 }
 
-.sd-server-command {
+.sd-server-page > .sd-server-command {
   grid-column: 1 / -1;
   grid-row: 5;
   min-height: 202px;
@@ -712,14 +714,10 @@
   gap: 10px;
   min-height: 45px;
   padding: 6px 10px;
-  border: 2px solid rgba(160, 108, 44, 0.58);
-  border-radius: 3px;
-  background:
-    linear-gradient(180deg, rgba(255, 246, 213, 0.92), rgba(239, 199, 123, 0.76)),
-    #f4d79a;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 252, 222, 0.7),
-    0 2px 0 rgba(99, 59, 22, 0.2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--sd-save-card-title);
   text-align: left;
   text-shadow: none;
@@ -730,9 +728,16 @@
 }
 
 .sd-server-quick .sd-server-quick-grid > button:disabled {
-  background:
-    linear-gradient(180deg, rgba(246, 232, 196, 0.8), rgba(218, 194, 151, 0.72)),
-    #dcc79f;
+  background: transparent;
+  filter: none;
+}
+
+.sd-server-quick .sd-server-quick-grid > button:not(.sd-btn-delete) {
+  --sd-button-skin: var(--sd-button-honey-skin);
+}
+
+.sd-server-quick .sd-server-quick-grid > button::after {
+  opacity: .6;
 }
 
 .sd-server-quick-icon {
@@ -836,6 +841,23 @@
   .sd-server-message-count {
     right: 12px;
     bottom: 50px;
+  }
+
+  .sd-server-page > .sd-server-lifecycle,
+  .sd-server-page > .sd-server-broadcast {
+    grid-column: 1;
+  }
+
+  .sd-server-page > .sd-server-broadcast {
+    grid-row: 4;
+  }
+
+  .sd-server-page > .sd-server-quick {
+    grid-row: 5;
+  }
+
+  .sd-server-page > .sd-server-command {
+    grid-row: 6;
   }
 }
 

@@ -1,3 +1,84 @@
+## v0.7.1 全量工作区发布（2026-09-17，候选准备中）
+
+- 本次纳入当前全部相关修改：性能/缓存/轮询、资源分层监控、安装失败解释、新世界 VNC 继承，以及桌面/移动端界面、素材与交互；完整范围和专项矩阵见 docs/09-image-build.md 的 v0.7.1 章节。
+- 前置验证：Node 24 洁净环境全部 27 个 test:*、production audit/build 通过；补齐自动候选的请求去重与资源范围 Docker 回归，新增全新安装及升级后的静态缓存/资源/玩家读取、VNC 创建及真实 Docker 安装失败/重试验收。原有升级、回滚、权限与持久数据门禁保留。
+- 后续：跟踪自动候选、annotated tag 和三仓正式提升；任一门禁失败先修复。成功后回填唯一 SHA/digest、workflow ID、实际耗时、故障及清理证据；本段尚不代表已发布。
+
+## PERF-READ-PATHS-2：性能复审整改（2026-09-17，本地完成，未发布）
+
+- `/players` 普通 Control 时间戳刷新不再触发持久化冲突；世界/存档/配置与实例代际仍校验。最大人数展示缓存 30 秒，在线列表、位置、余额和角色创建证据仍随新快照更新，写入前的实时读取不使用展示缓存。
+- 玩家持久化采用批量事务；纯在线心跳最多 30 秒写一次，业务与上下线事件立即落库，HTTP 展示时间不节流。无 DTO/schema 变更。
+- `/metrics`、`/resources` 仍使用异步存储样本；精确归属卷统计不读取其他 Docker 数据的大小，缺失为 0、不可测为 null。镜像未安装、插件/外部 bind 卷及超时不得伪造 0。
+- 静态 304/HEAD/Range 复用构建级内容与 ETag；HTML/公共素材继续 no-cache，哈希资源继续 immutable。换构建必须建立新缓存实例。
+- 新增回归重复 10 轮、前端 read-requests/resource-metrics、真实 Docker 范围/取消清理及实际 runtime 镜像验收、Linux vet/build 通过。全量回归中两个千行安装日志夹具超时，隔离复测通过，完整限制见后端文档 PERF-READ-PATHS-2；正式候选仍须复核。前端交互协议保持不变。
+
+## PERF-READ-PATHS-1：八项性能优化（2026-09-17，本地完成，未发布）
+
+| 接口/链路 | 新行为 | 保持的边界 |
+| --- | --- | --- |
+| runtime-components / smapi-update | 按实例共用 30 秒展示结果，前端复用内嵌 SMAPI | 管理员权限不变；dry-run/apply 实时校验 |
+| players | 每实例并发合并、2 秒快照缓存；XML 按 mtime/size 失效 | 删除/升级所有权保留；落库前再次检查实例与文件 |
+| metrics / resources | CPU/内存不等待存储，冷启动存储 null，返回最近 storageTimestamp | 存储单次后台刷新，20 秒上限 |
+| 普通前端 GET | 20 秒超时、按会话/实例合并、卸载取消、展示 TTL | 写操作清缓存；升级恢复专用轮询持续执行 |
+| 静态资源 | gzip、ETag/304、哈希文件 immutable、HTML/公共图片重验证 | 编码各自 ETag；部署后资源更新可生效 |
+
+- 前后端没有破坏性 DTO 变化；存储 null 必须显示“--”而非 0，tooltip 展示独立采样时间。
+- 回访诊断页在展示 TTL 内复用版本、健康和 Compose 数据；5 个更新工作流状态 GET 保持新鲜。资源侧栏和诊断共用单个 8 秒轮询。
+- 验证包含缓存失效/取消/超时/隐藏恢复、慢实例与其他实例并发、删除所有权、XML 损坏/变化、重复快照写入、静态压缩/条件请求，以及真实 Docker 的固定文件读取与多世界存储扫描。前端全部 27 脚本、生产构建和桌面/手机隔离浏览器通过；Junimo 整包终验（222.9 秒）与 Web 整包终验（43.4 秒）均通过。
+- 后续新增普通展示请求需接入相同缓存和可见轮询；正式升级中必须验证冷/热缓存与重启后的样本重建。
+
+
+## INSTALL-ERROR-EXPLANATIONS-1：安装失败原因与处理建议（2026-09-17，本地完成，未发布）
+
+- 沿用 job.errorMessage、stateMessage、driverPhase 与 JobLog。新任务由 Junimo driver 汇总当前尝试的固定中文诊断并持久化，前端可在日志尾页不含首个报错时仍显示原因；旧任务用当前 job 的日志补识别，跨任务/已恢复尝试的日志不参与。Auth-only 结果只解释授权任务，不使用已恢复的基础安装状态。
+- 安装/准备请求在既有权限与冲突处理之后返回安全的已知中文原因；未知错误不得回传路径、凭据或原始异常链。脱敏日志仍可在任务中心/折叠区查看。
+
+| 类别 | 识别与用户处理 | 回归边界 |
+| --- | --- | --- |
+| Steam 验证 | 密码、Guard、批准超时/拒绝、缓存、限流、账号状态 | 失败后重试、成功登录消除旧拒绝、凭据阶段不猜密码 |
+| 下载许可 | No subscription/No license | SDK 成功不能覆盖游戏失败 |
+| Docker/镜像 | Socket、仓库权限/版本/限流、架构、配置 | 无任务时的请求失败也显示原因 |
+| 网络 | DNS、TLS、代理、超时、断线、远端 5xx | 原因按当前尝试归属，重试不串线 |
+| 存储与运行 | 空间/配额、只读、权限、挂载、端口、内存、依赖 | 固定说明，不泄露内部路径；保留游戏数据 |
+| SMAPI/文件 | 完整性、损坏压缩包、缺库、安装/支持 Mod 同步、缺文件 | 真实缺文件优先，不能把未校验状态当成功 |
+| 退出码 | 5、126、127、137、139、143 与任意非零码兜底 | 5 无唯一原因、137 不直接断定 OOM、未知原因明确展示 |
+| 前端时序 | 等时间戳详情补回错误、终态保持、日志折叠 | 当前 job 过滤、取消独立、刷新后原因保持 |
+
+- 已验证：共享 40 类 Go/TS 样例、8 组 jobs/SQLite 终态（含 1100 行日志）、Web 提示脱敏、前端安装/任务/响应式回归、生产前端构建、5 类浏览器交互。Docker frontend-builder 的共享 JSON 路径验证通过。真实 Steam、外部仓库和所有系统故障未逐项人工注入。
+
+
+## 2026-09-17：创建世界继承 VNC 密码（本地完成，未发布）
+
+- `POST /api/instances` 保持 `{name,gameId}` 请求不变；Stardew driver 在创建时读取首世界 VNC 密码并写入目标世界。源密码缺失/纯空白返回 `409`、`error.code=vnc_password_required`，提示先配置首世界 VNC 密码；失败清理沿用创建事务。
+- 接口不返回密码。新世界独立端口保持既有分配规则，已有世界密码不随运行镜像兼容收敛变化。真实第二世界经 Web 保存确认与重启，5801 对应 Xvnc 已启用 `VncAuth`，容器健康；自动回归覆盖继承、空密码、清理、权限和响应脱敏。
+
+## 2026-09-17：直连地址使用当前世界端口（本地完成，未发布）
+
+- 详情页与世界列表统一读取既有 `GET /api/instances/:id/public-ip` 的 `gamePort`，主机仍使用当前面板访问 `hostname`。24642 省略端口，其它合法端口附加端口；IPv6 使用标准括号形式，显示与复制共用格式化函数。后端 driver 和接口响应契约不变。
+- 详情页端口查询独立于首屏数据；同步按钮触发当前实例刷新，缺失/非法端口及失败状态不提供复制地址，请求代次防止旧请求覆盖当前结果。没有把浏览器 HTTP 端口用作游戏端口。
+- 验证：真实 `stardew` / `stardew-2` 分别显示 `localhost` / `localhost:24643`，世界切换、复制和同步通过；游戏库地址边界回归、响应式链与 production build 通过。下一候选抽验慢连接恢复和 IPv6。
+
+## 2026-09-17：面板响应采样（本地完成，未发布）
+
+- 右侧栏通过既有 `GET /api/version?panel-response=<时间戳>` 测量浏览器到 Panel 的 HTTP 完整响应耗时；后端忽略查询参数，返回既有 version/commit/buildDate，不访问 Docker 或游戏。前端 no-store、拒绝重定向，校验 200 与有效版本 JSON 后接收样本。
+- 采样完成后间隔 5 秒，3 秒超时，隐藏/卸载中止请求；失败清除数值并自动恢复。无新增接口、权限或数据库变更，兼容现有后端。真实 localhost 浏览器约 5ms、合成超时/503恢复/慢响应、前端专项/响应式回归与 build 通过。
+
+## 2026-09-17：三级资源统计契约（本地完成，未发布）
+
+- 游戏卡片与世界面板常显 `自身百分比 / machine 当前百分比`，两端均以整机容量为分母。CPU/内存直接消费 sample，存储由 `storageUsedBytes / machine.diskTotalBytes * 100` 派生；斜杠后分别消费 machine 的 CPU/内存/磁盘当前百分比。浮层展示自身用量、整机已用、整机总量（CPU 核心当量、内存与存储容量）。分母无效/缺失或存储已用超过参照总量时自身占比为未知，机器端独立显示。
+- 世界 `GET /api/instances/{id}/metrics` 新增同级可选 `machine: ResourceMetricSample`，不混进 `sample` 或趋势。前端 `ResourceHint` 统一三处悬浮；读取旧响应时机器部分保持未知。接口 scope/分母专项、web vet、backend build、前端资源/响应式/游戏库状态和构建通过；Playwright 三处数值、悬浮与 1518/390/320px 验收通过。
+- `GET /api/resources` 需要登录，返回 `{machine, games:[{driverId,worldCount,sample}]}`。machine scope 为 machine；游戏 scope 为 game；`GET /api/instances/{id}/metrics` 的 sample scope 为 world。均为只读，普通用户沿用现有实例读取权限。
+- CPU 百分比统一占整机（Docker 原始值 / 逻辑核心数），内存百分比统一占机器总量。`cpuCores` 是占用核心数，`memoryLimitBytes` 仍是世界容器上限。整机磁盘只表示 Panel 数据所在文件系统。
+- `storageUsedBytes` 为世界目录和专属数据卷、或游戏去重后各世界与共享文件/卷的容量；null 表示未知，0 表示确认无占用。该字段不包含镜像层/容器可写层；容量 CLI 有舍入。世界/game 的 `diskPercent` 不再代表整机。`storageTimestamp` 标识 60 秒缓存的扫描时间。
+- `containerState` 区分 running/stopped/unprepared/unavailable。停服世界不绘制 CPU/内存，容量继续返回；游戏所有已知服务停止时合计 0，有一个采样失败时合计保持未知，不能把失败当零。
+- 验证：认证/方法、共享数据去重、容量失败、CPU 分母、缺失与零值回归通过；真实 Docker 两世界的 HTTP 概览/世界接口与单世界停止隔离通过并清理全部夹具卷/容器。前端桌面及窄屏通过合成契约验收。现有 8090 尚未重启，真页面数据生效需要同步后端，不能以截图数据代替实机上线证据。
+
+## 2026-09-15：未完成创建的角色不进入玩家名册（未发布）
+
+- `/players` 的 DTO 不变：依据 Junimo 诊断和存档明确的 `isCustomized=false`，过滤未完成角色、对应事件并扣除在线人数；历史合并不能重新补回同一占位。完成创建的实时证据优先于上次存档，正常显示在线角色。
+- 新占位不进入 SQLite 名册；已有历史仅在有明确状态证据时隐藏，缺字段/诊断失败不推断角色应被删除。角色、小屋和存档删除流程保持原有权限与在线保护。
+- 玩家/删除相关 Go 回归、相关包 vet 和后端 build 通过；真实客户端创建、退出、重进及重启场景待隔离游戏验收，当前未部署。
+
 ## 2026-09-05：世界加入地址跟随面板访问地址（已修复，未发布）
 
 - `GameLibrary.tsx` 将 `window.location.hostname` 同时传给加入地址显示与复制；`game-library-state.ts` 使用该主机名和当前世界连接信息中的 `gamePort` 生成地址，与详情页直连地址来源一致。IPv6 已有方括号时不重复包裹。
@@ -1995,3 +2076,8 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - `GameLibrary.tsx` 世界卡片按当前启用存档的 farmType 选择八种内置农场素材；首次加载、无存档、未知地图及读取/图片失败时显示标准农场。管理员自定义地图可读取已有 farm catalog 图标；实例状态更新时重新读取存档。
 - 名称旁 13px 铅笔，管理员点击可行内修改，Enter/保存提交、Esc/取消退出，失败保留输入并显示错误。`PATCH /api/instances/:id` 只改名称和更新时间，复用管理员权限与审计，校验 1–40 字及控制字符；storage.RenameInstance 不改变目录、ID、存档与运行状态。
 - `TestInstanceRenamePersistsNameAndPreservesRuntime` 验证未登录、非法名称、持久化与运行状态保留；前端游戏库回归和 production build 通过。Browser 夹具森林地图来源、铅笔行内输入、Enter 保存已验收。后续注意自定义图标遵循已有目录权限，普通用户不显示改名入口。
+## 2026-09-15：已禁用用户恢复入口（本地待验收）
+
+- `SettingsPage.tsx` 按 `isActive` 切换红色「禁用」与绿色「启用」，启用确认后由 `api.ts` 的 `enableUser` 调用既有 `PATCH /api/users/:id { isActive: true }`，成功重新读取列表；自身及管理员目标权限保护沿用。确认期间禁用按钮与 Escape 关闭，错误保留原列表并展示反馈。
+- `SettingsPage.css` 移除整张停用卡片的透明度，保留背景和「已禁用」标记，让可用操作保持清晰。无后端/数据库契约变更。
+- `qa-layout-main.tsx?userQa=activation` 提供隔离用户 4 的启停夹具：Browser 实测启用、加载锁定、变回禁用、再次禁用与恢复启用入口通过，控制台无警告/错误。后端 `TestAdminCanEnableAndHardDeleteUser`、`TestSuperAdminControlsAdminRoleManagement`、`TestLastAdminCannotBeDisabledOrDowngraded`，前端响应式回归和 production build 通过。真实账号未修改；后续发布抽验权限拒绝及错误重试。

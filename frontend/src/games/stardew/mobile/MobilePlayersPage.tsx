@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { approvePlayerAuth, banPlayer, deleteFarmhand, getInstancePasswordStatus, kickPlayer, warpPlayerHome } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import type { InstancePasswordStatus, StardewPlayerInfo } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import { routeToPath } from '../stardew-routes'
 import { formatStardewLocation } from '../location-format'
 import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
 import { PlayerModsDetail } from '../PlayerModsDetail'
-import { hasPlayerCjbRisk, playerModActionLabel } from '../player-mod-details'
+import { hasPlayerCjbRisk } from '../player-mod-details'
 import './MobilePlayersPage.css'
 
 type MobilePlayersPageProps = Pick<StardewPageProps, 'user' | 'instanceId' | 'instanceState' | 'dashboardData'>
@@ -31,10 +32,10 @@ function playerStatusTagClass(status?: string): string {
   return 'sd-tag sd-mplay-status-tag'
 }
 
-function playerActivityText(player: StardewPlayerInfo): string {
-  if (player.status === 'online') return player.onlineFor ? `在线 ${player.onlineFor}` : '在线中'
+function playerActivityText(player: StardewPlayerInfo): string | null {
+  if (player.status === 'online') return player.onlineFor ? `已在线 ${player.onlineFor}` : null
   if (player.lastSeen) return `最近活动：${formatDate(player.lastSeen)}`
-  return '—'
+  return null
 }
 
 function playerLocationText(player: StardewPlayerInfo): string {
@@ -46,6 +47,7 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
 
+  const [managedPlayerKey, setManagedPlayerKey] = useState<string | null>(null)
   const [kickConfirmTarget, setKickConfirmTarget] = useState<PlayerTarget | null>(null)
   const [warpHomeConfirmTarget, setWarpHomeConfirmTarget] = useState<PlayerTarget | null>(null)
   const [warpHomeBusyId, setWarpHomeBusyId] = useState<string | null>(null)
@@ -86,6 +88,11 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
   )
   const playersLoading = dashboardData.playersLoading
   const playersError = dashboardData.playersError
+
+  const managedPlayerPresent = playerRows.some((player) => (player.uniqueMultiplayerId || player.name) === managedPlayerKey)
+  useEffect(() => {
+    if (!managedPlayerPresent) setManagedPlayerKey(null)
+  }, [managedPlayerPresent])
 
   function handleRefresh() {
     dashboardData.refreshPlayers()
@@ -243,6 +250,7 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
     warpHomeBusyId === playerId || kickBusyId === playerId || approveBusyId === playerId || banBusyId === playerId || deleteBusyId === playerId
 
   function openPlayerMods(playerId: string) {
+    setManagedPlayerKey(null)
     window.history.pushState(null, '', routeToPath('player-mods', { playerId }, instanceId))
     setSelectedPlayerId(playerId)
   }
@@ -276,7 +284,7 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
           </div>
           <button
             type="button"
-            className="sd-btn-tan sd-mplay-refresh-btn"
+            className="sd-btn-tan sd-btn-utility sd-mplay-refresh-btn"
             onClick={handleRefresh}
             disabled={playersLoading}
           >
@@ -301,61 +309,84 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
           <div className="sd-mplay-player-list">
             {playerRows.map((player) => (
               <div className="sd-mplay-player-card" key={player.uniqueMultiplayerId || player.name}>
-                <div className="sd-mplay-player-top">
-                  <span className="sd-mplay-player-name">{player.name}</span>
-                  <span className={playerStatusTagClass(player.status)}>{playerStatusText(player.status)}</span>
-                </div>
-                <div className="sd-mplay-player-meta">
-                  {player.isHost ? <span className="sd-tag sd-mplay-meta-tag">主机</span> : null}
-                  {player.role ? <span className="sd-tag sd-mplay-meta-tag">{player.role}</span> : null}
-                  <span className="sd-mplay-player-activity">{playerActivityText(player)}</span>
-                </div>
-                <div className="sd-mplay-player-bottom">
+                <div className="sd-mplay-player-info">
+                  <div className="sd-mplay-player-top">
+                    <span className="sd-mplay-player-name" title={player.name}>{player.name}</span>
+                    <span className="sd-mplay-player-badges">
+                      <span className={playerStatusTagClass(player.status)}>{playerStatusText(player.status)}</span>
+                      {hasPlayerCjbRisk(player) ? <span className="sd-mplay-cjb-badge">CJB 作弊</span> : null}
+                    </span>
+                  </div>
+                  {player.isHost || player.role || playerActivityText(player) ? (
+                    <div className="sd-mplay-player-meta">
+                      {player.isHost ? <span className="sd-tag sd-mplay-meta-tag">主机</span> : null}
+                      {player.role ? <span className="sd-tag sd-mplay-meta-tag">{player.role}</span> : null}
+                      {playerActivityText(player) ? <span className="sd-mplay-player-activity">{playerActivityText(player)}</span> : null}
+                    </div>
+                  ) : null}
                   <span className="sd-mplay-player-location" title={playerLocationText(player)}>
                     {playerLocationText(player)}
                   </span>
-                  <div className="sd-mplay-player-actions">
-                    {player.uniqueMultiplayerId ? (
-                      <button
-                        type="button"
-                        className={`sd-btn-tan sd-mplay-player-action-btn sd-mplay-player-mods-btn${hasPlayerCjbRisk(player) ? ' sd-mplay-player-mods-btn--cjb' : ''}`}
-                        onClick={() => openPlayerMods(player.uniqueMultiplayerId || '')}
-                        aria-label={hasPlayerCjbRisk(player) ? '检测到 CJB 作弊，查看上报 Mod' : undefined}
-                      >
-                        {playerModActionLabel(player)}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="sd-btn-green sd-mplay-player-action-btn"
-                      disabled={
-                        !isAdmin ||
-                        !isRunning ||
-                        player.status !== 'online' ||
-                        player.isHost ||
-                        !player.uniqueMultiplayerId ||
-                        isPlayerActionBusy(player.uniqueMultiplayerId)
-                      }
-                      title={
-                        !isAdmin
-                          ? '仅管理员可用'
-                          : player.isHost
-                            ? '主机没有可传送的小屋'
-                            : player.status !== 'online'
-                              ? '玩家不在线'
-                              : !player.uniqueMultiplayerId
-                                ? '缺少玩家联机 ID，暂不支持传送回家'
-                                : '传送玩家回家'
-                      }
-                      onClick={() =>
-                        setWarpHomeConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
-                      }
-                    >
-                      {warpHomeBusyId === player.uniqueMultiplayerId ? '处理中…' : '回家'}
-                    </button>
-                    <details className="sd-mplay-management">
-                      <summary className="sd-btn-tan sd-mplay-player-action-btn">管理操作</summary>
-                      <div className="sd-mplay-management-actions">
+                </div>
+                <button
+                  type="button"
+                  className="sd-btn-tan sd-mplay-manage-btn"
+                  aria-label={`管理玩家 ${player.name}`}
+                  aria-haspopup="dialog"
+                  onClick={() => setManagedPlayerKey(player.uniqueMultiplayerId || player.name)}
+                >
+                  管理
+                </button>
+                {managedPlayerKey === (player.uniqueMultiplayerId || player.name) ? (
+                  <ModalPortal
+                    className="sd-mplay-confirm-overlay"
+                    ariaLabel={`管理玩家 ${player.name}`}
+                    onEscape={() => setManagedPlayerKey(null)}
+                  >
+                    <div className="sd-panel sd-mplay-confirm-dialog sd-mplay-management-dialog">
+                      <h3>玩家管理</h3>
+                      <div className="sd-mplay-management-player">
+                        <span className="sd-mplay-player-name">{player.name}</span>
+                        {hasPlayerCjbRisk(player) ? <span className="sd-mplay-cjb-badge">CJB 作弊</span> : null}
+                      </div>
+                      <div className="sd-mplay-player-actions">
+                        <button
+                          type="button"
+                          className="sd-btn-tan sd-mplay-player-action-btn"
+                          disabled={!player.uniqueMultiplayerId}
+                          onClick={() => openPlayerMods(player.uniqueMultiplayerId || '')}
+                        >
+                          查看 Mod
+                        </button>
+                        <button
+                          type="button"
+                          className="sd-btn-green sd-mplay-player-action-btn"
+                          disabled={
+                            !isAdmin ||
+                            !isRunning ||
+                            player.status !== 'online' ||
+                            player.isHost ||
+                            !player.uniqueMultiplayerId ||
+                            isPlayerActionBusy(player.uniqueMultiplayerId)
+                          }
+                          title={
+                            !isAdmin
+                              ? '仅管理员可用'
+                              : player.isHost
+                                ? '主机没有可传送的小屋'
+                                : player.status !== 'online'
+                                  ? '玩家不在线'
+                                  : !player.uniqueMultiplayerId
+                                    ? '缺少玩家联机 ID，暂不支持传送回家'
+                                    : '传送玩家回家'
+                          }
+                          onClick={() => {
+                            setManagedPlayerKey(null)
+                            setWarpHomeConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
+                          }}
+                        >
+                          {warpHomeBusyId === player.uniqueMultiplayerId ? '处理中…' : '回家'}
+                        </button>
                         <button
                           type="button"
                           className="sd-btn-delete sd-mplay-player-action-btn"
@@ -378,9 +409,10 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
                                     ? '缺少玩家联机 ID，暂不支持踢出'
                                     : '踢出玩家'
                           }
-                          onClick={() =>
+                          onClick={() => {
+                            setManagedPlayerKey(null)
                             setKickConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
-                          }
+                          }}
                         >
                           {kickBusyId === player.uniqueMultiplayerId ? '处理中…' : '踢出'}
                         </button>
@@ -397,9 +429,10 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
                                   ? '缺少玩家联机 ID，暂不支持封禁'
                                   : '封禁玩家'
                           }
-                          onClick={() =>
+                          onClick={() => {
+                            setManagedPlayerKey(null)
                             setBanConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
-                          }
+                          }}
                         >
                           {banBusyId === player.uniqueMultiplayerId ? '处理中…' : '封禁'}
                         </button>
@@ -416,7 +449,10 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
                               isPlayerActionBusy(player.uniqueMultiplayerId)
                             }
                             title={!passwordStatus.passwordBridgeAvailable ? '密码认证反射桥不可用' : '批准该玩家认证'}
-                            onClick={() => setApproveConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                            onClick={() => {
+                              setManagedPlayerKey(null)
+                              setApproveConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
+                            }}
                           >
                             {approveBusyId === player.uniqueMultiplayerId ? '处理中…' : '批准认证'}
                           </button>
@@ -438,14 +474,20 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
                                       ? '该记录不属于当前存档人物'
                                       : '删除离线存档人物'
                           }
-                          onClick={() => setDeleteConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                          onClick={() => {
+                            setManagedPlayerKey(null)
+                            setDeleteConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
+                          }}
                         >
                           {deleteBusyId === player.uniqueMultiplayerId ? '提交中…' : '删除人物'}
                         </button>
                       </div>
-                    </details>
-                  </div>
-                </div>
+                      <div className="sd-mplay-confirm-actions">
+                        <button type="button" className="sd-btn-tan sd-mplay-confirm-btn" onClick={() => setManagedPlayerKey(null)}>关闭</button>
+                      </div>
+                    </div>
+                  </ModalPortal>
+                ) : null}
               </div>
             ))}
           </div>
@@ -464,7 +506,7 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
       </section>
 
       {warpHomeConfirmTarget ? (
-        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal className="sd-mplay-confirm-overlay" ariaLabel="确认传送回家" onEscape={() => { if (warpHomeBusyId === null) setWarpHomeConfirmTarget(null) }}>
           <div className="sd-panel sd-mplay-confirm-dialog">
             <h3>确认传送回家</h3>
             <p>将玩家 {warpHomeConfirmTarget.name} 传送回自己的小屋？该操作适合玩家卡在地图或建筑边缘时救援。</p>
@@ -487,11 +529,11 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {kickConfirmTarget ? (
-        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal className="sd-mplay-confirm-overlay" ariaLabel="确认踢出玩家" onEscape={() => { if (kickBusyId === null) setKickConfirmTarget(null) }}>
           <div className="sd-panel sd-mplay-confirm-dialog">
             <h3>确认踢出玩家</h3>
             <p>将玩家 {kickConfirmTarget.name} 踢出服务器？该操作会立即断开该玩家的连接，玩家可以重新加入。</p>
@@ -514,11 +556,11 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {approveConfirmTarget ? (
-        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal className="sd-mplay-confirm-overlay" ariaLabel="确认批准认证" onEscape={() => { if (approveBusyId === null) setApproveConfirmTarget(null) }}>
           <div className="sd-panel sd-mplay-confirm-dialog">
             <h3>确认批准认证</h3>
             <p>批准玩家 {approveConfirmTarget.name} 的密码认证？该操作会让玩家进入正式农场。</p>
@@ -541,11 +583,11 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {banConfirmTarget ? (
-        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal className="sd-mplay-confirm-overlay" ariaLabel="确认封禁玩家" onEscape={() => { if (banBusyId === null) setBanConfirmTarget(null) }}>
           <div className="sd-panel sd-mplay-confirm-dialog">
             <h3>确认封禁玩家</h3>
             <p>
@@ -570,11 +612,11 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {deleteConfirmTarget ? (
-        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal className="sd-mplay-confirm-overlay" ariaLabel="确认删除存档人物" onEscape={() => { if (deleteBusyId === null) setDeleteConfirmTarget(null) }}>
           <div className="sd-panel sd-mplay-confirm-dialog">
             <h3>确认删除存档人物</h3>
             <p>将永久删除人物 {deleteConfirmTarget.name}、其人物进度、背包以及对应小屋和小屋内容。该操作不会封禁玩家，对方以后仍可重新创建人物。</p>
@@ -590,7 +632,7 @@ export function MobilePlayersPage({ user, instanceId, instanceState, dashboardDa
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )

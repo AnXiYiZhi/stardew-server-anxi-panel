@@ -171,7 +171,7 @@
    md = 默认档：工具栏 / 卡片 / 弹窗按钮
    sm = 表格与列表行内、迷你重试 */
 :root {
-  --sd-btn-h-lg: 40px;
+  --sd-btn-h-lg: 48px;
   --sd-btn-font-lg: 15px;
   --sd-btn-icon-lg: 20px;
   --sd-btn-h-md: 32px;
@@ -180,9 +180,12 @@
   --sd-btn-h-sm: 28px;
   --sd-btn-font-sm: 12px;
   --sd-btn-icon-sm: 12px;
+  --sd-button-green-skin: url('/assets/stardew/ui/buttons/button_wood_green.optimized.webp');
+  --sd-button-red-skin: url('/assets/stardew/ui/buttons/button_wood_red.optimized.webp');
+  --sd-button-honey-skin: url('/assets/stardew/ui/buttons/button_wood_honey.optimized.webp');
 }
 
-/* 九宫格仅绘制固定厚度的边框；语义底色独立于图片，不随宽高拉伸。 */
+/* 完整木纹皮肤独立成层，文字和图标保持自己的尺寸与状态颜色。 */
 .sd-btn-green, .sd-btn-tan,
 .sd-btn-start, .sd-btn-stop, .sd-btn-restart,
 .sd-btn-copy, .sd-btn-delete {
@@ -193,8 +196,9 @@
   cursor: pointer;
   box-sizing: border-box;
   appearance: none;
-  border: 5px solid #80502c;
-  border-image: url('/assets/stardew/ui/buttons/button_frame_warm_9slice.png') 10% / 5px / 0 stretch;
+  position: relative;
+  isolation: isolate;
+  border: 0;
   border-radius: 0;
   font-family: inherit;
   font-weight: 700;
@@ -202,10 +206,22 @@
   user-select: none;
   white-space: nowrap;
   background-image: none;
-  background-color: var(--sd-button-fill, #f2d69d);
+  background-color: transparent;
   background-clip: padding-box;
-  text-shadow: none;
+  text-shadow: 0 1px 0 #503518;
   padding: 0;
+}
+
+:is(.sd-btn-green, .sd-btn-tan, .sd-btn-start, .sd-btn-stop, .sd-btn-restart, .sd-btn-copy, .sd-btn-delete)::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border: 5px solid transparent;
+  border-image: var(--sd-button-skin, var(--sd-button-honey-skin)) 18% 6% fill / 5px / 0 stretch;
+  clip-path: polygon(3px 0, calc(100% - 3px) 0, calc(100% - 3px) 1px, calc(100% - 1px) 1px, calc(100% - 1px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 1px) calc(100% - 3px), calc(100% - 1px) calc(100% - 1px), calc(100% - 3px) calc(100% - 1px), calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 1px), 1px calc(100% - 1px), 1px calc(100% - 3px), 0 calc(100% - 3px), 0 3px, 1px 3px, 1px 1px, 3px 1px);
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .sd-btn-green:hover:not(:disabled),
@@ -225,7 +241,7 @@
 .sd-btn-restart:active:not(:disabled),
 .sd-btn-copy:active:not(:disabled),
 .sd-btn-delete:active:not(:disabled) {
-  filter: brightness(.82);
+  filter: brightness(.97);
   transform: translateY(1px);
 }
 
@@ -236,64 +252,70 @@
 .sd-btn-restart:disabled,
 .sd-btn-copy:disabled,
 .sd-btn-delete:disabled {
-  filter: grayscale(.6) brightness(.8);
+  filter: none;
+  color: #685639;
+  text-shadow: none;
   cursor: not-allowed;
   transform: none;
 }
 
+:is(.sd-btn-green, .sd-btn-tan, .sd-btn-start, .sd-btn-stop, .sd-btn-restart, .sd-btn-copy, .sd-btn-delete):disabled::after {
+  filter: saturate(.25) brightness(1.22);
+  opacity: .55;
+}
+
 /* 绿色主按钮（md 默认档） */
 .sd-btn-green {
-  --sd-button-fill: #426b32;
+  --sd-button-skin: var(--sd-button-green-skin);
   height: var(--sd-btn-h-md);
   min-width: 58px;
   padding: 0 10px;
   font-size: var(--sd-btn-font-md);
-  color: #fff;
+  color: #fff5d6;
 }
 
 /* 棕色次级按钮（md 默认档） */
 .sd-btn-tan {
-  --sd-button-fill: #f2d69d;
+  --sd-button-skin: var(--sd-button-honey-skin);
   height: var(--sd-btn-h-md);
   min-width: 50px;
   padding: 0 10px;
   font-size: var(--sd-btn-font-md);
-  color: #2c1a0a;
+  color: #fff5d6;
 }
 
 /* 危险按钮（md 默认档）：删除/清空/踢出/封禁/危险确认统一用它 */
 .sd-btn-delete {
-  --sd-button-fill: #f8d2bc;
+  --sd-button-skin: var(--sd-button-red-skin);
   height: var(--sd-btn-h-md);
   min-width: 50px;
   padding: 0 10px;
   font-size: var(--sd-btn-font-md);
-  color: #8b2020;
+  color: #fff5d6;
 }
 
 /* 复制小按钮 */
 .sd-btn-copy {
-  --sd-button-fill: #f2d69d;
   width: 48px;
   height: var(--sd-btn-h-md);
   font-size: var(--sd-btn-font-sm);
-  color: #2c1a0a;
+  color: #fff5d6;
 }
 
 /* 生命周期大按钮（lg 档，仅用于启动/停止/重启本体） */
 .sd-btn-start {
-  --sd-button-fill: #426b32;
+  --sd-button-skin: var(--sd-button-green-skin);
   color: #fff;
 }
 
 .sd-btn-stop {
-  --sd-button-fill: #a33c2e;
+  --sd-button-skin: var(--sd-button-red-skin);
   color: #fff;
 }
 
 .sd-btn-restart {
-  --sd-button-fill: #f2d69d;
-  color: #2c1a0a;
+  --sd-button-skin: var(--sd-button-honey-skin);
+  color: #fff5d6;
 }
 
 .sd-btn-start, .sd-btn-stop, .sd-btn-restart {
@@ -302,7 +324,23 @@
   padding: 0 18px;
   gap: 8px;
   font-size: var(--sd-btn-font-lg);
-  text-shadow: none;
+  font-weight: 800;
+  text-shadow: 0 1px 0 #513318, 1px 0 0 #513318, -1px 0 0 #513318;
+}
+
+.sd-lifecycle-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: inherit;
+  filter: drop-shadow(1px 1px 0 #513318) drop-shadow(-1px 0 0 #513318);
+}
+
+button:disabled .sd-lifecycle-icon { filter: none; }
+
+:is(.sd-btn-start, .sd-btn-stop, .sd-btn-restart)::after {
+  border-width: 7px;
+  border-image-width: 7px;
 }
 
 /* 键盘焦点保持独立于按钮颜色。 */
@@ -315,6 +353,26 @@
 .sd-mshell :is(.sd-btn-green, .sd-btn-tan, .sd-btn-delete, .sd-btn-copy, .sd-btn-start, .sd-btn-stop, .sd-btn-restart) {
   min-height: 44px;
   font-size: 13px;
+}
+
+.sd-mshell :is(.sd-btn-start, .sd-btn-stop, .sd-btn-restart) {
+  font-size: 15px;
+}
+
+/* 刷新等辅助操作：32px 视觉高度，保留 44px 点击区域。 */
+.sd-btn-tan.sd-btn-utility {
+  width: auto;
+  min-width: 56px;
+  min-height: 44px;
+  padding-inline: 8px;
+  font-size: 12px;
+  color: var(--sd-brown-dark);
+  text-shadow: none;
+}
+
+.sd-btn-tan.sd-btn-utility::after {
+  inset-block: 6px;
+  opacity: .65;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -362,8 +420,13 @@
 .sd-btn-start.sd-btn-loading:disabled,
 .sd-btn-stop.sd-btn-loading:disabled,
 .sd-btn-restart.sd-btn-loading:disabled {
-  filter: brightness(.96);
+  color: #fff5d6;
   cursor: wait;
+}
+
+:is(.sd-btn-start, .sd-btn-stop, .sd-btn-restart).sd-btn-loading:disabled::after {
+  filter: brightness(.96);
+  opacity: 1;
 }
 
 /* ── 5b. 操作区共享布局（BTN-UNIFY-1）───────────────────────────────────────
@@ -746,6 +809,16 @@
   font-size: var(--sd-font-size-body);
   font-style: italic;
   line-height: 1.6;
+}
+
+/* Shared by server controls and player authorization dialogs. */
+.sd-ov-error {
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  font-size: 13px;
+  padding: 4px 8px;
+  margin-top: 4px;
 }
 
 /* 待接入统一小徽章（与 sd-srv-badge-pending / sd-mods-pending-badge 语义对齐） */

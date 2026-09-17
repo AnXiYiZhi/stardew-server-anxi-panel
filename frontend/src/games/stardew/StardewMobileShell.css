@@ -298,14 +298,17 @@
 }
 
 .sd-mshell-more-actions {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
   margin-top: 18px;
 }
 
 .sd-mshell-more-actions > button {
-  width: 100%;
+  width: auto;
   min-height: 44px;
+  padding-inline: 14px;
 }
 
 .sd-mshell-tabbar {

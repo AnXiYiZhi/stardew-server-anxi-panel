@@ -473,12 +473,8 @@
   gap: clamp(12px, 1.2vw, 16px);
   padding: clamp(18px, 1.9vw, 28px);
   color: var(--sd-diag-ink);
-  background:
-    radial-gradient(circle at 7% 8%, rgba(112, 69, 22, 0.12) 0 1px, transparent 2px),
-    radial-gradient(circle at 83% 18%, rgba(112, 69, 22, 0.09) 0 1px, transparent 2px),
-    radial-gradient(circle at 31% 78%, rgba(255, 255, 255, 0.22) 0 1px, transparent 2px),
-    linear-gradient(180deg, rgba(255, 244, 200, 0.38), rgba(235, 186, 105, 0.14));
-  background-size: 34px 34px, 42px 42px, 28px 28px, 100% 100%;
+  /* The shell frame supplies the paper, including its stepped inner corners. */
+  background: transparent;
   overflow-x: hidden;
 }
 
@@ -759,7 +755,9 @@
 
   .sd-diag-maintenance-item > button,
   .sd-diag-maintenance-tools > button {
-    width: 100%;
+    width: auto;
+    align-self: flex-start;
+    min-height: 44px;
   }
 
   .sd-diag-maintenance-item-main {
@@ -768,7 +766,9 @@
   }
 
   .sd-diag-maintenance-item-main > button {
-    width: 100%;
+    width: auto;
+    align-self: flex-start;
+    min-height: 44px;
   }
 
   .sd-diag-user-progress-steps {
@@ -1865,7 +1865,23 @@
 .sd-diag-page .sd-diag-main-grid {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
+}
+
+@container sd-main-scroll (min-width: 821px) {
+  .sd-diag-page .sd-diag-primary,
+  .sd-diag-page .sd-diag-resource-wrap {
+    align-content: stretch;
+  }
+
+  .sd-diag-page .sd-diag-check-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: stretch;
+  }
+
+  .sd-diag-page .sd-diag-checks {
+    grid-auto-rows: minmax(48px, 1fr);
+  }
 }
 
 .sd-diag-page .sd-diag-check-panel,
@@ -2680,10 +2696,18 @@
 
 @media (max-width: 760px) {
 
+  .sd-diag-page .sd-diag-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .sd-diag-page .sd-diag-header-actions .sd-btn-green,
   .sd-diag-page .sd-diag-header-actions .sd-btn-tan {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
     min-width: 0;
+    min-height: 44px;
   }
 }
 

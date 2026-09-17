@@ -261,7 +261,6 @@
 }
 
 .sd-settings-user-row.sd-settings-user-inactive {
-  opacity: 0.55;
   background: rgba(200, 190, 170, 0.4);
 }
 
@@ -1242,10 +1241,30 @@
   border: 1px solid rgba(139, 82, 28, 0.3);
   border-radius: 2px;
   background: rgba(255, 244, 204, 0.26);
+  overflow-x: auto;
+}
+
+.sd-settings-audit-table::-webkit-scrollbar {
+  height: 10px;
+}
+
+.sd-settings-audit-table::-webkit-scrollbar-track {
+  background: rgba(236, 198, 120, 0.35);
+}
+
+.sd-settings-audit-table::-webkit-scrollbar-thumb {
+  border: 2px solid #f2dfab;
+  border-radius: 5px;
+  background: #a87535;
+}
+
+.sd-settings-audit-table::-webkit-scrollbar-thumb:hover {
+  background: #875724;
 }
 
 .sd-settings-audit-head,
 .sd-settings-audit-row {
+  min-width: 720px;
   grid-template-columns: minmax(114px, 1.04fr) minmax(58px, 0.6fr) minmax(78px, 0.72fr) minmax(72px, 0.72fr) minmax(66px, 0.58fr);
   column-gap: 6px;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { copyText } from './copy-text'
+import { formatStardewAddress } from './connection-address'
 import type { StardewDashboardData } from './stardew-routes'
 
 type LanDirectConnectCardProps = {
@@ -10,9 +11,9 @@ type LanDirectConnectCardProps = {
 export function LanDirectConnectCard({ dashboardData, className }: LanDirectConnectCardProps) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  const address = formatStardewAddress(dashboardData.publicIP?.ip, dashboardData.publicIP?.gamePort)
 
   function handleCopy() {
-    const address = dashboardData.publicIP?.ip
     if (!address) return
     setCopyError(false)
     void copyText(address).then((ok) => {
@@ -32,8 +33,8 @@ export function LanDirectConnectCard({ dashboardData, className }: LanDirectConn
         <div className="sd-players-invite-copy">
           <span className="sd-players-invite-label">局域网直连</span>
         </div>
-        {dashboardData.publicIP?.ip ? (
-          <span className="sd-players-invite-code sd-players-public-ip-code">{dashboardData.publicIP.ip}</span>
+        {address ? (
+          <span className="sd-players-invite-code sd-players-public-ip-code">{address}</span>
         ) : dashboardData.publicIPRefreshing ? (
           <span className="sd-players-invite-loading">检测中…</span>
         ) : dashboardData.publicIPError ? (
@@ -42,7 +43,7 @@ export function LanDirectConnectCard({ dashboardData, className }: LanDirectConn
           <span className="sd-players-invite-empty">未检测</span>
         )}
         <div className="sd-players-invite-actions">
-          {dashboardData.publicIP?.ip ? (
+          {address ? (
             <button
               className="sd-btn-green sd-players-copy-btn"
               onClick={handleCopy}

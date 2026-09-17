@@ -549,7 +549,7 @@
   z-index: 0;
   height: var(--sd-sidebar-bottom-art-height);
   pointer-events: none;
-  background-image: url('/assets/stardew/ui/panels/panel_side_rail_bottom_image2.png');
+  background-image: url('/assets/stardew/ui/panels/panel_side_rail_bottom_image2.optimized.webp');
   background-repeat: no-repeat;
   background-position: bottom center;
   background-size: 100% auto;
@@ -747,6 +747,7 @@
   --sd-main-frame-corner-size: clamp(72px, 7vw, 112px);
   --sd-main-frame-edge-thickness: clamp(46px, 4.5vw, 72px);
   --sd-main-frame-center-tile-size: 256px;
+  position: relative;
   background-color: #f0deb3;
   background-image:
     var(--sd-img-page-frame-corner-top-left),
@@ -804,7 +805,17 @@
   box-sizing: border-box;
 }
 
+/* Overlap the side tiles with the same centered paper to keep scaled seams clean. */
+.sd-main::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--sd-main-frame-edge-thickness) - 2px);
+  background: var(--sd-img-page-frame-center) center / var(--sd-main-frame-center-tile-size) var(--sd-main-frame-center-tile-size) repeat;
+  pointer-events: none;
+}
+
 .sd-main-scroll {
+  position: relative;
   container-name: sd-main-scroll;
   container-type: inline-size;
   flex: 1 1 auto;
@@ -2248,7 +2259,7 @@
   z-index: 0;
   pointer-events: none;
   background-color: #3a1a08;
-  background-image: url('/assets/stardew/ui/panels/right_rail_shell_middle_tile_seamless.png');
+  background-image: url('/assets/stardew/ui/panels/right_rail_shell_middle_tile_seamless.optimized.webp');
   background-position: left top;
   background-repeat: repeat-y;
   background-size: 100% auto;
@@ -2276,7 +2287,7 @@
   left: calc(-100cqi * 123 / 1684);
   width: calc(100cqi * 1871 / 1684);
   aspect-ratio: 1871 / 840;
-  background-image: url('/assets/stardew/ui/panels/right_rail_shell_top_line_image2.png');
+  background-image: url('/assets/stardew/ui/panels/right_rail_shell_top_line_image2.optimized.webp');
 }
 
 .sd-opsrail::after {
@@ -2285,7 +2296,7 @@
   left: calc(-100cqi * 66 / 1743);
   width: calc(100cqi * 1871 / 1743);
   aspect-ratio: 1871 / 840;
-  background-image: url('/assets/stardew/ui/panels/right_rail_shell_bottom.png');
+  background-image: url('/assets/stardew/ui/panels/right_rail_shell_bottom.optimized.webp');
 }
 
 .sd-opsrail-stack {
@@ -2349,24 +2360,24 @@
 
 .sd-ops-card-health {
   /* 1053x1494，透明边 L62 T56 R64 B49，s = 13/(126-62) ≈ 0.203 */
-  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_health_9slice.png');
-  --sd-ops-card-slice: 126 126 156 126;
+  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_health_9slice.optimized.webp');
+  --sd-ops-card-slice: 8.4337% 11.9658% 10.4418% 11.9658%;
   border-width: 26px 26px 32px 26px;
   margin: -11px -13px -10px -13px;
 }
 
 .sd-ops-card-active {
   /* 1693x929，透明边 L90 T140 R90 B178，s = 13/(150-90) ≈ 0.217 */
-  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_progress_9slice.png');
-  --sd-ops-card-slice: 175 150 220 150;
+  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_progress_9slice.optimized.webp');
+  --sd-ops-card-slice: 18.8375% 8.8600% 23.6814% 8.8600%;
   border-width: 38px 33px 48px 33px;
   margin: -30px -20px -39px -20px;
 }
 
 .sd-ops-card-recent {
   /* 1535x1025，透明边 L112 T126 R112 B136，s = 13/(178-112) ≈ 0.197 */
-  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_recent_9slice.png');
-  --sd-ops-card-slice: 195 178 185 178;
+  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_recent_9slice.optimized.webp');
+  --sd-ops-card-slice: 19.0244% 11.5961% 18.0488% 11.5961%;
   border-width: 38px 35px 36px 35px;
   margin: -25px -22px -27px -22px;
 }
@@ -2494,6 +2505,18 @@
   overflow: hidden;
 }
 
+.sd-opsrail-resource-key { display: flex; flex-wrap: wrap; gap: 12px; margin: -2px 0 10px; color: #d0b88d; font-size: 10px; line-height: 14px; }
+.sd-opsrail-resource-key > span { display: inline-flex; align-items: center; gap: 5px; }
+.sd-opsrail-resource-key i { width: 10px; height: 5px; background: #9ce764; }
+.sd-opsrail-resource-key .is-machine { background: #9382ad; }
+.sd-opsrail-hstat-bar--resources { display: grid; }
+.sd-opsrail-hstat-bar--resources > span { grid-area: 1 / 1; min-width: 0; }
+.sd-opsrail-hstat-machine { height: 100%; border-radius: 999px; background: #9382ad; box-shadow: inset 0 1px 0 #ffffff38; transition: width 600ms ease; }
+.sd-opsrail-hstat-bar--resources .sd-opsrail-hstat-fill { z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .sd-opsrail-hstat-bar--resources > span { transition: none; }
+}
+
 .sd-opsrail-hstat-fill {
   display: block;
   height: 100%;
@@ -2505,8 +2528,21 @@
   transition: width 600ms ease;
 }
 
-/* 阈值配色：使用率 <60 绿 / ≥60 黄 / ≥85 红，延迟 <100ms 绿 / ≥100 黄 / ≥300 红，
-   在线玩家为 0 时红。绿色是默认样式，这里只覆盖黄/红两档 */
+/* 阈值配色：使用率 <60 绿 / ≥60 黄 / ≥85 红，面板响应 <100ms 绿 / ≥100 黄 / ≥300 红。
+   在线玩家为 0 时红；面板响应无有效采样时灰色。 */
+
+.sd-panel-response .sd-opsrail-hstat-row {
+  width: 100%;
+}
+
+.sd-opsrail-hstat--unknown .sd-opsrail-hstat-orb {
+  background: radial-gradient(circle at 35% 28%, #e5e1d8, #9a978e 45%, #59574f 100%);
+  box-shadow: inset 0 -2px 0 rgba(48, 45, 39, 0.6);
+}
+
+.sd-opsrail-hstat--unknown .sd-opsrail-hstat-value {
+  color: #c8c0ae;
+}
 
 .sd-opsrail-hstat--warn .sd-opsrail-hstat-orb {
   background: radial-gradient(circle at 35% 28%, #ffefad 0%, #f7cf58 40%, #dd9f1c 72%, #a56f0c 100%);

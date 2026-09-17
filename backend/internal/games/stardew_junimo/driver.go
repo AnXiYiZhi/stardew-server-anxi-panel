@@ -145,6 +145,10 @@ type Driver struct {
 	requiredRuntimeRunning           map[string]bool
 	installationEvidenceMu           sync.Mutex
 	installationEvidence             map[string]requiredFilesEvidence
+	runtimeDisplayReads              instanceReadCache[RuntimeDisplayInspection]
+	playerReads                      instanceReadCache[*PlayersResult]
+	playerLimitReads                 instanceReadCache[*int]
+	saveRosterReads                  instanceReadCache[*saveRosterSnapshot]
 }
 
 type DriverOptions struct {

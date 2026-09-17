@@ -1,4 +1,5 @@
 import type { Job, JobLog } from '../../types'
+import { installationFailureMessage } from '../../core/install-error.ts'
 
 function roundPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value * 10) / 10))
@@ -326,36 +327,5 @@ export function installFailureDisplayMessage(
   const isFailureState = state === 'error' || errorPhase || !!failedJob
   if (!isFailureState || state === 'game_installed') return ''
 
-  const lastErrorLog = failedJob && selectedJob?.id === failedJob.id
-    ? [...logs].reverse().find((log) => log.level === 'error')?.message ?? ''
-    : ''
-  const rawText = [stateMessage, failedJob?.errorMessage ?? '', lastErrorLog].filter(Boolean).join(' ')
-  const lower = rawText.toLowerCase()
-
-  if (phase === 'install_timeout' || lower.includes('任务超时') || lower.includes('timed out')) {
-    return '安装任务超时：SteamCMD 授权或下载没有在限定时间内完成，请重试安装。'
-  }
-  if (phase === 'credentials_required' || lower.includes('invalid password') || lower.includes('incorrect password')) {
-    return 'Steam 账号或密码错误（SteamCMD 登录失败），请修改后再试。'
-  }
-  if (phase === 'download_failed' || lower.includes('download failed')) {
-    return '游戏文件下载失败：SteamCMD 授权可能已经成功，但下载阶段失败，请检查网络、磁盘空间后重试。'
-  }
-  if (phase === 'steamcmd_failed') {
-    return 'SteamCMD 安装或修复失败；请检查任务日志、Steam 授权、网络和磁盘空间后重试。'
-  }
-  if (phase === 'steamcmd_image_pull_failed') {
-    return 'SteamCMD 工具镜像拉取失败，请检查 Docker 网络或镜像源后重试。'
-  }
-  if (phase === 'post_auth_failed') {
-    return 'SteamCMD 授权已经成功，但后续安装步骤失败；请使用已保存凭据重试，不需要重新输入账号密码。'
-  }
-  if (phase === 'pull_failed') {
-    return 'Junimo 镜像拉取失败，请检查 Docker 网络或镜像地址后重试。'
-  }
-
-  if (stateMessage && !stateMessage.includes('正在') && !stateMessage.includes('请稍候')) return stateMessage
-  if (lastErrorLog) return lastErrorLog.replace(/^\[steam\]\s*/, '')
-  if (failedJob?.errorMessage) return failedJob.errorMessage
-  return '安装任务失败，请查看任务中心日志后重试。'
+  return installationFailureMessage({ phase, stateMessage, job: failedJob, logs })
 }

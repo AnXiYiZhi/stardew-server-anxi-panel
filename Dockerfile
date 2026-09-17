@@ -7,6 +7,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install --frozen-lockfile 2>/dev/null || npm install
 COPY frontend/ ./
+COPY backend/internal/games/installerrors/catalog.json /app/backend/internal/games/installerrors/catalog.json
 RUN npm run build
 
 # ============================================================

@@ -155,7 +155,7 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 			}
 			loginAttempts = *request.MaxAttempts
 		}
-		players, err := d.listPlayers(ctx, instance)
+		players, err := d.listPlayers(ctx, instance, true)
 		if err != nil {
 			return err
 		}

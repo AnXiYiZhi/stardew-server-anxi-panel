@@ -1,3 +1,66 @@
+## v0.7.1 全量工作区发布（2026-09-17，候选准备中）
+
+- 本次纳入当前全部相关修改：性能/缓存/轮询、资源分层监控、安装失败解释、新世界 VNC 继承，以及桌面/移动端界面、素材与交互；完整范围和专项矩阵见 docs/09-image-build.md 的 v0.7.1 章节。
+- 前置验证：Node 24 洁净环境全部 27 个 test:*、production audit/build 通过；补齐自动候选的请求去重与资源范围 Docker 回归，新增全新安装及升级后的静态缓存/资源/玩家读取、VNC 创建及真实 Docker 安装失败/重试验收。原有升级、回滚、权限与持久数据门禁保留。
+- 后续：跟踪自动候选、annotated tag 和三仓正式提升；任一门禁失败先修复。成功后回填唯一 SHA/digest、workflow ID、实际耗时、故障及清理证据；本段尚不代表已发布。
+
+## PERF-READ-PATHS-2：性能复审整改（2026-09-17，本地完成，未发布）
+
+- 清理：任务容器 anxi-perf2-20260917-linux 与两个独立 Go 缓存卷已按归属标签核验删除，扫描器及 E2E 卷/镜像夹具已回收，临时测试脚本已删除；原有工作区修改保留在 main。
+
+- 玩家读取的展示 key 与持久化安全 key 分离：普通 Control 时间戳变化不再导致 500；存档、配置、实例状态与数据库 updated_at 代际仍须匹配。运行人数上限按实例/配置/代际缓存 30 秒，在线玩家与角色创建证据保持实时读取，写入事务内的读取仍走实时路径。
+- 在线名册只有心跳时间变化时每 30 秒持久化一次，业务字段和上下线立即写入；同轮玩家 upsert、身份与事件合并到一个 SQLite 事务，失败整体回滚。展示 LastSeen 不节流；异常退出时未落盘的纯心跳最多相差约 30 秒，无 schema 迁移。
+- 存储统计由 driver 声明 ProbeImage 和归属卷，Docker 仅枚举卷身份并检查目标卷，通过本地已有镜像只读绑定 daemon 返回的目标目录计算文件字节；不扫描其他卷、镜像或容器层。共享卷去重，缺失卷为 0，插件/外部 bind 卷或失败为未知。扫描禁止拉镜像和联网，限制 CPU/内存/PID，独立超时清理精确命名的临时容器。
+- 静态资源缓存按不可变构建的文件系统实例、路径及编码隔离，首次读取生成内容和 ETag；并发冷读合并，后续 304/HEAD/Range 不重读或重新哈希，缺失 URL 不长期驻留。共享读取在所有订阅方取消后失败也不缓存错误。
+- 影响文件：driver/player_read_cache/read_cache/players/resources、storage/player_roster、docker/resource_storage、web/handler/static_content/resource_storage 及专项测试。HTTP DTO 不变。
+- 验证与自检：新增普通快照并发更新/跨存档拒绝、实时数据与人数缓存失效、心跳与业务变更、批次回滚、条件请求/并发/构建隔离/Range 和取消后错误恢复测试，Linux 性能专项重复 10 轮通过；前端 read-requests/resource-metrics、Linux vet/build、多世界真实 Docker 与精确卷/缺失卷/符号链接/取消清理 E2E 通过。扫描器另以实际 runtime 镜像 dockerproxy.net/sdvd/server:1.5.0-preview.125 验证通过。
+- 全包验证限制：Linux 全量回归已执行，Junimo 256.7 秒中两个千行日志诊断夹具 dns/code5 超过既有 15 秒等待，其余包及用例通过；code5 单独组复测通过，dns 单独复测 2.15 秒通过，完整诊断组使用 Linux tmpfs 临时目录连续 3 轮共 5.69 秒通过。未放宽断言或修改安装逻辑，常规磁盘整包尚非一次全绿；正式候选须在其文件系统上复核。完整 JSON/stderr/vet/build 日志保留在系统临时目录 anxi-perf2-20260917-linux。
+- 本机对照：同为 1,564,122 字节的合成资源，304 从约 1.15 ms / 1,576,488 B 降至约 1.16 μs / 1,485 B（100 次，Windows）；3 份新鲜玩家快照由 12 次命令降至 6 次，后续人数缓存命中时每份 1 次；0/5/10 秒同数据心跳只写 1 次。实际生产延迟待部署采样，正式候选继续执行全新安装及 Web 升级门禁。
+
+## PERF-READ-PATHS-1：八项性能优化（2026-09-17，本地完成，未发布）
+
+- 运行组件展示改为 driver 内按实例合并并缓存 30 秒的 `InspectRuntimeDisplay`，`runtime-components` 与 `smapi-update` 共用结果。Docker 新增仅读取固定 manifest 的 `RuntimeReadContentVersions`，已安装冷读由 5 个临时容器降为 2 个且不执行 `du`；缓存命中不启动容器。安装、升级与修改的 preflight 仍调用实时检查及容量校验。
+- 玩家读取通过 `read_cache.go` / `player_read_cache.go` 按实例合并并发，结果缓存 2 秒；XML 按主存档路径、mtime 纳秒和大小缓存，共享一次流式解析结果。变化中/损坏文件不缓存，返回结果隔离复制；同一运行快照跳过重复 roster upsert 与无变化 offline 更新。
+- `ListPlayers` 的 Docker、diagnostics 与 XML 读取移出 driver 全局 mutation lock；仅持久化短段保留原所有权校验，写入前复核文件指纹与实例状态。已有密码设置事务通过 ownershipHeld 复用当前所有权，避免嵌套加锁。每实例读队列独立，慢世界不阻挡其他世界的读取。
+- 存储统计过期后单次后台刷新，CPU/内存接口立即返回上次存储样本和时间戳；冷启动存储字段为 null。后台超时 20 秒，完成后缓存 1 分钟。数据映射发布后不可修改。
+- 静态服务支持预生成 gzip 与缓存压缩回退、按编码区分的 ETag/304、HEAD/Range；哈希 JS/CSS 等使用一年 immutable，HTML 与未哈希图片使用 no-cache 条件重验证，避免版本更新后仍使用旧资源。
+- 验证：Linux 全包 vet/build、性能缓存/并发/异步存储/静态条件请求专项重复 10 次通过；真实 Docker 版本读取与多世界资源采样 E2E 通过。合成 10 MiB XML 缓存命中基准约 0.13 ms / 4.2 KB 分配（100 次，不含整个玩家接口）。Junimo 整包终验 222.9 秒、Web 整包终验 43.4 秒均通过。
+- 后续：保留展示缓存与实时写入校验的边界；新增依赖文件需同步 cache key。真实生产延迟与 IO 需部署后采样；正式候选按镜像文档执行 Web 升级及回滚门禁。
+
+
+## INSTALL-ERROR-EXPLANATIONS-1：安装失败原因与处理建议（2026-09-17，本地完成，未发布）
+
+- 新增 `internal/games/installerrors/catalog.json`：40 类可识别错误、安装阶段兜底和容器退出码说明；Go 与前端共享规则。覆盖 Steam 账号/验证码/许可/限流、镜像仓库、网络/DNS/TLS/代理、存储/权限/挂载、架构/依赖、SMAPI/校验。单独 code 5 不推断密码错误，137 仅提示强制终止及可能原因。
+- `stardew_junimo/installer.go` 与 `install_failure.go` 在当前命令尝试内保留固定目录中的原因，不保存原始凭据；失败时持久化中文 job.errorMessage 与实例 stateMessage，原始错误继续写脱敏任务日志。重新尝试与成功登录会清理已恢复的原因；SDK 成功不掩盖游戏许可失败。机器 phase、既有重试/清理契约及 Auth-only 基础状态恢复保持原语义。
+- `web/install_handlers.go` 的准备/启动失败在安全降级前识别已知原因；未知错误继续脱敏。现有 API/DTO 不变。共享目录意味着前端构建必须包含该 JSON，Dockerfile frontend-builder 已补 COPY。
+- 验证：共享 40 类样例、8 组真实 jobs/SQLite 持久化夹具（1100 行后仍保留原因）、Web 安全提示定向回归通过；Linux installerrors/Junimo 整包 1378 个用例及子用例通过，2 个既有条件跳过（真实实例农场依赖、容器未提供 PowerShell），零失败，Junimo 包耗时 267.55 秒。相关 installerrors/Junimo/Web vet 和 Panel build 通过，完整日志留在系统临时目录。任务容器、前端构建测试镜像及 4671 监听已清零。后续新增错误需同时补共享样例，不能仅凭退出码改变授权状态或删除数据。
+
+
+## 2026-09-17：新世界继承首世界 VNC 密码（本地完成，未发布）
+
+- `stardew_junimo/instance_provision.go` 的新建世界流程继承默认安装世界的 `VNC_PASSWORD`；首世界密码为空/纯空白时拒绝创建，`POST /api/instances` 返回 `409 vnc_password_required` 并按既有事务回收目录、卷和 reservation。Steam 凭据、邀请码 session 与端口仍按各自现有边界处理。
+- 继承仅发生于创建；既有镜像兼容收敛仍只更新运行身份，保留世界已经设置的密码。`config/env.go` 同步修正双引号值中反斜杠和引号的反转义，使密码读写/重复 env merge 保持一致。
+- 验证：driver/Web 创建、空密码拒绝及清理、非管理员拒绝、接口不泄露密码、特殊字符与重复 merge、既有密码保护回归通过；config 全包、Go vet 与 build 通过。本机 `stardew-2` 已经由安全配置写入继承首世界密码，经面板确认 Saved 后重启，运行态密码一致、`SecurityTypes=VncAuth`、容器 healthy。首世界未重启。当前未发布，新建逻辑在后端加载本次构建后生效。
+
+## 2026-09-17：整机、游戏、世界资源分层（本地实现，未发布）
+
+- 新增登录后只读 `GET /api/resources`，返回 `machine` 与按 `driverId` 分组的 `games[].sample/worldCount`。`/api/instances/{id}/metrics` 的 `sample` 仅该世界主服务，新增同级 `machine` 用于自身/整机当前占用的比较与悬浮具体用量；两种 scope 保持分开。样本新增 `scope`、`cpuCount`、`cpuCores`、`memoryTotalBytes`、`storageUsedBytes`、`storageTimestamp`、`containerState`，世界样本不混入整机磁盘百分比。
+- 悬浮明细接口补充：`resource_metrics.go` 复用已有 5 秒机器缓存，`docker_handlers_test.go` 断言独立 machine scope、CPU/内存总量与世界分母一致及磁盘容量存在。Windows 资源接口专项、web vet、backend build 通过。存储扫描和 driver 归属规则不变；前后端须一起加载后使用新比较字段。
+- 整机 CPU 使用系统计数差值；Linux 读取 `/proc/stat`（排除重复 guest，idle 含 iowait），内存用 `MemTotal - MemAvailable`；Windows 使用 GetSystemTimes/GlobalMemoryStatusEx。磁盘为 Panel 数据目录所在文件系统，非多磁盘总和。不同监测工具的采样窗口会造成瞬时差异；Docker Desktop 场景的 Linux 容器宿主是其虚拟机，不能声称等同 Windows 物理机计数。
+- 游戏 CPU/内存汇总所属世界 Compose 服务，按容器身份去重；世界仅主 `server`。CPU 从 Docker 的单核百分比除以机器逻辑核心数，内存使用量除以机器总内存；容器内存上限仍单独保留。停服世界 CPU/内存为空；全部已知停止时游戏合计为 0，读取失败为空而非部分合计。
+- `registry.ResourceStorageProvider` 由 Junimo driver 声明世界目录、实际绑定的 game-data 与 steam-session 卷，以及共享授权目录/卷。扫描不跟随软链接，游戏按根路径和卷名去重；世界停服仍保留存储。口径为文件逻辑大小 + Docker 卷已用量（CLI 容量有显示舍入），不含 Docker 镜像层与容器可写层。失败保持 null；不创建扫描辅助容器。
+- 实现：`machine_metrics*.go`、`resource_metrics.go`、`resource_overview.go`、`resource_storage.go`，以及 driver/registry/docker 的资源能力。CPU/内存缓存 5 秒并合并并发，汇总最多 4 个 Compose 调用；存储统一缓存 60 秒、扫描上限 20 秒。均按需采样，不持久化历史。
+- 验证：资源计算/去重/失败/认证专项、Windows vet、真实 Docker 两世界 HTTP E2E 通过；真实卷容量、汇总、停止一世界后另一世界运行与存储保留已验证。Linux web/docker 全包通过；Junimo 全包一条既有 100ms durable-save 测试首轮超时，独立复跑 5 次通过，未修改该链路。最终 Linux 资源专项（含 procfs 与 driver 卷绑定）、相关包 vet、后端 build 均通过；临时 Compose、卷与 Linux 验证容器已清理。
+- 接手：前后端须一起加载；现有 8090 长运行后端仍是旧进程，保留其原终端配置重启后新接口才生效。本轮没有修改真实世界、提交、推送或发布。
+
+## 2026-09-15：未完成角色创建的玩家占位（已修复，未发布）
+
+- Junimo driver 通过既有 `/diagnostics/state.farmhandData.isCustomized` 和存档 XML 的显式创建状态过滤未完成角色，统一处理在线人数、旧名册合并和事件显示；运行态完成证据优先于尚未更新的存档。主机、旧格式缺失字段和无法确认状态的历史角色保持兼容。
+- 修改 `backend/internal/games/stardew_junimo/players.go`；公共 API/数据库格式不变。已有占位历史在获得明确未完成证据时隐藏，不删除游戏角色、小屋或存档。新占位不写入 SQLite 名册；停服时使用存档证据。
+- 回归覆盖重复读取、SQLite 旧记录、新占位不落库、停止状态、完成创建但尚未存档、旧字段兼容和诊断失败字段。验证命令：`go -C backend test ./internal/web ./internal/games/stardew_junimo -run 'Test.*(Player|Farmhand|CharacterCreation|ImportEvidenceFarmhand)' -count=1`，以及相关包 vet、后端 build。
+- 后续发布需在隔离真实游戏中验收进入创建界面、退出、重新加入、完成创建和停服重启。诊断不可用且存档缺少创建证据时保留历史记录；当前尚未部署或完成真实客户端验收。
+
+
 # v0.7.0 正式发布完成（2026-09-05）
 
 - 已发布游戏库、多世界创建/改名/删除、迁移 014–016、创建 token/journal 互斥与恢复、共享 Steam 下载、世界安装授权路由、过期会话与首次导入 journal 修复。完整提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。
@@ -75,7 +138,7 @@
 - 公用层统一提供短命 SteamCMD 容器请求构造、跨镜像 HOME/登录目录挂载、Panel 命名空间下的 `steamcmd-login` / `steamcmd-home` 卷，以及进程内下载互斥。游戏 driver 只提供镜像引用、目标卷与 `AppID/installDir/anonymous` 清单；星露谷当前为账户 App `413150` 和匿名 SDK App `1007`。匿名 App 不接收账户密码，密码只进入一次性容器环境且不写任务日志。Docker daemon 的已拉镜像层可自然复用，但镜像候选和运行文件完整性判定仍属于具体游戏 driver。
 - `GET /api/games/stardew/installation` 要求已登录，是成员和管理员均可读取的非秘密游戏级安装投影；返回固定 `installationTargetId`、driver、required-files 结果、公用凭据/设备授权是否就绪和兼容实例 DTO。全局安装页继续调用既有实例安装 job；driver 会从公用凭据层解析账号，基础下载 job 在所有实例间互斥，世界级 `stardew_steam_auth` 邀请授权仍只与自己的实例冲突。
 - `POST /api/instances` 现提供第一条 driver-owned 创建契约，请求收口为 `{name,gameId:"stardew"}`，仅管理员可用，客户端不能选择内部实例 ID。migration `014_instance_id_sequences.sql` 为每个游戏保存只增不减的下一编号；storage 在首次分配时兼容现有实例数量和 `stardew-N` 最大后缀，此后事务化生成 `stardew-2`、`stardew-3`，创建失败或实例删除也不复用旧编号。Web 层只负责生成 ID/目录边界、数据库 reservation、审计和失败编排；公众不能选择 source driver、Docker volume 或模板。Stardew driver 固定使用默认游戏安装目标作为内部模板，拒绝未安装/活动任务，分配未占用的 game/query UDP 与 VNC/API TCP 端口，生成独立实例目录/Compose，再通过 Docker helper 在 `--network none --pull never` 下把已验证的游戏运行卷只读复制到新的 `<instance>_game-data` 卷。复制后再次验证必需运行文件，成功发布为 `save_required`；存档、Mod、设置和邀请码 session 均不从模板复制。
-- 新实例同时继承模板已经验证可用的 `IMAGE_VERSION`、`SERVER_IMAGE`、`SERVER_IMAGE_CANDIDATES` 与 SMAPI 版本/下载元数据，兼容旧版本升级后仍使用镜像代理或自定义可信仓库的默认实例；不会复制 Steam 账号、Steam 邀请授权、VNC 密码或其它实例设置。Panel 启动时还会修正早期多实例实现留下的窄兼容状态：仅限 `save_required/instance_ready`、受管目录和标准独立 game-data 卷，且目标镜像明确缺失、模板镜像本地存在、两者 tag 相同、目标运行文件用模板镜像复验完整时，才把目标运行镜像身份收敛到模板；不下载游戏、不改 game-data 或存档，用户自定义版本/已可用镜像保持不动。
+- 新实例同时继承模板已经验证可用的 `IMAGE_VERSION`、`SERVER_IMAGE`、`SERVER_IMAGE_CANDIDATES` 与 SMAPI 版本/下载元数据，兼容旧版本升级后仍使用镜像代理或自定义可信仓库的默认实例；创建时额外继承首世界 VNC 密码（2026-09-17 修复），不会复制 Steam 账号、Steam 邀请授权或其它实例设置。Panel 启动时还会修正早期多实例实现留下的窄兼容状态：仅限 `save_required/instance_ready`、受管目录和标准独立 game-data 卷，且目标镜像明确缺失、模板镜像本地存在、两者 tag 相同、目标运行文件用模板镜像复验完整时，才把目标运行镜像身份收敛到模板；不下载游戏、不改 game-data 或存档，用户自定义版本/已可用镜像保持不动。
 - 创建失败会先按精确实例根、ID 和目标卷清理；清理成功才删除 `instance_provisioning` reservation，清理不完整则保留 error 实例供诊断，不把部分资源伪装成已创建。当前模板仍是默认安装目标的已验证 game-data 卷，不是独立不可变制品；这一边界使现有安装/修复状态机无需复制，也避免先引入未讨论的共享运行容器架构。未来若增加专用不可变模板卷，应由 driver 迁移并补版本/回滚契约，不能由 API handler 拼 Docker 逻辑。
 - 主要文件：`backend/internal/games/steamcmd/*`、`stardew_junimo/{driver,installer,shared_steam_download,instance_provision,steam_credentials}.go`、`internal/docker/instance_provision.go`、`internal/storage/instances.go`、`internal/web/{game_installation,instance,install}_handlers.go` 与 `cmd/panel/main.go`。新增模板继承/启动期兼容专项、SteamCMD/Stardew 定向回归、storage/docker/Web 回归、Go vet 和 Panel build 均通过；Windows 全量仅命中既有 POSIX mode 假失败，Linux Junimo 包越过该权限断言后仅命中既有异步测试的 `TempDir` 清理竞态，失败用例精确重跑通过，任务容器和两个缓存卷已清零。未运行真实 Steam 下载、未写生产数据、未发布。
 

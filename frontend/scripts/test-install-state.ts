@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import './test-install-errors.ts'
 import { readFileSync } from 'node:fs'
 import { normalizeInstanceId } from '../src/instance-id.ts'
 import { calcSteamDownloadTaskProgress, extractPullProgress, extractSMAPIArchiveProgress, installFailureDisplayMessage } from '../src/games/stardew/install-helpers.ts'
@@ -102,7 +103,7 @@ assert.match(
 assert.equal(routeToPath('install', { installJobId: 'job_auth_new' }), '/instances/stardew/install?jobId=job_auth_new')
 assert.equal(
   installFailureDisplayMessage('credentials_required', 'credentials_required', '', undefined, null, []),
-  'Steam 账号或密码错误（SteamCMD 登录失败），请修改后再试。',
+  'Steam 登录验证未通过，请根据任务日志检查账号、密码或验证码后重试。',
 )
 assert.match(diagnosticsPageSource, /const steamInviteEnabled = instanceState\?\.steamInviteEnabled === true/)
 assert.match(diagnosticsPageSource, /steamInviteEnabled \? 'Junimo 运行组件版本对' : 'JunimoServer 运行组件版本'/)
@@ -788,8 +789,8 @@ const badPasswordJob = { ...failedInlineJob, errorMessage: 'SteamCMD install exi
 const badPasswordLog = { ...jobLog(21, '[steamcmd] Logging in user [REDACTED]...ERROR (Invalid Password)'), jobId: badPasswordJob.id }
 assert.equal(gameInstallProgressPresentation(instanceState('error', 'credentials_required'), badPasswordJob, [badPasswordLog]).detail,
   'Steam 账号或密码错误，请修改后重试。')
-assert.equal(gameInstallProgressPresentation(instanceState('error', 'steamcmd_failed'), badPasswordJob, [{ ...badPasswordLog, jobId: 'older-job' }]).detail,
-  'SteamCMD install exited with code 5', 'another job must not supply the password diagnosis')
+assert.match(gameInstallProgressPresentation(instanceState('error', 'steamcmd_failed'), badPasswordJob, [{ ...badPasswordLog, jobId: 'older-job' }]).detail,
+  /退出码 5.*无法确定原因/, 'another job must not supply the password diagnosis')
 assert.equal(gameInstallProgressPresentation({ ...instanceState('error', 'credentials_required'), stateMessage: 'Steam 验证码不正确，请重新验证。' }, badPasswordJob, []).detail,
   'Steam 验证码不正确，请重新验证。', 'preserve the credential diagnosis instead of generic exit code')
 assert.equal(gameInstallStepProgressLabel(failedInlineInstall), '请重试')
@@ -802,7 +803,7 @@ const timedOutInstall = gameInstallProgressPresentation(
   [],
 )
 assert.equal(timedOutInstall.mode, 'failed', 'terminal job must override stale authorization state')
-assert.equal(timedOutInstall.detail, 'Steam 登录授权确认超时，请重新安装并及时完成 Steam 验证。')
+assert.equal(timedOutInstall.detail, 'Steam 登录授权确认超时，请重试并及时在 Steam 手机 App 中批准登录。')
 assert.equal(gameInstallStepProgressLabel(timedOutInstall), '请重试')
 assert.equal(timedOutInstall.steps[2], 'error')
 assert.equal(gameInstallStepProgressLabel({ ...failedInlineInstall, percent: 42 }), '请重试')

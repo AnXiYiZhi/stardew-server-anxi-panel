@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -72,18 +73,21 @@ type PlayerEvent struct {
 
 // PlayersResult is returned by the player status endpoint.
 type PlayersResult struct {
-	InstanceID   string        `json:"instanceId"`
-	State        string        `json:"state"`
-	Source       string        `json:"source,omitempty"`
-	SaveID       string        `json:"saveId,omitempty"`
-	OnlineCount  *int          `json:"onlineCount"`
-	MaxPlayers   *int          `json:"maxPlayers"`
-	Players      []PlayerInfo  `json:"players"`
-	RecentEvents []PlayerEvent `json:"recentEvents,omitempty"`
-	RawInfo      string        `json:"rawInfo,omitempty"`
-	ParseStatus  string        `json:"parseStatus"`
-	Message      string        `json:"message,omitempty"`
-	UpdatedAt    string        `json:"updatedAt"`
+	observedInstanceState     string
+	observedInstanceUpdatedAt string
+	readKey                   string
+	InstanceID                string        `json:"instanceId"`
+	State                     string        `json:"state"`
+	Source                    string        `json:"source,omitempty"`
+	SaveID                    string        `json:"saveId,omitempty"`
+	OnlineCount               *int          `json:"onlineCount"`
+	MaxPlayers                *int          `json:"maxPlayers"`
+	Players                   []PlayerInfo  `json:"players"`
+	RecentEvents              []PlayerEvent `json:"recentEvents,omitempty"`
+	RawInfo                   string        `json:"rawInfo,omitempty"`
+	ParseStatus               string        `json:"parseStatus"`
+	Message                   string        `json:"message,omitempty"`
+	UpdatedAt                 string        `json:"updatedAt"`
 }
 
 type playerRosterStore interface {
@@ -99,18 +103,18 @@ type playerRosterStore interface {
 // structured players.json file in the mounted control directory; older instances
 // without that bridge fall back to the conservative Junimo "info" parser.
 func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*PlayersResult, error) {
-	var result *PlayersResult
-	err := d.WithMutationOwnership(ctx, instance, func() error {
-		var listErr error
-		result, listErr = d.listPlayers(ctx, instance)
-		return listErr
+	if err := d.EnsureMutationOwnershipAvailable(ctx, instance); err != nil {
+		return nil, err
+	}
+	result, err := d.playerReads.get(ctx, instance.ID, playerReadKey(instance), 2*time.Second, func(ctx context.Context) (*PlayersResult, error) {
+		return d.listPlayers(ctx, instance)
 	})
-	return result, err
+	return clonePlayersResult(result), err
 }
 
-func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*PlayersResult, error) {
-	_, durableRoster := d.store.(playerRosterStore)
+func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance, ownershipHeld ...bool) (*PlayersResult, error) {
 	result := &PlayersResult{
+		readKey:     playerPersistenceKey(instance),
 		InstanceID:  instance.ID,
 		State:       instance.State,
 		Players:     []PlayerInfo{},
@@ -118,6 +122,14 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 		UpdatedAt:   time.Now().Format(time.RFC3339),
 	}
 	zero := 0
+	if store, ok := d.store.(interface {
+		GetInstance(context.Context, string) (storage.Instance, error)
+	}); ok {
+		if current, err := store.GetInstance(ctx, instance.ID); err == nil {
+			result.observedInstanceState = current.State
+			result.observedInstanceUpdatedAt = current.UpdatedAt
+		}
+	}
 	if instance.State != storage.InstanceStateRunning {
 		// Stopped servers have no live runtime value. The configured value is the
 		// one that will become effective on the next container start.
@@ -125,21 +137,21 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 		result.OnlineCount = &zero
 		saveID := latestControlSaveID(instance.DataDir)
 		result.SaveID = saveID
-		if cached := markCachedPlayersOffline(instance.DataDir, saveID, result.UpdatedAt, !durableRoster); len(cached) > 0 {
+		if cached := markCachedPlayersOffline(instance.DataDir, saveID, result.UpdatedAt, false); len(cached) > 0 {
 			result.Source = "panel_cache"
 			result.Players = cached
 			result.RecentEvents = recentPlayerEvents(instance.DataDir, saveID)
 			result.ParseStatus = "partial"
 			result.Message = "服务器未运行，显示已记录玩家名册。"
-			return d.persistPlayerRoster(ctx, instance, result), nil
+			return d.finishPlayerRead(ctx, instance, result, ownershipHeld...)
 		}
 		result.RecentEvents = recentPlayerEvents(instance.DataDir, saveID)
 		result.Message = "服务器未运行，暂无已记录玩家。"
-		return d.persistPlayerRoster(ctx, instance, result), nil
+		return d.finishPlayerRead(ctx, instance, result, ownershipHeld...)
 	}
 
 	if snapshot, ok := readPlayersFromControl(instance.DataDir); ok {
-		roster := mergePlayerRoster(instance.DataDir, snapshot.SaveID, snapshot.Players, snapshot.UpdatedAt, !durableRoster)
+		roster := mergePlayerRoster(instance.DataDir, snapshot.SaveID, snapshot.Players, snapshot.UpdatedAt, false, d.cachedSaveRoster(ctx, instance, snapshot.SaveID))
 		result.Source = "smapi_control"
 		result.SaveID = snapshot.SaveID
 		result.OnlineCount = snapshot.OnlineCount
@@ -151,8 +163,12 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 		// players.json does not carry Junimo's effective limit. Read only the
 		// live info value while the container is running; never substitute the
 		// possibly pending server-settings.json value here.
-		result.MaxPlayers = readLiveServerMaxPlayers(ctx, d, instance)
-		return d.persistPlayerRoster(ctx, instance, result), nil
+		if len(ownershipHeld) > 0 && ownershipHeld[0] {
+			result.MaxPlayers = readLiveServerMaxPlayers(ctx, d, instance)
+		} else {
+			result.MaxPlayers = d.cachedLiveServerMaxPlayers(ctx, instance)
+		}
+		return d.finishPlayerRead(ctx, instance, result, ownershipHeld...)
 	}
 
 	info, err := runCommand(ctx, d, instance, CommandRequest{Command: "info"}, true)
@@ -172,7 +188,7 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 		result.MaxPlayers = parsed.MaxPlayers
 	}
 	if len(parsed.Players) > 0 {
-		result.Players = mergePlayerRoster(instance.DataDir, "", parsed.Players, result.UpdatedAt, !durableRoster)
+		result.Players = mergePlayerRoster(instance.DataDir, "", parsed.Players, result.UpdatedAt, false, d.cachedSaveRoster(ctx, instance, ""))
 		result.RecentEvents = recentPlayerEvents(instance.DataDir, "")
 	} else {
 		result.Players = parsed.Players
@@ -180,7 +196,7 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 	}
 	result.ParseStatus = parsed.ParseStatus
 	result.Message = parsed.Message
-	return d.persistPlayerRoster(ctx, instance, result), nil
+	return d.finishPlayerRead(ctx, instance, result, ownershipHeld...)
 }
 
 func readLiveServerMaxPlayers(ctx context.Context, d *Driver, instance registry.Instance) *int {
@@ -198,12 +214,13 @@ func readLiveServerMaxPlayers(ctx context.Context, d *Driver, instance registry.
 // persistPlayerRoster makes SQLite the durable history while keeping runtime
 // JSON and save XML as observation sources. Storage failures are deliberately
 // non-fatal: player status remains available even when persistence is degraded.
-func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Instance, result *PlayersResult) *PlayersResult {
+func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Instance, result *PlayersResult, save *saveRosterSnapshot, pending map[string]bool) *PlayersResult {
 	if result == nil {
 		return result
 	}
+	filterPendingCharacters(result, pending)
 	defer func() {
-		markPlayerModRiskFlags(instance.DataDir, result.Players)
+		filterPendingCharacters(result, pending)
 	}()
 	store, ok := d.store.(playerRosterStore)
 	if !ok {
@@ -233,6 +250,7 @@ func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Inst
 	seen := make(map[string]bool, len(result.Players))
 	onlineIDs := []string{}
 	allPersisted := true
+	var updates []storage.UpsertPlayerRosterParams
 	for i := range result.Players {
 		player := &result.Players[i]
 		id := strings.TrimSpace(player.UniqueMultiplayerID)
@@ -263,19 +281,46 @@ func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Inst
 		if entry.LastSeenAt == "" {
 			entry.LastSeenAt = result.UpdatedAt
 		}
-		if err := store.UpsertPlayerRoster(ctx, storage.UpsertPlayerRosterParams{Entry: entry, BaseSaveID: baseID, FullSaveID: fullID, Online: player.Status == "online"}); err != nil {
+		if old, exists := byKey[key]; exists && samePlayerRosterObservation(old, entry, player.Status) {
+			continue
+		}
+		updates = append(updates, storage.UpsertPlayerRosterParams{Entry: entry, BaseSaveID: baseID, FullSaveID: fullID, Online: player.Status == "online"})
+	}
+	if batch, ok := store.(interface {
+		UpsertPlayerRosterBatch(context.Context, []storage.UpsertPlayerRosterParams) error
+	}); ok {
+		if err := batch.UpsertPlayerRosterBatch(ctx, updates); err != nil {
 			allPersisted = false
-			d.logger.Warn("upsert durable player roster", "instance_id", instance.ID, "save_id", stableID, "player_id", id, "error", err)
+			d.logger.Warn("upsert durable player roster batch", "instance_id", instance.ID, "error", err)
+		}
+	} else {
+		for _, update := range updates {
+			if err := store.UpsertPlayerRoster(ctx, update); err != nil {
+				allPersisted = false
+				d.logger.Warn("upsert durable player roster", "instance_id", instance.ID, "error", err)
+			}
 		}
 	}
-	if err := store.MarkPlayerRosterOfflineExcept(ctx, instance.ID, stableID, result.UpdatedAt, onlineIDs); err != nil {
-		allPersisted = false
-		d.logger.Warn("mark durable player roster offline", "instance_id", instance.ID, "save_id", stableID, "error", err)
+	needsOffline := false
+	for _, old := range persisted {
+		if old.CurrentStatus == "online" && !containsPlayerID(onlineIDs, old.PlayerID) {
+			needsOffline = true
+			break
+		}
+	}
+	if needsOffline {
+		if err := store.MarkPlayerRosterOfflineExcept(ctx, instance.ID, stableID, result.UpdatedAt, onlineIDs); err != nil {
+			allPersisted = false
+			d.logger.Warn("mark durable player roster offline", "instance_id", instance.ID, "save_id", stableID, "error", err)
+		}
 	}
 	legacyEvents := readPlayerEventsFile(instance.DataDir)
 	if cacheMatchesSave(legacyEvents.SaveID, stableID) && len(legacyEvents.Events) > 0 {
 		imports := make([]storage.PlayerRosterEvent, 0, len(legacyEvents.Events))
 		for _, event := range legacyEvents.Events {
+			if !event.IsHost && pending[event.UniqueMultiplayerID] {
+				continue
+			}
 			playerID := strings.TrimSpace(event.UniqueMultiplayerID)
 			if playerID == "" {
 				playerID = "name:" + strings.ToLower(strings.TrimSpace(event.PlayerName))
@@ -289,7 +334,7 @@ func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Inst
 	}
 	for _, entry := range persisted {
 		key := playerKey(entry.DisplayName, entry.PlayerID)
-		if seen[key] {
+		if seen[key] || pending[entry.PlayerID] {
 			continue
 		}
 		result.Players = append(result.Players, playerInfoFromRosterEntry(entry))
@@ -307,13 +352,111 @@ func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Inst
 		_ = os.Remove(playerCachePath(instance.DataDir))
 		_ = os.Remove(playerEventsPath(instance.DataDir))
 	}
-	markSaveCharacterCapabilities(instance.DataDir, stableID, result.Players)
+	markSaveCharacterCapabilities(instance.DataDir, stableID, result.Players, save)
 	return result
 }
 
-func markSaveCharacterCapabilities(dataDir, saveID string, players []PlayerInfo) {
+func containsPlayerID(ids []string, id string) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
+func samePlayerRosterObservation(old, next storage.PlayerRosterEntry, status string) bool {
+	if old.CurrentStatus != status {
+		return false
+	}
+	next.CurrentStatus = status
+	next.FirstSeenAt, next.LastOnlineAt = old.FirstSeenAt, old.LastOnlineAt
+	// Offline polling is not a new observation of a player.
+	if status != "online" {
+		next.SnapshotObservedAt = old.SnapshotObservedAt
+		next.LastSeenAt = old.LastSeenAt
+	} else {
+		previous, oldErr := time.Parse(time.RFC3339Nano, old.SnapshotObservedAt)
+		observed, newErr := time.Parse(time.RFC3339Nano, next.SnapshotObservedAt)
+		if oldErr == nil && newErr == nil && !observed.Before(previous) && observed.Sub(previous) < 30*time.Second {
+			// Keep live timestamps in the response; persist an unchanged heartbeat
+			// at most every 30 seconds. Business changes still compare unequal.
+			next.SnapshotObservedAt, next.LastSeenAt = old.SnapshotObservedAt, old.LastSeenAt
+		}
+	}
+	return reflect.DeepEqual(old, next)
+}
+
+// Only explicit game evidence can hide an unfinished character. Missing fields
+// in older Control/save formats must not erase legitimate historical players.
+func (d *Driver) pendingCharacterIDs(ctx context.Context, instance registry.Instance, saveID string, save *saveRosterSnapshot) map[string]bool {
+	pending := map[string]bool{}
+	for _, farmer := range save.farmhands {
+		id := strings.TrimSpace(farmer.UniqueMultiplayerID)
+		if id == "" {
+			id = strings.TrimSpace(farmer.UniqueMultiplayerIDFallback)
+		}
+		if id != "" && farmer.IsCustomized != nil {
+			pending[id] = !*farmer.IsCustomized
+		}
+	}
+	// A completed live character may not have reached the next disk save yet.
+	if exec, ok := d.docker.(commandExecutor); ok && instance.State == storage.InstanceStateRunning {
+		if raw, err := readJunimoAPI(ctx, exec, instance.DataDir, "/diagnostics/state"); err == nil {
+			mergeCharacterCreationEvidence(pending, raw)
+		}
+	}
+	return pending
+}
+
+func mergeCharacterCreationEvidence(pending map[string]bool, raw []byte) {
+	var payload struct {
+		Farmhands []struct {
+			ID           int64 `json:"uniqueMultiplayerId"`
+			IsCustomized *bool `json:"isCustomized"`
+		} `json:"farmhandData"`
+		FailedFields []string `json:"failedFields"`
+	}
+	if json.Unmarshal(raw, &payload) != nil {
+		return
+	}
+	for _, field := range payload.FailedFields {
+		if field == "farmhandData" || field == "gameThreadTimeout" {
+			return
+		}
+	}
+	for _, farmer := range payload.Farmhands {
+		if farmer.ID != 0 && farmer.IsCustomized != nil {
+			pending[strconv.FormatInt(farmer.ID, 10)] = !*farmer.IsCustomized
+		}
+	}
+}
+
+func filterPendingCharacters(result *PlayersResult, pending map[string]bool) {
+	players := result.Players[:0]
+	for _, player := range result.Players {
+		if !player.IsHost && pending[strings.TrimSpace(player.UniqueMultiplayerID)] {
+			if player.Status == "online" && result.OnlineCount != nil && *result.OnlineCount > 0 {
+				*result.OnlineCount--
+			}
+			continue
+		}
+		players = append(players, player)
+	}
+	result.Players = players
+	events := result.RecentEvents[:0]
+	for _, event := range result.RecentEvents {
+		if !event.IsHost && pending[strings.TrimSpace(event.UniqueMultiplayerID)] {
+			continue
+		}
+		events = append(events, event)
+	}
+	result.RecentEvents = events
+}
+
+func markSaveCharacterCapabilities(dataDir, saveID string, players []PlayerInfo, snapshots ...*saveRosterSnapshot) {
 	present := make(map[string]bool)
-	for _, item := range saveRosterItems(dataDir, saveID) {
+	for _, item := range saveRosterItems(dataDir, saveID, snapshots...) {
 		key := playerKey(item.Name, item.UniqueMultiplayerID)
 		if key != "" {
 			present[key] = true
@@ -548,7 +691,7 @@ func markCachedPlayersOffline(dataDir, saveID, seenAt string, writeLegacyHistory
 	return offlinePlayersFromCache(dataDir, saveID)
 }
 
-func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenAt string, writeLegacyHistory bool) []PlayerInfo {
+func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenAt string, writeLegacyHistory bool, snapshots ...*saveRosterSnapshot) []PlayerInfo {
 	if strings.TrimSpace(seenAt) == "" {
 		seenAt = time.Now().Format(time.RFC3339)
 	}
@@ -564,7 +707,7 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 			byKey[key] = item
 		}
 	}
-	for _, item := range saveRosterItems(dataDir, saveID) {
+	for _, item := range saveRosterItems(dataDir, saveID, snapshots...) {
 		key := playerKey(item.Name, item.UniqueMultiplayerID)
 		if key == "" {
 			continue
@@ -710,6 +853,7 @@ type saveRosterXML struct {
 
 type saveRosterFarmer struct {
 	Name                        string `xml:"name"`
+	IsCustomized                *bool  `xml:"isCustomized"`
 	UniqueMultiplayerID         string `xml:"UniqueMultiplayerID"`
 	UniqueMultiplayerIDFallback string `xml:"uniqueMultiplayerID"`
 	Money                       *int64 `xml:"money"`
@@ -723,7 +867,10 @@ type saveRosterFarmer struct {
 	UseSeparateWallets bool `xml:"useSeparateWallets"`
 }
 
-func saveRosterItems(dataDir, saveID string) []playerCacheItem {
+func saveRosterItems(dataDir, saveID string, snapshots ...*saveRosterSnapshot) []playerCacheItem {
+	if len(snapshots) > 0 && snapshots[0] != nil {
+		return snapshots[0].items
+	}
 	saveFolder := resolveRosterSaveFolder(dataDir, saveID)
 	if saveFolder == "" {
 		return []playerCacheItem{}
@@ -752,7 +899,7 @@ func saveRosterItems(dataDir, saveID string) []playerCacheItem {
 
 func saveRosterFarmerItem(farmer saveRosterFarmer, isHost bool) (playerCacheItem, bool) {
 	name := strings.TrimSpace(farmer.Name)
-	if name == "" {
+	if name == "" || (!isHost && farmer.IsCustomized != nil && !*farmer.IsCustomized) {
 		return playerCacheItem{}, false
 	}
 	uniqueID := strings.TrimSpace(farmer.UniqueMultiplayerID)

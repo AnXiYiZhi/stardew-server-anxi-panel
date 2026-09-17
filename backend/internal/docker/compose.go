@@ -281,6 +281,7 @@ func (c *Client) ComposeStats(ctx context.Context, dir string) (ComposeStatsResu
 		services, parseErr := parseComposeStats(result.Stdout)
 		if parseErr != nil {
 			c.logger.Debug("failed to parse docker compose stats json", "error", parseErr)
+			return statsResult, fmt.Errorf("parse docker compose stats: %w", parseErr)
 		} else {
 			statsResult.Services = services
 		}

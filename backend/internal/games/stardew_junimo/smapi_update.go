@@ -73,6 +73,10 @@ type SMAPIUpdateInfo struct {
 }
 
 func (d *Driver) InspectSMAPIUpdate(ctx context.Context, instance registry.Instance) (SMAPIUpdateInfo, error) {
+	return d.inspectSMAPIUpdate(ctx, instance, nil)
+}
+
+func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Instance, knownComponents *RuntimeComponentsInspection) (SMAPIUpdateInfo, error) {
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		return SMAPIUpdateInfo{}, err
@@ -116,9 +120,15 @@ func (d *Driver) InspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 		return result, nil
 	}
 	result.Current.Version = match[1]
-	components, componentErr := d.InspectRuntimeComponents(ctx, instance)
-	if componentErr != nil {
-		return result, componentErr
+	var components RuntimeComponentsInspection
+	if knownComponents != nil {
+		components = *knownComponents
+	} else {
+		var componentErr error
+		components, componentErr = d.InspectRuntimeComponents(ctx, instance)
+		if componentErr != nil {
+			return result, componentErr
+		}
 	}
 	if components.Status != RuntimeComponentsStatusUpToDate {
 		result.Status, result.Code, result.Reason = SMAPIStatusIncompatibleGame, "incompatible_game_or_sdk", "当前 Stardew buildid 或 Steamworks SDK buildid 不匹配推荐前置矩阵。"

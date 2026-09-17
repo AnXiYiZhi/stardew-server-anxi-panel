@@ -19,6 +19,16 @@ type RuntimeContentRead struct {
 // read-only, with networking disabled and pulling forbidden. Only the two fixed
 // ACF files and df free-space figure are returned to the caller.
 func (c *Client) RuntimeReadContentManifests(ctx context.Context, dir, volumeName, imageRef string) (RuntimeContentRead, error) {
+	return c.runtimeReadContent(ctx, dir, volumeName, imageRef, true)
+}
+
+// RuntimeReadContentVersions reads only fixed manifest files. Capacity scans are
+// reserved for explicit installation/update preflight operations.
+func (c *Client) RuntimeReadContentVersions(ctx context.Context, dir, volumeName, imageRef string) (RuntimeContentRead, error) {
+	return c.runtimeReadContent(ctx, dir, volumeName, imageRef, false)
+}
+
+func (c *Client) runtimeReadContent(ctx context.Context, dir, volumeName, imageRef string, capacity bool) (RuntimeContentRead, error) {
 	if !dockerVolumePattern.MatchString(volumeName) {
 		return RuntimeContentRead{}, errors.New("invalid game data volume")
 	}
@@ -31,7 +41,10 @@ func (c *Client) RuntimeReadContentManifests(ctx context.Context, dir, volumeNam
 	if _, err := c.RuntimeImageInspect(ctx, dir, imageRef); err != nil {
 		return RuntimeContentRead{}, errors.New("local runtime image is unavailable")
 	}
-	const script = `emit(){ printf '%s\n' "$1"; if [ -f "$2" ]; then base64 "$2" | tr -d '\n'; fi; printf '\n'; }; emit GAME /game/steamapps/appmanifest_413150.acf; emit SDK /game/.steam-sdk/steamapps/appmanifest_1007.acf; printf 'FREEKB\n'; df -Pk /game | awk 'NR==2 {print $4}'; printf 'GAMEKB\n'; du -sk /game | awk '{print $1}'`
+	script := `emit(){ printf '%s\n' "$1"; if [ -f "$2" ]; then base64 "$2" | tr -d '\n'; fi; printf '\n'; }; emit GAME /game/steamapps/appmanifest_413150.acf; emit SDK /game/.steam-sdk/steamapps/appmanifest_1007.acf`
+	if capacity {
+		script += `; printf 'FREEKB\n'; df -Pk /game | awk 'NR==2 {print $4}'; printf 'GAMEKB\n'; du -sk /game | awk '{print $1}'`
+	}
 	result, err := c.run(ctx, "read runtime component manifests", dir, c.timeouts.Ps,
 		"run", "--rm", "--pull", "never", "--network", "none",
 		"--mount", "type=volume,src="+volumeName+",dst=/game,readonly",

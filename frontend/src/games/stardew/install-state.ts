@@ -30,7 +30,12 @@ export function reconcileJobSnapshots(a: Job, b: Job): Job {
   const aTerminal = terminal(a.status)
   const bTerminal = terminal(b.status)
   if (aTerminal !== bTerminal) return aTerminal ? a : b
-  return newerJob(a, b)
+  const newest = newerJob(a, b)
+  if (a.id === b.id && aTerminal && bTerminal && a.status === b.status && !newest.errorMessage) {
+    const message = a.errorMessage || b.errorMessage
+    if (message) return { ...newest, errorMessage: message }
+  }
+  return newest
 }
 
 function canonicalJobs(

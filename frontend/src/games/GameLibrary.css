@@ -28,7 +28,7 @@
   --hub-signal: #9bcf55;
   background:
     linear-gradient(180deg, rgba(7, 17, 20, 0.78), rgba(7, 17, 20, 0.94)),
-    url('/assets/stardew/ui/backgrounds/background_login_farm_generated.png') center / cover fixed,
+    url('/assets/stardew/ui/backgrounds/background_login_farm_generated.optimized.webp') center / cover fixed,
     var(--hub-bg);
 }
 
@@ -646,8 +646,9 @@
 .world-choice {
   box-sizing: border-box;
   position: relative;
-  width: clamp(224px, 18vw, 244px);
-  min-height: 350px;
+  width: clamp(224px, 17vw, 240px);
+  min-height: 280px;
+  height: 100%;
   overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr;
@@ -693,12 +694,14 @@
 }
 
 .world-choice-scene {
+  box-sizing: border-box;
   display: block;
   width: 100%;
-  object-fit: cover;
-  aspect-ratio: 1.28 / 1;
+  height: 96px;
+  padding: 10px;
+  object-fit: contain;
   border-bottom: 1px solid rgba(210, 226, 218, 0.22);
-  background: url('/assets/stardew/new-game/farms/standard.png') center / cover;
+  background: rgba(114, 155, 95, 0.1);
   image-rendering: pixelated;
 }
 
@@ -722,12 +725,12 @@
 
 .world-choice-heading {
   min-width: 0;
-  /* Reserve the same title/editor space for every name and lifecycle state. */
-  min-height: 64px;
+  /* Give the name its own row; status must not squeeze it into a narrow column. */
+  min-height: 52px;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
 
 .world-choice-name {
@@ -735,8 +738,8 @@
   flex: 1;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   overflow: hidden;
   overflow-wrap: anywhere;
   color: #f3f6ee;
@@ -748,8 +751,8 @@
 
 .world-status {
   flex: 0 0 auto;
-  min-height: 28px;
-  white-space: nowrap;
+  min-height: 20px;
+  overflow-wrap: anywhere;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -777,7 +780,8 @@
   min-width: 0;
   display: grid;
   gap: 6px;
-  margin: 10px 0 0;
+  margin: auto 0 0;
+  padding-top: 10px;
 }
 
 .world-choice-address {
@@ -1957,7 +1961,7 @@
     scroll-margin-inline-start: clamp(28px, 10vw, 40px);
     scroll-snap-align: start;
   }
-  .world-choice { width: min(72vw, 278px); min-height: 350px; }
+  .world-choice { width: min(72vw, 240px); min-height: 280px; }
   .world-create-card { width: min(60vw, 232px); }
   .game-install-inline { width: min(82vw, 400px); }
   .game-install-inline--form { padding-inline: 22px; }
@@ -2006,13 +2010,13 @@
   .game-hub--library .game-world-rail-content { gap: 10px; padding: 12px 2px 12px 20px; }
   .game-hub--library .world-choice-list { gap: 10px; }
   .game-hub--library .world-choice { width: clamp(190px, 52dvw, 212px); min-height: 276px; }
-  .game-hub--library .world-choice-scene { aspect-ratio: 1.72 / 1; }
+  .game-hub--library .world-choice-scene { height: 90px; padding: 8px; }
   .game-hub--library .world-choice-content { padding: 8px 10px 9px; }
-  .game-hub--library .world-choice-heading { gap: 7px; }
+  .game-hub--library .world-choice-heading { min-height: 52px; gap: 4px; }
   .game-hub--library .world-choice-name { font-size: 17px; }
   .game-hub--library .world-status { gap: 4px; font-size: 9px; }
   .game-hub--library .world-status > span { width: 5px; height: 5px; }
-  .game-hub--library .world-choice-details { gap: 4px; margin: 6px 0 0; }
+  .game-hub--library .world-choice-details { gap: 4px; padding-top: 6px; }
   .game-hub--library .world-choice-details small { font-size: 9px; }
   .game-hub--library .world-choice-details code,
   .game-hub--library .world-choice-details strong { font-size: 10px; }
@@ -2029,6 +2033,8 @@
   .game-hub--library .game-install-progress-head > strong { font-size: 17px; }
   .game-hub--library .game-install-step-list li { min-height: 24px; }
   .game-hub--library .game-install-progress-detail { min-height: 24px; }
+  .game-hub--library .game-install-inline.is-failed { width: 300px; min-height: 0; max-height: calc(100dvw - 80px); overflow-y: auto; }
+  .game-hub--library .game-install-inline.is-failed .game-install-step-list { display: none; }
   .game-hub--library .world-create-card svg { width: 34px; height: 34px; }
   .game-hub--library .world-rail-message { width: 140px; min-height: 276px; padding: 18px; }
 }
@@ -2061,13 +2067,13 @@
   .game-world-rail-content { gap: 10px; padding: 12px 2px 12px 20px; }
   .world-choice-list { gap: 10px; }
   .world-choice { width: clamp(190px, 52dvh, 212px); min-height: 276px; }
-  .world-choice-scene { aspect-ratio: 1.72 / 1; }
+  .world-choice-scene { height: 90px; padding: 8px; }
   .world-choice-content { padding: 8px 10px 9px; }
-  .world-choice-heading { gap: 7px; }
+  .world-choice-heading { min-height: 52px; gap: 4px; }
   .world-choice-name { font-size: 17px; }
   .world-status { gap: 4px; font-size: 9px; }
   .world-status > span { width: 5px; height: 5px; }
-  .world-choice-details { gap: 4px; margin: 6px 0 0; }
+  .world-choice-details { gap: 4px; padding-top: 6px; }
   .world-choice-details small { font-size: 9px; }
   .world-choice-details code,
   .world-choice-details strong { font-size: 10px; }
@@ -2084,6 +2090,8 @@
   .game-install-progress-head > strong { font-size: 17px; }
   .game-install-step-list li { min-height: 24px; }
   .game-install-progress-detail { min-height: 24px; }
+  .game-install-inline.is-failed { width: 300px; min-height: 0; max-height: calc(100dvh - 80px); overflow-y: auto; }
+  .game-install-inline.is-failed .game-install-step-list { display: none; }
   .world-create-card svg { width: 34px; height: 34px; }
   .world-rail-message { width: 140px; min-height: 276px; padding: 18px; }
 }

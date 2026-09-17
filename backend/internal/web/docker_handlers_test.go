@@ -339,11 +339,17 @@ func TestInstanceMetricsReturnsStatsAndDisk(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode metrics response: %v", err)
 	}
-	if body.Sample.CPUPercent == nil || *body.Sample.CPUPercent != 125.4 {
-		t.Fatalf("metrics response should preserve raw CPU percent above 100: %s", response.Body.String())
+	if body.Sample.CPUPercent == nil || body.Sample.CPUCount < 1 || *body.Sample.CPUPercent != occupancyPercent(125.4/float64(body.Sample.CPUCount)) {
+		t.Fatalf("metrics response should normalize CPU against host capacity: %s", response.Body.String())
 	}
-	if body.Sample.MemoryPercent == nil || *body.Sample.MemoryPercent != 45.6 {
-		t.Fatalf("metrics response did not include memory stats: %s", response.Body.String())
+	if body.Sample.MemoryPercent == nil || body.Sample.MemoryTotalBytes < 1 || *body.Sample.MemoryPercent != occupancyPercent(512/float64(body.Sample.MemoryTotalBytes)*100) {
+		t.Fatalf("metrics response should use host memory as denominator: %s", response.Body.String())
+	}
+	if body.Sample.Scope != "world" || body.Sample.DiskPercent != nil || body.Sample.DiskTotalBytes != 0 {
+		t.Fatalf("world resource response must not contain whole-disk usage: %s", response.Body.String())
+	}
+	if body.Machine == nil || body.Machine.Scope != "machine" || body.Machine.CPUCount != body.Sample.CPUCount || body.Machine.MemoryTotalBytes != body.Sample.MemoryTotalBytes || body.Machine.DiskTotalBytes <= 0 {
+		t.Fatalf("world resource response must include a separate machine comparison sample: %s", response.Body.String())
 	}
 	if body.Sample.ContainerRunning != true || body.Service != "server" {
 		t.Fatalf("metrics response did not mark server stats correctly: %+v", body)

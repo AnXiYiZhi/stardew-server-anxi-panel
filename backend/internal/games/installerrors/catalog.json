@@ -1,0 +1,272 @@
+{
+  "rules": [
+    {
+    "id": "steam_password",
+    "pattern": "invalid\\s*password|incorrect password|wrong password|bad password|password check for user failed",
+      "message": "Steam 账号或密码错误，请修改后重试。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_guard",
+      "pattern": "that steam guard code was invalid|invalid login auth code|invalid.*(?:two.factor|authenticator|steam guard) code|two.factor code mismatch|expired.*(?:auth|guard) code",
+      "message": "Steam 验证码无效或已过期，请获取最新的手机或邮箱验证码后重试。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_approval_timeout",
+      "pattern": "authorization confirmation timed out|timed out waiting for confirmation|wait for confirmation timed out",
+      "message": "Steam 登录授权确认超时，请重试并及时在 Steam 手机 App 中批准登录。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_approval_denied",
+      "pattern": "accessdenied.*(?:login|auth)|(?:login|auth|confirmation).*(?:denied by|rejected by)|authentication denied",
+      "message": "Steam 登录请求被拒绝，请在手机 App 中批准本次登录后重试。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_rate_limit",
+      "pattern": "ratelimitexceeded|rate limit exceeded|too many login (?:attempts|failures)|account logon denied throttle|try again later.*login",
+      "message": "Steam 登录请求过于频繁，已被临时限制，请等待一段时间后再试。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_account",
+      "pattern": "account disabled|accountdisabled|account locked|accountlocked|account suspended",
+      "message": "Steam 账号被停用或锁定，请先在 Steam 客户端确认账号状态。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_session",
+      "pattern": "logged in elsewhere|already logged in|logon session replaced|loggedinelsewhere",
+      "message": "Steam 登录会话被其他设备占用或替换，请结束冲突的登录后重试。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_license",
+      "pattern": "no subscription|missing license|no license|does not own|doesn't own|not subscribed",
+      "message": "当前 Steam 账号没有此游戏的下载许可，请确认该账号已购买 Stardew Valley，并使用有许可的账号重试。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_cache",
+      "pattern": "cached credentials not found|no cached credentials|using cached credentials failed|expired.*(?:login|session)|invalid refresh token",
+      "message": "保存的 Steam 授权已失效，请重新登录并完成 Steam 验证。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_qr",
+      "pattern": "qr authentication failed|steam qr.*failed|qr code.*expired",
+      "message": "Steam 扫码授权失败或二维码已过期，请重新获取二维码并及时确认。",
+      "group": "auth"
+    },
+    {
+      "id": "steam_account_mismatch",
+      "pattern": "steam.*account mismatch|authenticated account.*mismatch|扫码登录.*账号.*不一致",
+      "message": "扫码账号与保存的 Steam 账号不一致，请使用同一个账号重新授权。",
+      "group": "auth"
+    },
+    {
+      "id": "docker_socket",
+      "pattern": "permission denied.*docker.sock|docker.sock.*permission denied|permission denied while trying to connect to the docker",
+      "message": "面板无权访问 Docker，请检查 Docker Socket 挂载及其访问权限后重试。",
+      "group": "runtime"
+    },
+    {
+      "id": "docker_unavailable",
+      "pattern": "cannot connect to the docker daemon|is the docker daemon running|error during connect|docker daemon.*not running|docker.sock.*no such file",
+      "message": "面板无法连接 Docker，请确认 Docker 已启动，并正确挂载 Docker Socket。",
+      "group": "runtime"
+    },
+    {
+      "id": "disk_full",
+      "pattern": "no space left on device|not enough (?:free )?disk space|insufficient disk space|disk full|disk quota exceeded|not enough space on the disk",
+      "message": "存储空间或磁盘配额不足，请检查 Docker 数据目录与游戏数据卷的可用空间及 inode，释放空间后重试。",
+      "group": "storage"
+    },
+    {
+      "id": "read_only",
+      "pattern": "read.only file system|read.only filesystem",
+      "message": "安装目录或数据卷为只读，无法写入文件，请检查挂载方式及宿主磁盘状态。",
+      "group": "storage"
+    },
+    {
+      "id": "permission",
+      "pattern": "permission denied|access is denied|operation not permitted|eacces|disk write failure|failed to write.*file",
+      "message": "安装文件无法写入或执行，请检查游戏数据目录、挂载卷的权限和磁盘状态。",
+      "group": "storage"
+    },
+    {
+      "id": "image_rate_limit",
+      "pattern": "toomanyrequests|too many requests|status(?: code)?[: ]+429",
+      "message": "下载服务限制了请求频率，请稍后重试；镜像拉取可检查仓库登录状态或切换已配置的镜像源。",
+      "group": "network"
+    },
+    {
+      "id": "image_auth",
+      "pattern": "pull access denied|requested access to the resource is denied|unauthorized: authentication required|denied: requested access|insufficient_scope",
+      "message": "镜像仓库拒绝访问，请检查镜像地址是否正确，以及仓库是否需要登录或访问权限。",
+      "group": "image"
+    },
+    {
+      "id": "image_missing",
+      "pattern": "manifest unknown|manifest for .* not found|name unknown|repository does not exist",
+      "message": "指定的镜像或版本不存在，请选择可用的镜像版本并检查镜像源配置。",
+      "group": "image"
+    },
+    {
+      "id": "image_platform",
+      "pattern": "no matching manifest|no match for platform|unsupported platform|exec format error|cannot execute binary file",
+      "message": "镜像或程序与宿主 CPU 架构不兼容，请确认服务器架构并使用匹配的镜像。",
+      "group": "runtime"
+    },
+    {
+      "id": "image_reference",
+      "pattern": "invalid reference format|invalid tag format",
+      "message": "镜像地址或版本格式不正确，请检查镜像配置后重试。",
+      "group": "image"
+    },
+    {
+      "id": "dns",
+      "pattern": "no such host|temporary failure in name resolution|could not resolve host|couldn't resolve host|name or service not known|eai_again",
+      "message": "容器无法解析下载服务器域名，请检查 Docker 的 DNS 设置和宿主网络后重试。",
+      "group": "network"
+    },
+    {
+      "id": "tls",
+      "pattern": "x509:|certificate verify failed|certificate verification failed|ssl certificate problem|tls handshake timeout|certificate has expired",
+      "message": "下载连接的证书验证或 TLS 握手失败，请检查服务器时间、证书和代理配置后重试。",
+      "group": "network"
+    },
+    {
+      "id": "proxy",
+      "pattern": "proxyconnect|proxy authentication required|status(?: code)?[: ]+407|could not resolve proxy",
+      "message": "下载代理连接或认证失败，请检查 Docker 与容器使用的代理地址和凭据。",
+      "group": "network"
+    },
+    {
+    "id": "network_unreachable",
+    "pattern": "network is unreachable|no route to host|connection refused|failed to connect|could not connect|no connection|steamclient instance must be connected|tryanothercm|asyncjobfailedexception|steam client not connected",
+      "message": "无法连接下载或 Steam 服务，请检查容器网络、代理、防火墙和服务可用性后重试。",
+      "group": "network"
+    },
+    {
+      "id": "network_interrupted",
+      "pattern": "connection reset|unexpected eof|connection closed|broken pipe|remote host.*closed",
+      "message": "下载连接意外中断，请检查网络或代理稳定性后重试，已有下载文件会由安装流程重新校验。",
+      "group": "network"
+    },
+    {
+      "id": "network_timeout",
+      "pattern": "i/o timeout|connection timed out|connect timeout|timeout was reached|operation timed out|net/http:.*timeout|client.timeout",
+      "message": "连接下载服务超时，请检查容器网络、DNS 和代理，恢复连接后重试。",
+      "group": "network"
+    },
+    {
+    "id": "remote_service",
+    "pattern": "status(?: code)?[: ]+50[0234]|\\bHTTP 50[0234]\\b|bad gateway|service unavailable|gateway timeout|http/[12][.0-9]* 50[0234]",
+      "message": "远端下载服务暂时不可用，请稍后重试或检查已配置的备用下载源。",
+      "group": "network"
+    },
+    {
+    "id": "integrity",
+    "pattern": "checksum mismatch|checksum.*(?:invalid|failed)|hash mismatch|sha256 mismatch|digest mismatch|sha256.*不匹配|校验和.*不匹配|SMAPI (?:archive|range response) (?:length|size) mismatch|SMAPI range response does not match",
+      "message": "下载文件完整性校验失败，文件可能不完整或与指定版本不符，请检查下载源后重新下载；不要跳过校验。",
+      "group": "files"
+    },
+    {
+      "id": "archive",
+      "pattern": "invalid zip|not a valid zip|zip: not a valid|unexpected end of (?:file|archive)|invalid tar|corrupt.*archive|gzip: invalid|unzip.*failed",
+      "message": "安装包损坏或格式不正确，请检查下载源与磁盘空间后重新下载安装包。",
+      "group": "files"
+    },
+    {
+      "id": "missing_library",
+      "pattern": "error while loading shared libraries|cannot open shared object file|you must install or update .net|couldn't find a valid icu|no usable version of libssl",
+      "message": "容器缺少运行所需的系统库或 .NET 依赖，请使用项目支持的完整运行镜像后重试。",
+      "group": "runtime"
+    },
+    {
+      "id": "memory",
+      "pattern": "out of memory|cannot allocate memory|oomkilled|oom-kill",
+      "message": "容器内存不足，安装进程无法继续，请增加可用内存或容器内存限额后重试。",
+      "group": "runtime"
+    },
+    {
+      "id": "port",
+      "pattern": "port is already allocated|address already in use|ports are not available",
+      "message": "容器所需端口已被占用，请检查占用服务或调整实例端口后重试。",
+      "group": "runtime"
+    },
+    {
+      "id": "mount",
+      "pattern": "invalid mount config|mounts denied|bind source path does not exist|not a directory|mount.*no such file",
+      "message": "容器数据挂载路径不存在或类型不正确，请检查宿主目录及 Panel 数据路径映射后重试。",
+      "group": "runtime"
+    },
+    {
+      "id": "container_conflict",
+      "pattern": "container name.*already in use|conflict.*container|volume is in use",
+      "message": "安装容器或数据卷存在资源冲突，请检查任务是否仍在运行并通过面板重试；不要直接删除游戏数据卷。",
+      "group": "runtime"
+    },
+    {
+      "id": "missing_command",
+      "pattern": "executable file not found|command not found|no such file or directory",
+      "message": "容器缺少安装所需的命令或文件，请检查完整运行镜像和数据挂载后重试。",
+      "group": "files"
+    },
+    {
+      "id": "steam_app_state",
+      "pattern": "app .* state is 0x[0-9a-f]+ after update job",
+      "message": "Steam 未完成游戏文件更新，日志中的 0x 状态不是确定的失败原因；请检查同次任务的网络、空间和授权日志后重试。",
+      "group": "download"
+    },
+    {
+      "id": "missing_success",
+      "pattern": "steamcmd install finished without success marker",
+      "message": "SteamCMD 已退出，但没有确认游戏下载完成，请检查任务日志后重试或修复安装。",
+      "group": "files"
+    },
+    {
+      "id": "verification",
+      "pattern": "game runtime files are incomplete|verify game runtime files|required instance file.*missing",
+      "message": "游戏运行文件不完整，请重新安装或修复。",
+      "group": "files"
+    },
+    {
+      "id": "compatibility",
+      "pattern": "runtime.*manifest.*(?:invalid|mismatch)|兼容矩阵.*(?:不可用|不是可安装)|runtime stack.*(?:incompatible|mismatch)",
+      "message": "运行栈版本或兼容清单不一致，无法继续安装，请使用项目支持的 Panel 与运行镜像版本。",
+      "group": "runtime"
+    }
+  ],
+  "phases": {
+    "preparing": "安装环境准备失败，请检查数据目录权限、Docker 连接及任务日志后重试。",
+    "pull_failed": "服务镜像拉取失败，请检查镜像源、网络和镜像版本后重试。",
+    "steamcmd_image_pull_failed": "SteamCMD 工具镜像拉取失败，请检查镜像源、网络和镜像版本后重试。",
+    "credentials_required": "Steam 登录验证未通过，请根据任务日志检查账号、密码或验证码后重试。",
+    "steam_auth_failed": "Steam 登录授权失败，请检查本次授权日志并重新登录。",
+    "steam_invite_auth_failed": "Steam 邀请授权失败，请检查本次授权日志后重新授权。",
+    "steam_auth_console_failed": "Steam 授权容器的交互终端异常，请重新授权；反复发生时请检查运行镜像版本。",
+    "steam_auth_connection_failed": "无法连接 Steam 登录服务，请检查容器网络与代理后重新授权。",
+    "qr_auth_failed": "Steam 扫码授权失败，请重新获取二维码并及时确认。",
+    "install_timeout": "安装任务超时，授权或下载未在限定时间内完成，请检查当前步骤与网络后重试。",
+    "install_interrupted": "安装任务因面板重启或中断而结束，请重新安装或修复。",
+    "steamcmd_failed": "SteamCMD 安装失败，当前信息未能确定具体原因，请展开本次任务日志检查授权、网络与磁盘后重试。",
+    "download_failed": "游戏文件下载失败，请检查本次任务日志、网络和磁盘空间后重试。",
+    "post_auth_failed": "Steam 授权后的安装步骤失败，请检查本次任务日志和运行环境后重试。",
+    "smapi_install_failed": "SMAPI 运行环境安装失败，请检查本次任务日志中的下载、解压和运行依赖信息后重试。",
+    "smapi_bundled_sync_failed": "SMAPI 内置支持 Mod 同步失败，请检查游戏目录权限和完整性后修复安装。",
+    "install_verification_failed": "游戏运行文件不完整，请重新安装或修复。"
+  },
+  "exits": {
+    "5": "安装进程以退出码 5 结束，单凭此码无法确定原因；请展开本次任务日志，检查 Steam 登录验证、下载网络和磁盘状态后重试。",
+    "126": "容器安装命令无法执行（退出码 126），请检查文件执行权限和镜像架构。",
+    "127": "容器安装命令或其依赖不存在（退出码 127），请使用完整且兼容的运行镜像。",
+    "137": "安装进程被强制终止（退出码 137），可能是内存不足或被外部停止；请检查容器内存限额和 Docker 事件后重试。",
+    "139": "安装进程异常崩溃（退出码 139，通常为段错误），请检查镜像架构与运行依赖；若自动重试仍失败，请保留任务日志。",
+    "143": "安装进程收到终止信号（退出码 143），请检查容器是否被停止、重建或任务超时后重试。"
+  },
+  "unknown": "安装未完成，现有信息无法确定具体原因。请展开本次任务日志查看失败前的记录，或导出诊断包以便排查。"
+}

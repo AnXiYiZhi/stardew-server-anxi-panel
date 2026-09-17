@@ -1,3 +1,4 @@
+import { LifecycleIcon } from '../LifecycleIcon'
 import { useEffect, useState } from 'react'
 import {
   approvePlayerAuth,
@@ -16,6 +17,7 @@ import type { PendingStartupAction } from '../lifecycle-action-state'
 import { panelUpdateSurface, } from '../panel-update-machine'
 import { hasPlayerCjbRisk } from '../player-mod-details'
 import { copyText } from '../copy-text'
+import { formatStardewAddress } from '../connection-address'
 import { steamInviteIsEnabled, steamInvitePresentation } from '../steam-invite-state'
 import type { SteamInvitePresentation } from '../steam-invite-state'
 import { useSteamAuthLogin } from '../useSteamAuthLogin'
@@ -61,7 +63,8 @@ function inviteInfo(
 }
 
 function hostInfo(dashboardData: StardewDashboardData): { text: string; copyable: boolean } {
-  if (dashboardData.publicIP?.ip) return { text: dashboardData.publicIP.ip, copyable: true }
+  const address = formatStardewAddress(dashboardData.publicIP?.ip, dashboardData.publicIP?.gamePort)
+  if (address) return { text: address, copyable: true }
   if (dashboardData.publicIPRefreshing) return { text: '检测中…', copyable: false }
   if (dashboardData.publicIPError) return { text: '检测失败', copyable: false }
   return { text: '未检测', copyable: false }
@@ -262,7 +265,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   }
 
   function handleCopyHost() {
-    const host = dashboardData.publicIP?.ip
+    const host = formatStardewAddress(dashboardData.publicIP?.ip, dashboardData.publicIP?.gamePort)
     if (!host) return
     setCopyFailed(false)
     void copyText(host).then((ok) => {
@@ -357,7 +360,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
     if (state === 'save_required') {
       return (
         <button type="button" className="sd-btn-start sd-mhome-lifecycle-btn" disabled title="请先创建或上传存档后再启动">
-          <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
+          <LifecycleIcon action="start" />
           启动
         </button>
       )
@@ -390,7 +393,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
           disabled={actionBusy || !isAdmin}
           title={isAdmin ? undefined : '仅管理员可启动服务器'}
         >
-          <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
+          <LifecycleIcon action="start" />
           启动
         </button>
       )
@@ -406,7 +409,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
             disabled={actionBusy || !isAdmin}
             title={isAdmin ? undefined : '仅管理员可停止服务器'}
           >
-            <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
+            <LifecycleIcon action="stop" />
             停止
           </button>
           <button
@@ -416,7 +419,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
             disabled={actionBusy || !isAdmin}
             title={isAdmin ? undefined : '仅管理员可重启服务器'}
           >
-            <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
+            <LifecycleIcon action="restart" />
             重启
           </button>
         </>

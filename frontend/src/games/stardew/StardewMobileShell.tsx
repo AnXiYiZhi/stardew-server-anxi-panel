@@ -9,15 +9,21 @@ import { panelUpdateSurface } from './panel-update-machine'
 import { useStardewLifecycleActions } from './useStardewLifecycleActions'
 import './StardewMobileShell.css'
 
-const MobileHomePage = lazy(() => import('./mobile/MobileHomePage').then((m) => ({ default: m.MobileHomePage })))
-const MobileControlPage = lazy(() =>
-  import('./mobile/MobileControlPage').then((m) => ({ default: m.MobileControlPage })),
-)
-const MobilePlayersPage = lazy(() =>
-  import('./mobile/MobilePlayersPage').then((m) => ({ default: m.MobilePlayersPage })),
-)
-const MobileModsPage = lazy(() => import('./mobile/MobileModsPage').then((m) => ({ default: m.MobileModsPage })))
-const MobileSavesPage = lazy(() => import('./mobile/MobileSavesPage').then((m) => ({ default: m.MobileSavesPage })))
+const mobileLoaders = {
+  overview: () => import('./mobile/MobileHomePage').then((m) => ({ default: m.MobileHomePage })),
+  server: () => import('./mobile/MobileControlPage').then((m) => ({ default: m.MobileControlPage })),
+  players: () => import('./mobile/MobilePlayersPage').then((m) => ({ default: m.MobilePlayersPage })),
+  mods: () => import('./mobile/MobileModsPage').then((m) => ({ default: m.MobileModsPage })),
+  saves: () => import('./mobile/MobileSavesPage').then((m) => ({ default: m.MobileSavesPage })),
+}
+function preloadMobileTab(tab: MobileTabKey) {
+  if (tab !== 'more') void mobileLoaders[tab]().catch(() => undefined)
+}
+const MobileHomePage = lazy(mobileLoaders.overview)
+const MobileControlPage = lazy(mobileLoaders.server)
+const MobilePlayersPage = lazy(mobileLoaders.players)
+const MobileModsPage = lazy(mobileLoaders.mods)
+const MobileSavesPage = lazy(mobileLoaders.saves)
 
 function MobilePageLoadingFallback() {
   return (
@@ -149,6 +155,7 @@ export function StardewMobileShell({ user, instanceId, onLogout, onUseDesktop, o
         ) : activeTab === 'server' ? (
           <MobileControlPage
             user={user}
+            instanceId={instanceId}
             instanceState={dashboardData.instanceState}
             dashboardData={dashboardData}
             restartInProgress={lifecycleActions.restartInProgress}
@@ -191,6 +198,9 @@ export function StardewMobileShell({ user, instanceId, onLogout, onUseDesktop, o
             type="button"
             className={`sd-mshell-tab${activeTab === tab.key ? ' active' : ''}`}
             aria-current={activeTab === tab.key ? 'page' : undefined}
+            onPointerEnter={() => preloadMobileTab(tab.key)}
+            onFocus={() => preloadMobileTab(tab.key)}
+            onTouchStart={() => preloadMobileTab(tab.key)}
             onClick={() => setActiveTab(tab.key)}
           >
             <img src={tab.icon} alt="" className="sd-mshell-tab-icon" />

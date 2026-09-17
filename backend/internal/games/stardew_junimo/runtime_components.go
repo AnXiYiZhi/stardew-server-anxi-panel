@@ -139,7 +139,13 @@ func (d *Driver) InspectRuntimeComponents(ctx context.Context, instance registry
 		result.Reason = "GAME_DATA_VOLUME 配置无效。"
 		return result, nil
 	}
-	read, err := dockerReader.RuntimeReadContentManifests(ctx, instance.DataDir, volume, image)
+	readVersions := dockerReader.RuntimeReadContentManifests
+	if reader, ok := d.docker.(interface {
+		RuntimeReadContentVersions(context.Context, string, string, string) (paneldocker.RuntimeContentRead, error)
+	}); ok {
+		readVersions = reader.RuntimeReadContentVersions
+	}
+	read, err := readVersions(ctx, instance.DataDir, volume, image)
 	if err != nil {
 		result.Status = RuntimeComponentsStatusCustomUnknown
 		result.Code = "runtime_read_unavailable"

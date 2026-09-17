@@ -38,11 +38,13 @@ import { canDeleteWorld } from './world-delete-gesture'
 import { useWorldDeletePress, WorldDeleteDialog } from './WorldDeleteControl'
 import { getSaves, getFarmTypeCatalog, renameInstance } from '../api'
 import { builtinFarms } from './stardew/new-game-farms'
+import { GameResources, MachineResources, useResourceOverview } from './ResourceReadouts'
 const defaultWorldFarmIcon = '/assets/stardew/new-game/farms/standard.png'
 
 type Navigate = (path: string, replace?: boolean) => void
 
 type GameHubShellProps = {
+  resources?: ReturnType<typeof useResourceOverview>
   user: CurrentUser
   title?: string
   eyebrow?: string
@@ -222,6 +224,7 @@ function useStardewInstallation(): InstallationState {
 }
 
 function GameHubShell({
+  resources,
   user,
   title,
   eyebrow,
@@ -241,6 +244,7 @@ function GameHubShell({
           <strong>ANXI PANEL</strong>
         </button>
         <div className="game-hub-account" aria-label="账号区域">
+          {resources && <MachineResources sample={resources.data?.machine} error={resources.error} />}
           <strong className="game-hub-account-name">{user.username}</strong>
           <button type="button" className="game-hub-logout" onClick={onLogout}>退出</button>
           {variant === 'library' && onToggleBackground ? (
@@ -923,6 +927,7 @@ export function GamesPage({
   onLogout: () => void
 }) {
   const catalog = useStardewCatalog()
+  const resources = useResourceOverview()
   const destination = stardewGameDestination(catalog.items, defaultInstanceId)
   const installCard = stardewInstallCardState(catalog.items, defaultInstanceId, catalog.loading, catalog.error)
   const railOpen = worldsOpen || installOpen
@@ -1128,6 +1133,7 @@ export function GamesPage({
 
   return (
     <GameHubShell
+      resources={resources}
       user={user}
       background={background}
       onToggleBackground={toggleBackground}
@@ -1165,6 +1171,7 @@ export function GamesPage({
               aria-expanded={railOpen && !worldsClosing}
               aria-busy={worldsClosing}
               aria-controls="stardew-detail-rail"
+              aria-describedby="stardew-game-resource-details"
               onFocus={() => setSelectedIndex(0)}
               onKeyDown={(event) => handleCardKeyDown(event, 0)}
               onClick={activateStardew}
@@ -1177,14 +1184,13 @@ export function GamesPage({
                 <span className={`game-card-signal game-card-signal--${installCard.tone}`} />
               </span>
               <span className="game-carousel-copy">
-                <span className="game-carousel-title">星露谷物语</span>
-                <span className={`game-carousel-status game-carousel-status--${installCard.tone}`}>
-                  {installProgressLabel}
+                <span className="hub-game-card-heading">
+                  <span className="game-carousel-title">星露谷物语</span>
+                  <span className={`game-carousel-status game-carousel-status--${installCard.tone}`} title={installProgressLabel}>
+                    {installProgressLabel}
+                  </span>
                 </span>
-                <span className={`game-carousel-action${railOpen && !worldsClosing ? ' is-open' : ''}`}>
-                  {worldsClosing ? '正在收起…' : installOpen ? '收起安装' : worldsOpen ? '收起世界' : installCard.actionLabel}
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-                </span>
+                <GameResources sample={resources.data?.games.find(game => game.driverId === 'stardew_junimo')?.sample} machine={resources.data?.machine} error={resources.error} />
               </span>
             </button>
           </div>

@@ -128,6 +128,7 @@ func TestGameInstallationStatusAndWorldCreationUsePanelTemplate(t *testing.T) {
 	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
 	if err := sjconfig.UpdateEnvFile(filepath.Join(instanceDir, ".env"), map[string]string{
 		"STEAM_USERNAME": "shared-user", "STEAM_PASSWORD": "secret", "STEAMCMD_AUTH_COMPLETED": "true",
+		"VNC_PASSWORD": "inherited-vnc-password",
 	}); err != nil {
 		t.Fatalf("seed legacy shared credentials: %v", err)
 	}
@@ -185,6 +186,33 @@ func TestGameInstallationStatusAndWorldCreationUsePanelTemplate(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "instances", "stardew-2", "docker-compose.yml")); err != nil {
 		t.Fatalf("created world Compose missing: %v", err)
+	}
+	worldEnv, err := sjconfig.ReadEnvFile(filepath.Join(stored.DataDir, ".env"))
+	if err != nil || worldEnv["VNC_PASSWORD"] != "inherited-vnc-password" {
+		t.Fatal("created world must inherit the first world's VNC password", err)
+	}
+	if worldEnv["STEAM_USERNAME"] != "" || worldEnv["STEAM_PASSWORD"] != "" {
+		t.Fatal("world creation copied Steam credentials")
+	}
+	if strings.Contains(created.Body.String(), "inherited-vnc-password") {
+		t.Fatal("world creation response exposed the VNC password")
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instanceDir, ".env"), map[string]string{"VNC_PASSWORD": ""}); err != nil {
+		t.Fatal(err)
+	}
+	rejected, _ := doJSON(t, handler, http.MethodPost, "/api/instances", map[string]string{
+		"name": "无密码世界", "gameId": "stardew",
+	}, adminCookie)
+	if rejected.Code != http.StatusConflict {
+		t.Fatalf("empty VNC password returned %d: %s", rejected.Code, rejected.Body.String())
+	}
+	assertNestedJSONField(t, rejected.Body.Bytes(), "error", "code", "vnc_password_required")
+	if _, err := os.Stat(filepath.Join(dataDir, "instances", "stardew-3")); !os.IsNotExist(err) {
+		t.Fatal("rejected world left a provisioned directory", err)
+	}
+	instances, err := store.ListInstances(context.Background())
+	if err != nil || len(instances) != 2 {
+		t.Fatal("rejected world left an instance reservation", err)
 	}
 }
 

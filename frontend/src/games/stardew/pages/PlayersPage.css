@@ -222,11 +222,8 @@
   padding: 0 2px 12px;
   overflow-x: hidden;
   color: var(--sd-players-ink);
-  background:
-    radial-gradient(circle at 9px 11px, rgba(117, 71, 29, 0.09) 0 1px, transparent 1.5px) 0 0 / 19px 19px,
-    radial-gradient(circle at 24px 17px, rgba(255, 247, 203, 0.28) 0 1px, transparent 1.6px) 0 0 / 27px 24px,
-    linear-gradient(180deg, rgba(255, 240, 189, 0.34), rgba(230, 178, 93, 0.08)),
-    #f5d590;
+  /* The shell frame supplies the paper, including its stepped inner corners. */
+  background: transparent;
 }
 .sd-players-page > * {
   min-width: 0;
@@ -858,7 +855,7 @@
   }
 }
 .sd-players-page {
-  grid-template-columns: minmax(0, 0.86fr) minmax(320px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 14px;
 }
 .sd-players-page .sd-page-header {
@@ -870,7 +867,7 @@
   grid-column: 1 / -1;
 }
 .sd-players-events-section {
-  grid-column: 1;
+  grid-column: auto;
 }
 .sd-players-actions-section {
   grid-column: 2;
@@ -928,6 +925,11 @@
 .sd-players-actions-section {
   min-height: 260px;
   height: 260px;
+}
+.sd-players-pending-auth-section,
+.sd-players-events-section {
+  align-self: stretch;
+  height: auto;
 }
 .sd-players-events-section {
   display: flex;

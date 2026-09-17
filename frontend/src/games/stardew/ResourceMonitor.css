@@ -1,0 +1,75 @@
+.sd-resource-monitor {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 2px solid #a06c2c;
+  border-radius: 8px;
+  background: var(--sd-save-card-bg, #fff3d0);
+  color: #4c351c;
+  box-shadow: 0 2px 0 rgba(90, 55, 18, .15);
+  container-type: inline-size;
+}
+
+.sd-resource-heading,
+.sd-resource-reading-head,
+.sd-resource-caption,
+.sd-resource-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sd-resource-heading {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #d5b77b;
+}
+
+.sd-resource-heading h3 { margin: 0; font-size: 16px; font-weight: 900; }
+.sd-resource-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #557036; }
+.sd-resource-status::before { content: ''; width: 6px; height: 6px; background: currentColor; }
+.sd-resource-status.is-idle, .sd-resource-status.is-loading { color: #886b3e; }
+.sd-resource-status.is-error { color: #a0442f; }
+
+.sd-resource-reading { padding: 12px 0; border-bottom: 1px solid #dec595; }
+.sd-resource-reading-head > strong { font-size: 14px; }
+.sd-resource-value { font-size: 27px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.sd-resource-value small { font-size: 13px; margin-left: 3px; color: #7d6340; letter-spacing: 0; }
+.sd-resource-meter { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 2px; height: 10px; margin: 8px 0 6px; }
+.sd-resource-meter > span { display: grid; background: #e4d3a7; overflow: hidden; }
+.sd-resource-meter i { grid-area: 1 / 1; min-width: 0; display: block; height: 100%; background: var(--resource-color); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24); transition: width 250ms ease; }
+.sd-resource-meter .sd-resource-meter-machine { background: #9382ad; }
+.sd-resource-meter-world { z-index: 1; }
+.sd-resource-meter-key { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; color: #7c613c; font-size: 10px; line-height: 14px; }
+.sd-resource-meter-key > span { display: inline-flex; align-items: center; gap: 5px; }
+.sd-resource-meter-key i { width: 12px; height: 5px; }
+.sd-resource-key-world { background: linear-gradient(90deg, #648044 33%, #b47c28 33% 66%, #4c8582 66%); }
+.sd-resource-key-machine { background: #9382ad; }
+.sd-resource-reading.is-empty .sd-resource-value { color: #9b8159; }
+.sd-resource-reading.is-empty .sd-resource-meter > span { background: #ecdfbc; }
+.sd-resource-caption { font-size: 11px; line-height: 1.4; color: #7c613c; min-height: 16px; flex-wrap: wrap; }
+.sd-resource-warning { color: #a0442f; font-size: 11px; }
+.sd-resource-history { padding-top: 13px; }
+.sd-resource-history-head { font-size: 12px; margin-bottom: 8px; }
+.sd-resource-history-head > span { color: #8a714b; font-size: 11px; }
+.sd-resource-chart { display: block; width: 100%; height: auto; min-height: 130px; overflow: visible; }
+.sd-resource-chart line { stroke: #ddcba2; stroke-dasharray: 3 5; }
+.sd-resource-chart text { fill: #856c47; font-size: 12px; font-family: inherit; }
+.sd-resource-chart polyline { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.sd-resource-empty { min-height: 164px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #8a714b; font-size: 12px; text-align: center; line-height: 1.6; padding: 8px; }
+.sd-resource-empty-lines { display: flex; gap: 4px; align-items: flex-end; height: 20px; }
+.sd-resource-empty-lines i { width: 5px; background: #d4bf8f; height: 8px; }
+.sd-resource-empty-lines i:nth-child(2) { height: 18px; }
+.sd-resource-empty-lines i:nth-child(3) { height: 12px; }
+.sd-resource-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 20px; margin-top: 8px; color: #795d35; font-size: 11px; }
+.sd-resource-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.sd-resource-legend i { width: 16px; height: 3px; }
+.sd-resource-note { margin-top: 12px; padding: 8px 10px; border-left: 3px solid #b47c28; background: #f4e5bf; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
+@container (max-width: 340px) {
+  .sd-resource-heading { flex-wrap: wrap; gap: 6px; }
+  .sd-resource-value { font-size: 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-resource-meter i { transition: none; }
+}

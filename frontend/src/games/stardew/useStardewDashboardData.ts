@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { subscribeVisiblePoll } from '../../core/visible-polling'
+import { currentSessionGeneration } from '../../auth-session-events'
 import {
   createJobEventSource,
   getLatestJobLogs,
   getHealthDiagnostics,
   getInstancePlayers,
+  getInstancePublicIP,
   getInviteCode,
   getJobs,
   getMods,
@@ -13,6 +16,7 @@ import {
 import type { HealthDiagnosticsResponse } from '../../api'
 import type { InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
 import { errorMessage } from '../../core/helpers'
+import { formatStardewAddress } from './connection-address'
 import type { StardewDashboardData } from './stardew-routes'
 import { usePanelUpdate } from './PanelUpdateProvider'
 import {
@@ -29,14 +33,13 @@ import {
 const STEAM_INVITE_POLL_INTERVAL_MS = 5_000
 const STEAM_INVITE_POLL_MAX_ATTEMPTS = 125
 
-function resolvePanelAccessHost(): PublicIPResult | null {
+function resolvePanelAccessHost(connection: PublicIPResult): PublicIPResult | null {
   const host = window.location.hostname.trim()
-  if (!host) return null
+  if (!formatStardewAddress(host, connection.gamePort)) return null
   return {
+    ...connection,
     ip: host,
-    checkedAt: new Date().toISOString(),
     source: 'panel-access-host',
-    cached: false,
   }
 }
 
@@ -64,11 +67,11 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   const [inviteCodeLoading, setInviteCodeLoading] = useState(false)
   const [publicIPRefreshing, setPublicIPRefreshing] = useState(false)
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const playersPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const invitePollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const delayedJobRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dashboardMountedRef = useRef(true)
+  const dashboardAbortRef = useRef(new AbortController())
+  const publicIPRequestGenerationRef = useRef(0)
   const instanceStateRef = useRef<InstanceState | null>(null)
   const inviteCodeRef = useRef<string | null>(null)
   const steamInviteEnabledRef = useRef(false)
@@ -89,11 +92,11 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
     setInviteCode(value)
   }, [])
 
-  const refreshInstanceState = useCallback(async () => {
+  const refreshInstanceState = useCallback(async (signal?: AbortSignal) => {
     const stateRequestGeneration = ++instanceStateRequestGenerationRef.current
     const inviteProjectionGeneration = ++inviteProjectionGenerationRef.current
     try {
-      const s = await getStardewState(instanceId)
+      const s = await getStardewState(instanceId, signal ?? dashboardAbortRef.current.signal)
       if (stateRequestGeneration !== instanceStateRequestGenerationRef.current) return
 
       const previousRuntimeState = invitePollRuntimeStateRef.current
@@ -252,7 +255,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   const refreshSaves = useCallback(async () => {
     setSavesError(null)
     try {
-      const res = await getSaves(instanceId)
+      const res = await getSaves(instanceId, dashboardAbortRef.current.signal)
       setSaves(res)
     } catch (e) {
       setSavesError(errorMessage(e))
@@ -262,29 +265,31 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   const refreshMods = useCallback(async () => {
     setModsError(null)
     try {
-      const res = await getMods(instanceId)
+      const res = await getMods(instanceId, dashboardAbortRef.current.signal)
       setMods(res)
     } catch (e) {
       setModsError(errorMessage(e))
     }
   }, [instanceId])
 
-  const refreshPlayers = useCallback(async () => {
+  const refreshPlayers = useCallback(async (signal?: AbortSignal) => {
     setPlayersLoading(true)
     setPlayersError(null)
     try {
-      const res = await getInstancePlayers(instanceId)
+      const res = await getInstancePlayers(instanceId, signal ?? dashboardAbortRef.current.signal)
+      if (signal?.aborted || !dashboardMountedRef.current) return
       setPlayers(res)
     } catch (e) {
-      setPlayersError(errorMessage(e))
+      if (!signal?.aborted && dashboardMountedRef.current) setPlayersError(errorMessage(e))
     } finally {
       setPlayersLoading(false)
     }
   }, [instanceId])
 
-  const refreshJobs = useCallback(async () => {
+  const refreshJobs = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await getJobs()
+      const res = await getJobs(signal ?? dashboardAbortRef.current.signal)
+      if (signal?.aborted || !dashboardMountedRef.current) return
       setJobs(res.jobs.filter((job) => job.targetType !== 'instance' || job.targetId === instanceId))
     } catch {
       // 保留上次已知任务列表
@@ -311,7 +316,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   const refreshHealth = useCallback(async () => {
     setHealthError(null)
     try {
-      const res = await getHealthDiagnostics()
+      const res = await getHealthDiagnostics(dashboardAbortRef.current.signal)
       setHealth(res)
     } catch (e) {
       setHealthError(errorMessage(e))
@@ -455,22 +460,27 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
     }
   }, [instanceId, updateInviteCode])
 
-  const refreshPublicIP = useCallback(async (_force = false) => {
+  const refreshPublicIP = useCallback(async (force = false) => {
+    const generation = ++publicIPRequestGenerationRef.current
     setPublicIPRefreshing(true)
     setPublicIPError(null)
+    setPublicIP(null)
     try {
-      const res = resolvePanelAccessHost()
+      const connection = await getInstancePublicIP(instanceId, force)
+      if (generation !== publicIPRequestGenerationRef.current) return
+      const res = resolvePanelAccessHost(connection)
       if (!res) {
-        throw new Error('无法读取当前面板访问地址')
+        throw new Error('无法读取当前世界的直连地址或游戏端口')
       }
       setPublicIP(res)
     } catch (e) {
+      if (generation !== publicIPRequestGenerationRef.current) return
       setPublicIP(null)
       setPublicIPError(errorMessage(e))
     } finally {
-      setPublicIPRefreshing(false)
+      if (generation === publicIPRequestGenerationRef.current) setPublicIPRefreshing(false)
     }
-  }, [])
+  }, [instanceId])
 
   const clearInviteCode = useCallback(() => {
     inviteProjectionGenerationRef.current += 1
@@ -568,6 +578,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
 
   useEffect(() => {
     dashboardMountedRef.current = true
+    dashboardAbortRef.current = new AbortController()
     const init = async () => {
       setLoading(true)
       // 并发加载所有数据，单个失败不阻塞其他
@@ -577,25 +588,24 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
         refreshMods(),
         refreshPlayers(),
         refreshJobs(),
-        refreshPublicIP(),
       ])
       setLoading(false)
     }
     void init()
+    void refreshPublicIP()
 
     // 每 30s 轮询实例状态和任务列表（任务列表兜底调度器触发的 job，SSE 只覆盖已知任务）
-    pollRef.current = setInterval(() => {
-      void refreshInstanceState()
-      void refreshJobs()
-    }, 30_000)
+    const stopPolling = subscribeVisiblePoll(`dashboard:${currentSessionGeneration()}:${instanceId}`, 30_000,
+      async signal => { await Promise.allSettled([refreshInstanceState(signal), refreshJobs(signal)]) }, { data: () => undefined }, false)
 
     return () => {
       dashboardMountedRef.current = false
+      dashboardAbortRef.current.abort()
+      publicIPRequestGenerationRef.current += 1
       instanceStateRequestGenerationRef.current += 1
       inviteRequestGenerationRef.current += 1
       inviteProjectionGenerationRef.current += 1
-      if (pollRef.current !== null) clearInterval(pollRef.current)
-      if (playersPollRef.current !== null) clearTimeout(playersPollRef.current)
+      stopPolling()
       if (invitePollRef.current !== null) clearTimeout(invitePollRef.current)
       if (delayedJobRefreshRef.current !== null) clearTimeout(delayedJobRefreshRef.current)
       for (const es of jobStreamsRef.current.values()) {
@@ -705,48 +715,10 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   }, [saves?.activeSaveName, refreshMods])
 
   useEffect(() => {
-    if (playersPollRef.current !== null) {
-      clearTimeout(playersPollRef.current)
-      playersPollRef.current = null
-    }
     if (instanceState?.state !== 'running') return
-
-    let cancelled = false
-    const pollPlayers = async () => {
-      if (document.visibilityState !== 'visible') return
-      await refreshPlayers()
-      if (cancelled) return
-      playersPollRef.current = window.setTimeout(() => {
-        void pollPlayers()
-      }, 5_000)
-    }
-    const schedulePlayers = () => {
-      if (cancelled || document.visibilityState !== 'visible') return
-      playersPollRef.current = window.setTimeout(() => {
-        void pollPlayers()
-      }, 5_000)
-    }
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') {
-        if (playersPollRef.current !== null) {
-          clearTimeout(playersPollRef.current)
-          playersPollRef.current = null
-        }
-        return
-      }
-      schedulePlayers()
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    schedulePlayers()
-    return () => {
-      cancelled = true
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (playersPollRef.current !== null) {
-        clearTimeout(playersPollRef.current)
-        playersPollRef.current = null
-      }
-    }
-  }, [instanceState?.state, refreshPlayers])
+    return subscribeVisiblePoll(`players:${currentSessionGeneration()}:${instanceId}`, 5_000,
+      signal => refreshPlayers(signal), { data: () => undefined }, false)
+  }, [instanceId, instanceState?.state, refreshPlayers])
 
   useEffect(() => {
     if (invitePollRef.current !== null) {

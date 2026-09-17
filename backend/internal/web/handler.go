@@ -61,25 +61,31 @@ type DockerService interface {
 }
 
 type server struct {
-	config                 config.Config
-	store                  *storage.Store
-	logger                 *slog.Logger
-	docker                 DockerService
-	jobs                   *jobs.Manager
-	registry               *registry.Registry
-	pendingUploads         *durablePendingUploadStore
-	publicIPResolver       *publicIPResolver
-	updateChecker          UpdateChecker
-	updater                UpdaterService
-	farmCatalogScanner     func(string) (sj.FarmCatalogResult, error)
-	farmPrepareMu          sync.Mutex
-	instanceCreateMu       sync.Mutex
-	instanceOperationLocks sync.Map
-	saveImportCancelMu     sync.Mutex
-	metricsMu              sync.Mutex
-	metricsCache           map[string]resourceMetricsCacheEntry
-	metricsFlights         map[string]*resourceMetricsFlight
-	initialized            atomic.Bool
+	config                    config.Config
+	store                     *storage.Store
+	logger                    *slog.Logger
+	docker                    DockerService
+	jobs                      *jobs.Manager
+	registry                  *registry.Registry
+	pendingUploads            *durablePendingUploadStore
+	publicIPResolver          *publicIPResolver
+	updateChecker             UpdateChecker
+	updater                   UpdaterService
+	farmCatalogScanner        func(string) (sj.FarmCatalogResult, error)
+	farmPrepareMu             sync.Mutex
+	instanceCreateMu          sync.Mutex
+	instanceOperationLocks    sync.Map
+	saveImportCancelMu        sync.Mutex
+	metricsMu                 sync.Mutex
+	metricsCache              map[string]resourceMetricsCacheEntry
+	metricsFlights            map[string]*resourceMetricsFlight
+	resourceStorageMu         sync.Mutex
+	resourceStorageCache      resourceStorageSnapshot
+	resourceStorageRefreshing bool
+	staticOnce                sync.Once
+	staticAssets              *staticContentCache
+	staticErr                 error
+	initialized               atomic.Bool
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -183,6 +189,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) route(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
+	case "/api/resources":
+		s.handleResourceOverview(w, r)
 	case "/health":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -365,6 +373,7 @@ func isSafeInstancePathSegment(value string) bool {
 func isKnownAPIPath(p string) bool {
 	switch p {
 	case "/api/version",
+		"/api/resources",
 		"/api/system/update",
 		"/api/system/update/check",
 		"/api/system/update/capability",
@@ -420,9 +429,13 @@ func isStaticAsset(p string) bool {
 // serveStatic serves the embedded frontend build. ServeHTTP admits only known
 // SPA routes; missing concrete assets return 404.
 func (s *server) serveStatic(w http.ResponseWriter, r *http.Request) {
-	sub, err := fs.Sub(static.FS, "frontend_dist")
-	if err != nil {
-		s.logger.Error("failed to access embedded frontend", "error", err)
+	s.staticOnce.Do(func() {
+		var sub fs.FS
+		sub, s.staticErr = fs.Sub(static.FS, "frontend_dist")
+		s.staticAssets = &staticContentCache{assets: sub}
+	})
+	if s.staticErr != nil {
+		s.logger.Error("failed to access embedded frontend", "error", s.staticErr)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
@@ -433,10 +446,7 @@ func (s *server) serveStatic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Try to serve the requested file.
-	data, err := fs.ReadFile(sub, p)
-	if err == nil {
-		w.Header().Set("Content-Type", detectContentType(p, data))
-		w.Write(data)
+	if err := s.staticAssets.serve(w, r, p); err == nil {
 		return
 	}
 
@@ -446,13 +456,10 @@ func (s *server) serveStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err = fs.ReadFile(sub, "index.html")
-	if err != nil {
+	if err := s.staticAssets.serve(w, r, "index.html"); err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "resource not found")
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
 }
 
 func detectContentType(path string, data []byte) string {

@@ -1,0 +1,162 @@
+[
+  {
+    "id": "steam_password",
+    "line": "Logging in user 'qa'...ERROR (Invalid Password)"
+  },
+  {
+    "id": "steam_guard",
+    "line": "That Steam Guard code was invalid."
+  },
+  {
+    "id": "steam_approval_timeout",
+    "line": "SteamCMD install authorization confirmation timed out"
+  },
+  {
+    "id": "steam_approval_denied",
+    "line": "Authentication denied"
+  },
+  {
+    "id": "steam_rate_limit",
+    "line": "Account Logon Denied Throttle"
+  },
+  {
+    "id": "steam_account",
+    "line": "AccountDisabled"
+  },
+  {
+    "id": "steam_session",
+    "line": "Logon session replaced"
+  },
+  {
+    "id": "steam_license",
+    "line": "ERROR! Failed to install app '413150' (No subscription)"
+  },
+  {
+    "id": "steam_cache",
+    "line": "Using cached credentials failed"
+  },
+  {
+    "id": "steam_qr",
+    "line": "QR authentication failed"
+  },
+  {
+    "id": "steam_account_mismatch",
+    "line": "Steam authenticated account mismatch"
+  },
+  {
+    "id": "docker_socket",
+    "line": "permission denied while trying to connect to the Docker daemon socket"
+  },
+  {
+    "id": "docker_unavailable",
+    "line": "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+  },
+  {
+    "id": "disk_full",
+    "line": "write /data/game: no space left on device"
+  },
+  {
+    "id": "read_only",
+    "line": "mkdir /data/game: read-only file system"
+  },
+  {
+    "id": "permission",
+    "line": "open /data/game: permission denied"
+  },
+  {
+    "id": "image_rate_limit",
+    "line": "toomanyrequests: You have reached your pull rate limit"
+  },
+  {
+    "id": "image_auth",
+    "line": "pull access denied for example/server"
+  },
+  {
+    "id": "image_missing",
+    "line": "manifest unknown"
+  },
+  {
+    "id": "image_platform",
+    "line": "no matching manifest for linux/arm64/v8 in the manifest list entries"
+  },
+  {
+    "id": "image_reference",
+    "line": "invalid reference format"
+  },
+  {
+    "id": "dns",
+    "line": "lookup example.invalid: no such host"
+  },
+  {
+    "id": "tls",
+    "line": "x509: certificate signed by unknown authority"
+  },
+  {
+    "id": "proxy",
+    "line": "proxyconnect tcp: EOF"
+  },
+  {
+    "id": "network_unreachable",
+    "line": "TryAnotherCM: SteamClient instance must be connected"
+  },
+  {
+    "id": "network_interrupted",
+    "line": "read tcp: connection reset by peer"
+  },
+  {
+    "id": "network_timeout",
+    "line": "dial tcp: i/o timeout"
+  },
+  {
+    "id": "remote_service",
+    "line": "download returned status code 503"
+  },
+  {
+    "id": "integrity",
+    "line": "SMAPI archive sha256 mismatch"
+  },
+  {
+    "id": "archive",
+    "line": "zip: not a valid zip file"
+  },
+  {
+    "id": "missing_library",
+    "line": "error while loading shared libraries: libstdc++.so.6: cannot open shared object file"
+  },
+  {
+    "id": "memory",
+    "line": "fatal: cannot allocate memory"
+  },
+  {
+    "id": "port",
+    "line": "Bind for 0.0.0.0:24642 failed: port is already allocated"
+  },
+  {
+    "id": "mount",
+    "line": "invalid mount config for type bind: bind source path does not exist"
+  },
+  {
+    "id": "container_conflict",
+    "line": "Conflict. The container name is already in use"
+  },
+  {
+    "id": "missing_command",
+    "line": "exec: steamcmd: executable file not found in $PATH"
+  },
+  {
+    "id": "steam_app_state",
+    "line": "ERROR! App '413150' state is 0x402 after update job."
+  },
+  {
+    "id": "missing_success",
+    "line": "SteamCMD install finished without success marker"
+  },
+  {
+    "id": "verification",
+    "line": "game runtime files are incomplete"
+  },
+  {
+    "id": "compatibility",
+    "line": "内置兼容矩阵不是可安装的 recommended 状态"
+  }
+]

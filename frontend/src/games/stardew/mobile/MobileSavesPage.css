@@ -22,8 +22,7 @@
   gap: 8px;
   font-size: 17px;
   font-weight: 800;
-  color: #fff3d6;
-  text-shadow: 1px 1px 0 rgba(32, 13, 3, 0.6);
+  color: var(--sd-brown-dark);
 }
 
 .sd-msave-page-title img {
@@ -35,8 +34,6 @@
 
 .sd-msave-refresh-btn {
   flex-shrink: 0;
-  min-height: 44px;
-  min-width: 64px;
 }
 
 .sd-msave-page-notice {
@@ -182,12 +179,13 @@
 
 .sd-msave-op-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .sd-msave-op-btn {
-  width: 100%;
+  width: auto;
+  min-width: 96px;
   min-height: 44px;
 }
 
@@ -242,7 +240,7 @@
 .sd-msave-gameday-btn {
   flex-shrink: 0;
   min-height: 44px;
-  min-width: 92px;
+  min-width: 64px;
 }
 
 /* 导入存档弹窗（复用 MobileControlPage.css 的 .sd-mctrl-dialog-* 视觉参数，

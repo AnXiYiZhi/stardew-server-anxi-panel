@@ -1863,7 +1863,7 @@ export function ModsPage({ user, instanceId, instanceState, dashboardData }: Sta
                         配置 Nexus Key
                       </button>
                       <button
-                        className={`sd-btn-tan sd-mods-extension-check sd-mods-extension-check-${nexusExtensionConnection.status}`}
+                        className={`sd-mods-extension-check sd-mods-extension-check-${nexusExtensionConnection.status}`}
                         type="button"
                         onClick={() => void testNexusExtensionConnection(true)}
                         disabled={nexusExtensionConnection.status === 'checking'}

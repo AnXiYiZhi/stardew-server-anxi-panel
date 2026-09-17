@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, startJunimoUpdateRepair, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply } from '../../../api'
+import { useEffect, useRef, useState } from 'react'
+import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, startJunimoUpdateRepair, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply, peekInstanceRead, invalidateReadCache, defaultInstanceId } from '../../../api'
+import { subscribeVisiblePoll } from '../../../core/visible-polling'
+import { currentSessionGeneration } from '../../../auth-session-events'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
@@ -8,6 +10,7 @@ import { junimoApplyActive, junimoApplyPhaseLabel, junimoApplyWaitingNotice, jun
 import { runtimeComponentsStatusLabel } from '../runtime-components-status'
 import { shouldShowSMAPIUpdate, smapiPhaseActive, smapiPhaseLabel, smapiStatusLabel } from '../smapi-update-status'
 import { preferDryRunWorkflow, shouldStartRequestedApply } from '../component-update-flow'
+import { ResourceMonitor } from '../ResourceMonitor'
 
 const RESOURCE_METRICS_REFRESH_MS = 8000
 const CONTROL_FRESH_MS = 30_000
@@ -96,10 +99,6 @@ function CountCard({
   )
 }
 
-function formatGaugeNumber(value: number | null | undefined): string {
-  if (value == null) return '—'
-  return `${Math.round(value * 10) / 10}`
-}
 
 function formatBytes(value: number | undefined): string {
   if (value == null || value < 0) return '—'
@@ -126,9 +125,6 @@ function recommendedImage(component?: { images?: string[]; image?: string }): st
   return component?.images?.[0] || component?.image || '—'
 }
 
-function hasByteValue(value: number | undefined): value is number {
-  return value != null && value >= 0
-}
 
 type UserUpdateProgressProps = {
   headline: string
@@ -186,174 +182,6 @@ function smapiUserPhase(dryRun: SMAPIUpdateWorkflowStatus | null, apply: SMAPIUp
   return { headline: smapiPhaseLabel(dryRun?.phase), progress: (dryRun?.progress ?? 0) * 0.25, currentStep: 0, tone, error: dryRun?.error }
 }
 
-function formatTrendTime(timestamp: string): string {
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-}
-
-// 圆环参照 Tomik23 circular-progress-bar 样式：
-// 渐变描边（yellow -> #ff0000）+ 圆头端帽 + #e6e6e6 底环，SVG 实现无额外依赖
-const GAUGE_RADIUS = 52
-const GAUGE_CIRCUMFERENCE = 2 * Math.PI * GAUGE_RADIUS
-
-function GaugeCard({
-  label,
-  value,
-  sub,
-  gradientId,
-}: {
-  label: string
-  value: number | null | undefined
-  sub: string
-  gradientId: string
-}) {
-  const percent = value == null ? 0 : Math.max(0, Math.min(100, value))
-  return (
-    <div className="sd-diag-gauge-card">
-      <span className="sd-diag-gauge-label">{label}</span>
-      <div className="sd-diag-gauge-ring">
-        <svg
-          className="sd-diag-gauge-svg"
-          viewBox="0 0 120 120"
-          role="img"
-          aria-label={value == null ? `${label} 暂无数据` : `${label} ${formatGaugeNumber(value)}%`}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="yellow" />
-              <stop offset="100%" stopColor="#ff0000" />
-            </linearGradient>
-          </defs>
-          <circle className="sd-diag-gauge-track" cx="60" cy="60" r={GAUGE_RADIUS} />
-          {percent > 0 ? (
-            <circle
-              className="sd-diag-gauge-arc"
-              cx="60"
-              cy="60"
-              r={GAUGE_RADIUS}
-              stroke={`url(#${gradientId})`}
-              strokeDasharray={GAUGE_CIRCUMFERENCE}
-              strokeDashoffset={GAUGE_CIRCUMFERENCE * (1 - percent / 100)}
-              transform="rotate(-90 60 60)"
-            />
-          ) : null}
-        </svg>
-        <div className="sd-diag-gauge-core">
-          <span className="sd-diag-gauge-number">{formatGaugeNumber(value)}</span>
-          {value != null ? <span className="sd-diag-gauge-unit">%</span> : null}
-        </div>
-      </div>
-      <span className="sd-diag-gauge-sub">{sub}</span>
-    </div>
-  )
-}
-
-function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
-  const width = 560
-  const height = 176
-  const padX = 28
-  const padTop = 16
-  const padBottom = 26
-  const chartW = width - padX * 2
-  const chartH = height - padTop - padBottom
-  const series = [
-    { key: 'cpu', label: 'CPU (%)', color: '#3f8f2c', get: (s: ResourceMetricSample) => s.cpuPercent },
-    { key: 'memory', label: '内存 (%)', color: '#d87916', get: (s: ResourceMetricSample) => s.memoryPercent },
-    { key: 'disk', label: '磁盘 (%)', color: '#1f68b5', get: (s: ResourceMetricSample) => s.diskPercent },
-  ]
-  const maxValue = samples.reduce((max, sample) => {
-    return series.reduce((seriesMax, item) => {
-      const value = item.get(sample)
-      return value == null ? seriesMax : Math.max(seriesMax, value)
-    }, max)
-  }, 100)
-  const yMax = Math.max(100, Math.ceil(maxValue / 25) * 25)
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(yMax * ratio))
-  const xLabels =
-    samples.length < 2
-      ? []
-      : [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-          const index = Math.round((samples.length - 1) * ratio)
-          return {
-            key: `${ratio}-${samples[index]?.timestamp ?? ''}`,
-            x: padX + chartW * ratio,
-            label: formatTrendTime(samples[index]?.timestamp ?? ''),
-          }
-        })
-
-  function pointsFor(getValue: (s: ResourceMetricSample) => number | null): string {
-    if (samples.length < 2) return ''
-    return samples
-      .map((sample, index) => {
-        const value = getValue(sample)
-        if (value == null) return null
-        const x = padX + (chartW * index) / Math.max(1, samples.length - 1)
-        const y = padTop + chartH - (chartH * Math.max(0, Math.min(yMax, value))) / yMax
-        return `${x.toFixed(1)},${y.toFixed(1)}`
-      })
-      .filter(Boolean)
-      .join(' ')
-  }
-
-  return (
-    <div className="sd-diag-trend-card">
-      <div className="sd-diag-trend-head">
-        <span>资源使用趋势（24小时）</span>
-        <div className="sd-diag-trend-legend">
-          {series.map((item) => (
-            <span key={item.key}>
-              <i style={{ background: item.color }} />
-              {item.label}
-            </span>
-          ))}
-        </div>
-      </div>
-      <svg className="sd-diag-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="CPU、内存、磁盘趋势折线图">
-        {ticks.map((tick) => {
-          const y = padTop + chartH - (chartH * tick) / yMax
-          return (
-            <g key={tick}>
-              <line x1={padX} y1={y} x2={width - padX} y2={y} className="sd-diag-grid-line" />
-              <text x={8} y={y + 4} className="sd-diag-axis-label">{tick}</text>
-            </g>
-          )
-        })}
-        {xLabels.map((item) => (
-          <g key={item.key}>
-            <line x1={item.x} y1={padTop} x2={item.x} y2={padTop + chartH} className="sd-diag-grid-line sd-diag-grid-line-vertical" />
-            {item.label && (
-              <text x={item.x} y={height - 7} className="sd-diag-axis-label sd-diag-axis-label-x">
-                {item.label}
-              </text>
-            )}
-          </g>
-        ))}
-        {series.map((item) => {
-          const points = pointsFor(item.get)
-          if (!points) return null
-          return (
-            <polyline
-              key={item.key}
-              className="sd-diag-trend-line"
-              points={points}
-              stroke={item.color}
-            />
-          )
-        })}
-        {samples.length < 2 && (
-          <text x={width / 2} y={height / 2} className="sd-diag-chart-empty">
-            等待更多采样数据
-          </text>
-        )}
-      </svg>
-    </div>
-  )
-}
 
 // ── DiagnosticsPage ───────────────────────────────────────────────────────────
 
@@ -372,11 +200,11 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [metricSamples, setMetricSamples] = useState<ResourceMetricSample[]>([])
+  const [metricMachine, setMetricMachine] = useState<ResourceMetricSample | undefined>()
   const [metricError, setMetricError] = useState<string | null>(null)
-  const [metricService, setMetricService] = useState('server')
-  const [composeServices, setComposeServices] = useState<ComposeService[]>([])
+  const [composeServices, setComposeServices] = useState<ComposeService[]>(() => peekInstanceRead<{ services: ComposeService[] }>('docker/ps')?.services ?? [])
   const [composeError, setComposeError] = useState<string | null>(null)
-  const [junimoUpdate, setJunimoUpdate] = useState<JunimoUpdateInfo | null>(null)
+  const [junimoUpdate, setJunimoUpdate] = useState<JunimoUpdateInfo | null>(() => isAdmin ? peekInstanceRead<JunimoUpdateInfo>('junimo-update') ?? null : null)
   const [junimoUpdateError, setJunimoUpdateError] = useState<string | null>(null)
   const [junimoDryRun, setJunimoDryRun] = useState<JunimoUpdateDryRunStatus | null>(null)
   const [junimoDryRunError, setJunimoDryRunError] = useState<string | null>(null)
@@ -384,11 +212,11 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const [junimoApply, setJunimoApply] = useState<JunimoUpdateApplyStatus | null>(null)
   const [junimoApplyError, setJunimoApplyError] = useState<string | null>(null)
   const [junimoApplyBusy, setJunimoApplyBusy] = useState(false)
-  const [runtimeComponents, setRuntimeComponents] = useState<RuntimeComponentsInfo | null>(null)
+  const [runtimeComponents, setRuntimeComponents] = useState<RuntimeComponentsInfo | null>(() => isAdmin ? peekInstanceRead<RuntimeComponentsInfo>('runtime-components') ?? null : null)
   const [runtimeComponentsError, setRuntimeComponentsError] = useState<string | null>(null)
   const [runtimePreflight, setRuntimePreflight] = useState<RuntimeComponentsPreflight | null>(null)
   const [runtimePreflightBusy, setRuntimePreflightBusy] = useState(false)
-  const [smapiUpdate, setSMAPIUpdate] = useState<SMAPIUpdateInfo | null>(null)
+  const [smapiUpdate, setSMAPIUpdate] = useState<SMAPIUpdateInfo | null>(() => isAdmin ? peekInstanceRead<RuntimeComponentsInfo>('runtime-components')?.smapi ?? null : null)
   const [smapiError, setSMAPIError] = useState<string | null>(null)
   const [smapiDryRun, setSMAPIDryRun] = useState<SMAPIUpdateWorkflowStatus | null>(null)
   const [smapiDryRunBusy, setSMAPIDryRunBusy] = useState(false)
@@ -412,7 +240,6 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const okCount = checks.filter((c) => c.status === 'ok').length
   const warnCount = checks.filter((c) => c.status === 'warning').length
   const errorCount = checks.filter((c) => c.status === 'error').length
-  const latestMetric = metricSamples[metricSamples.length - 1]
   const overallText =
     overallStatus === 'ok'
       ? '系统正常'
@@ -447,8 +274,9 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
 
   useEffect(() => {
     let alive = true
-    getComposePs().then((res) => { if (alive) setComposeServices(res.services ?? []) }).catch((e) => { if (alive) setComposeError(errorMessage(e)) })
-    return () => { alive = false }
+    const controller = new AbortController()
+    getComposePs(defaultInstanceId, controller.signal).then((res) => { if (alive) setComposeServices(res.services ?? []) }).catch((e) => { if (alive) setComposeError(errorMessage(e)) })
+    return () => { alive = false; controller.abort() }
   }, [])
 
   useEffect(() => {
@@ -470,7 +298,8 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
       return
     }
     let alive = true
-    getJunimoUpdate().then((result) => {
+    const controller = new AbortController()
+    getJunimoUpdate(defaultInstanceId, controller.signal).then((result) => {
       if (!alive) return
       setJunimoUpdate(result)
       setJunimoUpdateError(null)
@@ -478,18 +307,17 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
       if (!alive) return
       setJunimoUpdateError(errorMessage(e))
     })
-    getJunimoUpdateDryRun().then((result) => {
+    getJunimoUpdateDryRun(defaultInstanceId, controller.signal).then((result) => {
       if (alive) setJunimoDryRun(result)
     }).catch((e) => {
       if (alive) setJunimoDryRunError(errorMessage(e))
     })
-    getJunimoUpdateApply().then((result) => { if (alive) setJunimoApply(result) }).catch((e) => { if (alive) setJunimoApplyError(errorMessage(e)) })
-    getRuntimeComponents().then((result) => { if (alive) { setRuntimeComponents(result); if (result.smapi) setSMAPIUpdate(result.smapi); setRuntimeComponentsError(null) } }).catch((e) => { if (alive) setRuntimeComponentsError(errorMessage(e)) })
-    getRuntimeComponentsPreflight().then((result) => { if (alive) setRuntimePreflight(result) }).catch(() => undefined)
-    getSMAPIUpdate().then((result) => { if (alive) { setSMAPIUpdate(result); setSMAPIError(null) } }).catch((e) => { if (alive) setSMAPIError(errorMessage(e)) })
-    getSMAPIUpdateDryRun().then((result) => { if (alive) setSMAPIDryRun(result) }).catch((e) => { if (alive) setSMAPIError(errorMessage(e)) })
-    getSMAPIUpdateApply().then((result) => { if (alive) setSMAPIApply(result) }).catch((e) => { if (alive) setSMAPIError(errorMessage(e)) })
-    return () => { alive = false }
+    getJunimoUpdateApply(defaultInstanceId, controller.signal).then((result) => { if (alive) setJunimoApply(result) }).catch((e) => { if (alive) setJunimoApplyError(errorMessage(e)) })
+    getRuntimeComponents(defaultInstanceId, controller.signal).then((result) => { if (alive) { setRuntimeComponents(result); if (result.smapi) setSMAPIUpdate(result.smapi); setRuntimeComponentsError(null) } }).catch((e) => { if (alive) setRuntimeComponentsError(errorMessage(e)) })
+    getRuntimeComponentsPreflight(defaultInstanceId, controller.signal).then((result) => { if (alive) setRuntimePreflight(result) }).catch(() => undefined)
+    getSMAPIUpdateDryRun(defaultInstanceId, controller.signal).then((result) => { if (alive) setSMAPIDryRun(result) }).catch((e) => { if (alive) setSMAPIError(errorMessage(e)) })
+    getSMAPIUpdateApply(defaultInstanceId, controller.signal).then((result) => { if (alive) setSMAPIApply(result) }).catch((e) => { if (alive) setSMAPIError(errorMessage(e)) })
+    return () => { alive = false; controller.abort() }
   }, [isAdmin])
 
   useEffect(() => {
@@ -564,13 +392,14 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   useEffect(() => {
     if (localData) return
     let alive = true
+    const controller = new AbortController()
 
     async function loadInitialHealth() {
       setRefreshing(true)
       setLocalError(null)
       setHasLocalAttempt(true)
       try {
-        const res = await getHealthDiagnostics()
+        const res = await getHealthDiagnostics(controller.signal)
         if (!alive) return
         setLocalData(res)
         applyHealthDiagnostics(res)
@@ -587,82 +416,23 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     void loadInitialHealth()
     return () => {
       alive = false
+      controller.abort()
     }
   }, [applyHealthDiagnostics, localData])
 
   useEffect(() => {
-    let alive = true
-    let timer: number | undefined
-
-    function clearTimer() {
-      if (timer != null) {
-        window.clearTimeout(timer)
-        timer = undefined
-      }
-    }
-
-    function scheduleNext() {
-      if (!alive || document.visibilityState !== 'visible') return
-      clearTimer()
-      timer = window.setTimeout(() => {
-        void loadMetrics()
-      }, RESOURCE_METRICS_REFRESH_MS)
-    }
-
-    async function loadMetrics() {
-      if (document.visibilityState !== 'visible') return
-      try {
-        const res = await getInstanceMetrics()
-        if (!alive) return
+    const instanceId = defaultInstanceId
+    return subscribeVisiblePoll(`metrics:${currentSessionGeneration()}:${instanceId}`, RESOURCE_METRICS_REFRESH_MS,
+      signal => getInstanceMetrics(instanceId, signal), { data: res => {
         setMetricError(null)
-        setMetricService(res.service || 'server')
-        setMetricSamples((prev) => [...prev, res.sample].slice(-24))
-      } catch (e) {
-        if (!alive) return
-        setMetricError(errorMessage(e))
-      } finally {
-        scheduleNext()
-      }
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        void loadMetrics()
-        return
-      }
-      clearTimer()
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    if (document.visibilityState === 'visible') {
-      void loadMetrics()
-    }
-    return () => {
-      alive = false
-      clearTimer()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
+        setMetricSamples((prev) => prev.at(-1)?.timestamp === res.sample.timestamp ? prev : [...prev, res.sample].slice(-24))
+        setMetricMachine(res.machine)
+      }, error: e => setMetricError(errorMessage(e)) })
   }, [])
 
-  const metricSubtitles = useMemo(() => {
-    const memory =
-      hasByteValue(latestMetric?.memoryUsedBytes) && hasByteValue(latestMetric?.memoryLimitBytes)
-        ? `${formatBytes(latestMetric.memoryUsedBytes)} / ${formatBytes(latestMetric.memoryLimitBytes)}`
-        : latestMetric?.containerRunning
-          ? '容器内存'
-          : '启动后显示'
-    const disk =
-      hasByteValue(latestMetric?.diskUsedBytes) && hasByteValue(latestMetric?.diskTotalBytes)
-        ? `${formatBytes(latestMetric.diskUsedBytes)} / ${formatBytes(latestMetric.diskTotalBytes)}`
-        : '实例磁盘'
-    return {
-      cpu: latestMetric?.containerRunning ? metricService : '启动后显示',
-      memory,
-      disk,
-    }
-  }, [latestMetric, metricService])
 
   async function handleRefresh() {
+    invalidateReadCache()
     setRefreshing(true)
     setLocalError(null)
     setHasLocalAttempt(true)
@@ -1169,26 +939,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         </div>
 
         <div className="sd-diag-resource-wrap">
-          {/* 资源趋势 */}
-          <div className="sd-diag-resource-panel">
-            <div className="sd-diag-resource-head">
-              <div className="sd-diag-section-title">资源趋势</div>
-              <span className={latestMetric?.containerRunning ? 'sd-diag-live-badge' : 'sd-diag-idle-badge'}>
-                {latestMetric?.containerRunning ? '实时' : '待运行'}
-              </span>
-            </div>
-            <div className="sd-diag-gauge-grid">
-              <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} gradientId="sd-gauge-grad-cpu" />
-              <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} gradientId="sd-gauge-grad-memory" />
-              <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} gradientId="sd-gauge-grad-disk" />
-            </div>
-            <ResourceTrendChart samples={metricSamples} />
-            {(metricError || latestMetric?.message) && (
-              <div className="sd-diag-resource-note">
-                {metricError ?? latestMetric?.message}
-              </div>
-            )}
-          </div>
+          <ResourceMonitor samples={metricSamples} machine={metricMachine} error={metricError} />
         </div>
       </div>
 

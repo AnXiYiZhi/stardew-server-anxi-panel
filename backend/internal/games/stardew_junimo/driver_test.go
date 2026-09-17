@@ -2802,7 +2802,7 @@ func TestDriverInstallClassifiesCombinedSteamCMDInvalidPasswordLineAsCredentials
 	if updated.State != storage.InstanceStateCredentialsRequired || updated.DriverPhase != "credentials_required" {
 		t.Fatalf("combined login/password error must request fresh credentials, got state=%s phase=%s", updated.State, updated.DriverPhase)
 	}
-	if !strings.Contains(updated.StateMessage.String, "账号、密码或验证码不正确") {
+	if !strings.Contains(updated.StateMessage.String, "账号或密码错误") || !strings.Contains(updated.StateMessage.String, "重试") {
 		t.Fatalf("credential failure message should explain re-entry, got %q", updated.StateMessage.String)
 	}
 	envVals, err := sjconfig.ReadEnvFile(filepath.Join(instanceDir, ".env"))
