@@ -4,6 +4,7 @@
 
 - 页底 CURRENT RELEASE 复用首页 frontmatter.release，避免另一个硬编码版本漏更新；摘要同步本版内容。changelog 与 GitHub Release 增补未进入世界玩家的占位记录问题，文案按已发布 driver 的行为描述列表/人数/事件过滤和完成创建后的恢复显示。
 - 本地 docs:build 6.83s 通过；Browser plugin not available，使用现有 Playwright/Chrome 在 1440×900、390×844 完成首页页底 → 查看本次更新 → 新修复说明的真实点击。版本、正文、无框架覆盖层、无控制台错误/警告、无横向溢出及截图检查通过。脚本与截图保留于系统临时目录 anxi-v071-doc-fix-20260918；随后按同一流程复核 Pages 上线。
+- 提交 `ffd04266b743abd7604df481a4ae16396aa5539b` 的 [Pages 35313305569](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35313305569) build/deploy 成功（21s / 9s）。同一脚本对线上桌面和手机重复真实点击，页底精确为 v0.7.1、首页无旧版本、更新日志包含玩家占位修复说明，标题顺序、控制台、框架覆盖层及横向尺寸均通过；GitHub Release 同步文案后已回读核验。本地 4631 预览已停止并确认监听清零。
 
 ## 2026-09-17：官网展示 v0.7.1
 
