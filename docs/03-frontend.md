@@ -1,3 +1,9 @@
+## 2026-09-18：官网 v0.7.1 页底与更新说明补齐
+
+- 首页 CURRENT RELEASE 改为读取现有 frontmatter.release，消除独立硬编码的旧版本；同步本版摘要。官网 changelog 与 GitHub Release 补充未进入世界玩家的占位记录修复，说明未完成创建时隐藏列表/人数/事件占位、完成创建后正常显示及保留正常历史玩家。
+- 修改 website/docs/index.md、website/docs/changelog.md；VitePress production build 6.83s 通过。Browser plugin not available，使用已安装 Playwright/Chrome 在 1440×900 与 390×844 验证页底版本、点击“查看本次更新”到更新日志、正文、控制台和横向溢出，全部通过。
+- 维护注意：版本展示复用 frontmatter.release；官网验收必须精确检查 .home-note strong，不能只搜索整页是否出现新版本。上线证据记录于 docs/11-docs-portal.md。本轮更新官网与发布说明，正式 tag、候选及镜像身份保持不变。
+
 ## v0.7.1 全量工作区发布（2026-09-17，已发布）
 
 - 本次纳入当前全部相关修改：性能/缓存/轮询、资源分层监控、安装失败解释、新世界 VNC 继承，以及桌面/移动端界面、素材与交互；完整范围和专项矩阵见 docs/09-image-build.md 的 v0.7.1 章节。

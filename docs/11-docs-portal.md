@@ -1,5 +1,10 @@
 # 文档门户网站建设方案
 
+## 2026-09-18：v0.7.1 页底版本与遗漏说明修正
+
+- 页底 CURRENT RELEASE 复用首页 frontmatter.release，避免另一个硬编码版本漏更新；摘要同步本版内容。changelog 与 GitHub Release 增补未进入世界玩家的占位记录问题，文案按已发布 driver 的行为描述列表/人数/事件过滤和完成创建后的恢复显示。
+- 本地 docs:build 6.83s 通过；Browser plugin not available，使用现有 Playwright/Chrome 在 1440×900、390×844 完成首页页底 → 查看本次更新 → 新修复说明的真实点击。版本、正文、无框架覆盖层、无控制台错误/警告、无横向溢出及截图检查通过。脚本与截图保留于系统临时目录 anxi-v071-doc-fix-20260918；随后按同一流程复核 Pages 上线。
+
 ## 2026-09-17：官网展示 v0.7.1
 
 - 更新 `website/docs/changelog.md` 与首页 release/摘要，完整说明性能优化、三级资源监控、安装失败解释、VNC 继承及桌面/手机体验；v0.7.0 保留为历史版本。

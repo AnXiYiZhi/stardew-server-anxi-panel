@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.7.0</strong>
-    <p>集中管理多个独立世界，创建、改名与安全删除一处完成，安装进度、Steam 授权和中断恢复更清楚。</p>
+    <strong>{{ $frontmatter.release }}</strong>
+    <p>优化读取与静态资源性能，分层查看资源占用，清晰呈现安装失败原因，并修复未进入世界玩家的占位记录问题。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
