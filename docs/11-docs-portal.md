@@ -4,7 +4,8 @@
 
 - 官网首页 release/摘要与 changelog 同步 v0.7.2，说明直连配置、认证/总览/响应式改进以及素材/构建减负，链接正式 Release；v0.7.1 作为历史版本保留。页底继续复用 frontmatter.release。
 - 正式候选、升级/回滚、自动 tag、三仓提升和发布后独立核验已完成，详细证据见 docs/09-image-build.md 顶部。本次官网为发布后文档更新，不触发同 digest 候选重建或移动 tag。
-- 本地 docs:build 6.34s 通过；生成 HTML 精确核对 `.home-note strong` 为 v0.7.2、页底实际更新链接、changelog 最新/历史标题顺序及四项更新正文。静态路由与生成文件映射分别核验；完整构建日志和内容证据在 output/v072-release-20260919。Pages 上线结果在部署后回填。
+- 本地 docs:build 6.34s 通过；生成 HTML 精确核对 `.home-note strong` 为 v0.7.2、页底实际更新链接、changelog 最新/历史标题顺序及四项更新正文。静态路由与生成文件映射分别核验；完整构建日志和内容证据在 output/v072-release-20260919。
+- 提交 `69e251353027d90d0ec85624fff3a5aa7163d455` 的 [Pages 35430460046](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35430460046) build/deploy 全成功。线上首页与实际页底 href `/stardew-server-anxi-panel/changelog` 请求均成功，精确页底 v0.7.2、更新标题顺序 v0.7.2/v0.7.1 和四项正文复验通过。此处为生成/上线 HTML 内容验收，没有另行声称视觉或浏览器交互测试；本轮未改变页面样式和交互。
 
 ## 2026-09-18：v0.7.1 页底版本与遗漏说明修正
 

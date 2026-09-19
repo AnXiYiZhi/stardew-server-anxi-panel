@@ -29,6 +29,7 @@
 
 ## 实际门禁、故障与清理
 
+- 官网发布收尾：`website/docs/index.md` 与 changelog 已同步 v0.7.2，docs:build 6.34s 通过；纯文档提交 `69e251353027d90d0ec85624fff3a5aa7163d455` 的 Pages `35430460046` build/deploy 成功。生成与线上 HTML 均确认精确页底版本、实际更新链接、v0.7.2/v0.7.1 标题顺序和四项更新正文，证据见 docs/11-docs-portal.md 与同一 output 目录。没有触发新的发布候选。
 - 全包后端 test/vet/build、全部前端状态回归/audit/production build、脚本功能/ShellCheck、兼容清单、updater/Docker integration 及资源归属专项均成功。路径差异自动选择 SMAPI 真实下载、Junimo runtime integration 和官网构建；runtime manifest 输入未变，远程制品复核自动跳过。没有新增迁移/部署格式/长期数据变化，不增加更老版本直升或未变化 Control 的真实编译链。
 - 全新安装的 health/version、未初始化、重启和真实认证通过；新直连专项在全新/升级后各两个世界共四次通过，覆盖停服、默认/自定义/最大/非法端口、重复读取与配置刷新、多世界隔离、匿名拒绝/普通用户只读、方法与实例错误、原配置恢复。真实世界创建/改名/删除幂等/源卷保持、静态 HTTP、资源、玩家读取、Docker 安装失败持久化与重试专项也通过。
 - v0.7.1 经真实 Web check、dry-run、管理员 apply、预期断线重连完成升级；同一候选引用 unhealthy 注入验证 `failed_rolled_back/health_check_failed` 和旧版恢复。SQLite、初始化、用户/实例、存档/Mod/备份、非目标游戏容器/卷与重启状态保持通过；未知卷持有者恢复、Steam invite 迁移、legacy runtime repair 与导入安全边界全部通过。
