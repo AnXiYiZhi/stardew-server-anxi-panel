@@ -1,4 +1,4 @@
-# v0.7.2 发布候选（2026-09-19，准备中）
+# v0.7.2 正式发布验收（2026-09-19，released）
 
 - 候选 35428836833 在后端全包回归停止，尚未构建镜像/创建 tag：成功保存夹具将两次真实原子写入/fsync 和回读限制为 100ms，CI 约 200ms 时命中 deadline；同 SHA 的独立兼容后端回归通过，原测试本机连续 30 次通过。仅将成功 I/O 夹具预算改为 5s，保留同一 commandId、完整 GameLoop.Saved 证据、真实文件及只发布一次/恢复不重提断言；新增独立 8ms 超时拒绝且不重提测试。生产超时、实现和安全判定保持原样；新测试输入将以新 main SHA 重建候选。
 
@@ -16,7 +16,25 @@
 | 正式交付 | annotated tag 仍等于 origin/main；精确 digest 提升；三仓版本/latest 六引用与 OCI 一致；正式 health/version、GitHub Release 和部署资产 | 自动 tag/正式 workflow 与发布后独立核验；最终回填 workflow、耗时、故障与清理 |
 
 - 既有本地验证：前端全部 27 项脚本、生产构建、52 组浏览器与 5 个移动导航；后端 Linux tmpfs 1,924 pass/8 skip、vet/build/tidy；Docker 24 项 API 冒烟和官网构建。磁盘临时目录的历史 15 秒等待波动保留原断言，本次不可变候选必须完整通过，不能用本地证据代替。
-- 当前阶段：范围确认与专项补齐；尚未创建正式 tag 或提升镜像。下方旧“未发布”是本版纳入工作的历史过程，完成后以本节正式证据为准。
+- 本版已发布。下方旧“未发布”是本版纳入工作的历史过程，以本节正式证据为准。
+
+## 不可变候选与正式结果
+
+- 相关修改先提交 `e5c209e5a5389b2f1fec03de1ff2933244869eb6`；保存成功夹具与独立超时用例修复后，最终候选/发布 commit=`c8ec1db143e451b458c158bc63c7c9f38fffc834`，build date=`2026-09-19T07:23:46Z`。所有提交直接在 main 完成并同步 origin/main，创建 tag 时工作区干净且两端与候选 SHA 一致。
+- 候选 [35429187345](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35429187345) attempt 1 成功，07:23:23–07:40:58 UTC，含排队共 17m35s；artifact=`release-candidate-0.7.2-c8ec1db143e4`，previousVersion=`0.7.1`，oldestTestedVersion 为空。独立 Compatibility [35429187386](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35429187386) 全通过（6m22s）。
+- candidateRef=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.7.2-c8ec1db143e4`；唯一 digest=`sha256:3ea2c86054c02673874413d00bfe05e13a17017551b6042ed26f87fb7954e655`；image ID=`sha256:1db8325e5c6176791c5160a6603e02da615e0a633462e6f5c2a50f605536962e`。
+- 自动 tag [35429987690](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35429987690) 成功（15s）。独立 fetch/cat-file/peeled commit 验证 `v0.7.2` 为 annotated tag，精确指向上述候选完整 SHA，注释绑定同一候选 workflow/digest，未移动任何已有 tag。
+- 正式提升 [35429996287](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/35429996287) 成功，07:41:12–07:42:46 UTC，共 1m34s。直接复制候选精确 digest，未重建；Docker Hub、ACR、GHCR 三仓 `0.7.2/latest` 六引用在正式 workflow 与本机 buildx 两次核验中完全一致，六个 OCI version/revision/created 也分别比对通过。
+- [GitHub Release v0.7.2](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.2) 为 latest、非 draft/prerelease，发布于 07:42:43 UTC。用户可见变更、完整 commit、UTC build date、digest 和四条 workflow 证明链接已补齐并回读相等；四个部署/修复脚本下载后 SHA-256 与候选源码逐项一致。
+
+## 实际门禁、故障与清理
+
+- 全包后端 test/vet/build、全部前端状态回归/audit/production build、脚本功能/ShellCheck、兼容清单、updater/Docker integration 及资源归属专项均成功。路径差异自动选择 SMAPI 真实下载、Junimo runtime integration 和官网构建；runtime manifest 输入未变，远程制品复核自动跳过。没有新增迁移/部署格式/长期数据变化，不增加更老版本直升或未变化 Control 的真实编译链。
+- 全新安装的 health/version、未初始化、重启和真实认证通过；新直连专项在全新/升级后各两个世界共四次通过，覆盖停服、默认/自定义/最大/非法端口、重复读取与配置刷新、多世界隔离、匿名拒绝/普通用户只读、方法与实例错误、原配置恢复。真实世界创建/改名/删除幂等/源卷保持、静态 HTTP、资源、玩家读取、Docker 安装失败持久化与重试专项也通过。
+- v0.7.1 经真实 Web check、dry-run、管理员 apply、预期断线重连完成升级；同一候选引用 unhealthy 注入验证 `failed_rolled_back/health_check_failed` 和旧版恢复。SQLite、初始化、用户/实例、存档/Mod/备份、非目标游戏容器/卷与重启状态保持通过；未知卷持有者恢复、Steam invite 迁移、legacy runtime repair 与导入安全边界全部通过。
+- 首个候选 `35428836833` 在成功保存夹具的 100ms 文件 I/O 预算处失败，没有构建或发布镜像。修复测试预算并新增独立 8ms 超时拒绝/不重提测试，原测试本地 30 次与修复后相关用例连续 50 轮通过，生产实现/超时/证据判定不变。新输入建立新 SHA 的完整候选；全部门禁通过后才自动 tag/提升。
+- 发布后从正式 GHCR 精确 digest 独立拉取，OCI、`/health`、`/api/version`（0.7.2/完整 SHA/固定 build date）、未初始化与重启复验通过。任务容器 `anxi-v072-verify-20260919` 和专属数据卷已按 label 核对归属后删除，复查无残留；原六容器的名称、镜像、启动时间与状态和基线相等，其中原三台运行容器保持 healthy。CI 的候选容器/网络/卷与 DinD 由 cleanup 完成回收。
+- 完整 workflow 日志、不可变 candidate.json、tag 审计、六引用 JSON、正式 API/重启、Release 资产 SHA256 和资源清理证据保留于忽略目录 `output/v072-release-20260919`。发布后只回填文档与官网，不移动 tag，不重建同 digest 候选。
 
 # 2026-09-19 项目深度减负（本地验证完成，未发布）
 

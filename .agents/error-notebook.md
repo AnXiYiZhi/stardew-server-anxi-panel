@@ -21,6 +21,8 @@
 
 ## 2026-09-18：官网版本验收须定位页底
 
+- 2026-09-19 v0.7.2 发布收尾补充：静态 HTML 验收首轮把全页所有 changelog 链接当成一个目标，因扩展名省略与 `.html` 链接并存而断言失败；限定真实 `.home-note` 后又把路由直接当磁盘文件名，读取不存在的 changelog 失败。核对生成目录实际文件 changelog.html 后，仅本地文件读取使用该已确认映射，线上仍请求原 href 并跟随服务端响应；不修改产品路由。继续执行已有页底定位与真实 href 契约规则。
+
 - 服务器/玩家布局补充（2026-09-18，CUA / Vite）：修改 QA 入口后 HMR 切回真实路由登录页，直接对不存在的 `.sd-server-page` 取 computed style 导致 TypeError，未修改页面。读取 fresh DOM 确认为登录页后重新导航完整 QA 入口并等待目标页面，尺寸验收恢复。沿用 AGENTS.md 的 HMR 后路由/DOM 校验规则；QA 中的 createRoot 重复日志按热更新时间区分，不当作正式页面异常或忽略新的应用错误。移动端恢复桌面时一次 CDP Page.navigate 等待超时；没有重复导航，先核对标签 URL、Vite 精确监听/HTTP 200 和 fresh DOM，确认目标已加载后继续。
 - 全局纸色统一补充（2026-09-18，PowerShell 7 / CUA）：新一轮工具会话已重置，直接复用上一轮 `overviewBrowser` 导致 `ReferenceError`，零页面操作；改从文档规定的浏览器入口初始化，再按当前标签列表取得引用。旧预览进程也已结束，浏览器仍能显示缓存内容；精确 `Get-NetTCPConnection -LocalPort` 在无监听时抛错。改为允许空结果的监听枚举并筛选端口，核对排除范围后以可等待 cell 恢复 Vite，再导航到隔离夹具检查实际计算色值。预防：新工具会话首次调用必须是文档入口，跨轮预览先核对监听，不以页面仍可见推断 HMR 服务存活。
 - 总览样式落地补充（2026-09-18，PowerShell 7 / Chrome / Playwright）：合并 CSS 检索与技能正文再次略超输出预算，改为精确短段补读；临时 QA 把停止确认的实际 `alertdialog` 当成 `dialog`，并把移动壳 `.sd-mshell` 猜作 `.sd-mobile-shell`，均导致 30 秒定位超时。核对 `OverviewPage.tsx`、`ModalPortal.tsx` 和 `StardewMobileShell.tsx` 的实际契约后修正，仅续跑失败与剩余场景，最终 10 组通过。沿用 AGENTS.md 的实际 DOM/ARIA 和全局输出预算规则；临时 QA 定位符必须先从源码或 fresh DOM 取得，不以相邻组件命名推断。

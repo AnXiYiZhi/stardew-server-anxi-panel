@@ -1,5 +1,11 @@
 # 文档门户网站建设方案
 
+## 2026-09-19：官网展示 v0.7.2
+
+- 官网首页 release/摘要与 changelog 同步 v0.7.2，说明直连配置、认证/总览/响应式改进以及素材/构建减负，链接正式 Release；v0.7.1 作为历史版本保留。页底继续复用 frontmatter.release。
+- 正式候选、升级/回滚、自动 tag、三仓提升和发布后独立核验已完成，详细证据见 docs/09-image-build.md 顶部。本次官网为发布后文档更新，不触发同 digest 候选重建或移动 tag。
+- 本地 docs:build 6.34s 通过；生成 HTML 精确核对 `.home-note strong` 为 v0.7.2、页底实际更新链接、changelog 最新/历史标题顺序及四项更新正文。静态路由与生成文件映射分别核验；完整构建日志和内容证据在 output/v072-release-20260919。Pages 上线结果在部署后回填。
+
 ## 2026-09-18：v0.7.1 页底版本与遗漏说明修正
 
 - 页底 CURRENT RELEASE 复用首页 frontmatter.release，避免另一个硬编码版本漏更新；摘要同步本版内容。changelog 与 GitHub Release 增补未进入世界玩家的占位记录问题，文案按已发布 driver 的行为描述列表/人数/事件过滤和完成创建后的恢复显示。
@@ -20,7 +26,7 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**既有正式官网继续上线，使用原 Hero、联机邀请卡、六入口、QQ 群入口和导航；官网版本展示已更新为 v0.7.0。既有响应式布局与首屏留白保持一致**。
+状态：**既有正式官网继续上线，使用原 Hero、联机邀请卡、六入口、QQ 群入口和导航；官网版本内容已更新为 v0.7.2。既有响应式布局与首屏留白保持一致**。
 
 ## 2026-08-23：官网展示 v0.5.12
 

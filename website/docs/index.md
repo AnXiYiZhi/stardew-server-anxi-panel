@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.7.1
+release: v0.7.2
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.7.1。读取与静态资源性能优化，三级资源监控、清晰安装错误，以及更完善的桌面与手机操作。
+    details: 当前最新 v0.7.2。直连地址读取更可靠，登录与总览更清晰，窄窗口布局完善，前端素材与构建输入更轻。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
