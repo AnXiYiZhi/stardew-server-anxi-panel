@@ -393,7 +393,10 @@ func TestSubmitAndWaitForNewGameDurableSaveUsesSameCommandIDAndExactSavedEvidenc
 	saveID := "BlueFarm_456789012"
 	var publishes atomic.Int32
 	options := newGameDurableSaveOptions{
-		Timeout: 100 * time.Millisecond, PollInterval: time.Millisecond,
+		// This successful round-trip performs real fsyncs. Its assertions concern
+		// durable identity and one publication, not the runner's disk latency.
+		// The dedicated timeout test below keeps a short failure deadline.
+		Timeout: 5 * time.Second, PollInterval: time.Millisecond,
 		Publish: func(gotDataDir, gotCommandID, gotTransactionID, gotSaveID string) error {
 			publishes.Add(1)
 			if gotDataDir != dataDir || gotCommandID != commandID || gotTransactionID != txID || gotSaveID != saveID {
@@ -447,6 +450,29 @@ func TestSubmitAndWaitForNewGameDurableSaveUsesSameCommandIDAndExactSavedEvidenc
 	}
 	if publishes.Load() != 1 {
 		t.Fatalf("durable retry republished command: %d", publishes.Load())
+	}
+}
+
+func TestSubmitAndWaitForNewGameDurableSaveTimesOutWithoutRepublishing(t *testing.T) {
+	commandID := strings.Repeat("b", 32)
+	txID := strings.Repeat("c", 32)
+	var publishes atomic.Int32
+	outcome, err := submitAndWaitForNewGameDurableSave(context.Background(), t.TempDir(), commandID, txID, "BlueFarm_456789012", newGameDurableSaveOptions{
+		Timeout: 8 * time.Millisecond, PollInterval: time.Millisecond,
+		Publish: func(string, string, string, string) error {
+			publishes.Add(1)
+			return nil
+		},
+		GetOutcome: func(string, string) (CommandOutcome, error) {
+			if publishes.Load() == 0 {
+				return CommandOutcome{CommandID: commandID, Status: CommandStatusUnknown}, nil
+			}
+			return CommandOutcome{CommandID: commandID, Status: CommandStatusQueued}, nil
+		},
+	})
+	assertNewGameDurabilityErrorCode(t, err, "new_game_durable_save_timeout")
+	if outcome.CommandID != commandID || publishes.Load() != 1 {
+		t.Fatalf("timeout outcome=%+v publishes=%d", outcome, publishes.Load())
 	}
 }
 
