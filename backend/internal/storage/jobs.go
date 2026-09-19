@@ -632,15 +632,6 @@ func (s *Store) FailInterruptedJobs(ctx context.Context, errorMessage string) (i
 	return count, nil
 }
 
-func IsValidJobStatus(status string) bool {
-	switch status {
-	case JobStatusQueued, JobStatusRunning, JobStatusSucceeded, JobStatusFailed, JobStatusCanceled:
-		return true
-	default:
-		return false
-	}
-}
-
 func IsValidJobLogLevel(level string) bool {
 	switch level {
 	case JobLogLevelInfo, JobLogLevelWarn, JobLogLevelError, JobLogLevelDebug:

@@ -11,6 +11,7 @@ import type { SetupFormState } from './core/SetupPanel'
 import { LoginPanel, emptyLoginForm } from './core/LoginPanel'
 import type { LoginFormState } from './core/LoginPanel'
 import { errorMessage } from './core/helpers'
+import { AuthCard } from './core/AuthCard'
 
 import { StardewPanel } from './games/stardew/StardewPanel'
 import { StardewMobileShell } from './games/stardew/StardewMobileShell'
@@ -239,37 +240,15 @@ function App() {
     )
   }
 
-  const authShellClass = [
-    'sd-auth-shell',
-    view === 'booting' ? 'sd-auth-shell--booting' : '',
-    view === 'login' || view === 'setup' ? 'sd-auth-shell--image-login' : '',
-    view === 'login' ? 'sd-auth-shell--login' : '',
-    view === 'setup' ? 'sd-auth-shell--setup' : '',
-    message ? 'sd-auth-shell--has-message' : '',
-  ].filter(Boolean).join(' ')
-
   return (
-    <main className={authShellClass}>
-      <section className="sd-auth-card">
-        <p className="sd-auth-eyebrow">Stardew Valley 管理面板</p>
-        <h1 className="sd-auth-title">Stardew Anxi Panel</h1>
-        {versionInfo ? (
-          <p className="sd-auth-version">
-            v{versionInfo.version}
-            {versionInfo.commit ? ` · ${versionInfo.commit}` : ''}
-            {versionInfo.buildDate ? ` · ${versionInfo.buildDate}` : ''}
-          </p>
-        ) : null}
-        {message ? <div className="sd-auth-error">{message}</div> : null}
-        {view === 'booting' ? <p className="sd-auth-loading">正在读取面板状态……</p> : null}
-        {view === 'setup' ? (
-          <SetupPanel form={setupForm} busy={busy} onChange={setSetupForm} onSubmit={submitSetup} />
-        ) : null}
-        {view === 'login' ? (
-          <LoginPanel form={loginForm} busy={busy} onChange={setLoginForm} onSubmit={submitLogin} />
-        ) : null}
-      </section>
-    </main>
+    <AuthCard booting={view === 'booting'} setup={view === 'setup'} message={message} versionInfo={versionInfo}>
+      {view === 'setup' ? (
+        <SetupPanel form={setupForm} busy={busy} onChange={setSetupForm} onSubmit={submitSetup} />
+      ) : null}
+      {view === 'login' ? (
+        <LoginPanel form={loginForm} busy={busy} onChange={setLoginForm} onSubmit={submitLogin} />
+      ) : null}
+    </AuthCard>
   )
 }
 

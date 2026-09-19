@@ -1,6 +1,5 @@
 /* ModsPage page-only styles. Loaded with the lazy page chunk. */
 
-
 .sd-mods-delete-bundle {
   display: flex;
   flex-wrap: wrap;
@@ -34,13 +33,10 @@
 .sd-mods-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
 .sd-mods-header-actions {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -139,7 +135,6 @@
   gap: 0;
   margin-bottom: 10px;
   border: 1px solid #dcc898;
-  border-radius: 2px;
   overflow: hidden;
 }
 
@@ -165,7 +160,6 @@
 }
 
 .sd-mods-stat-value {
-  font-size: 12px;
   color: #2c1a0a;
   font-weight: 700;
   display: flex;
@@ -177,32 +171,16 @@
   color: #c87820;
 }
 
-.sd-mods-workbench {
-  border: 1px solid #dcc898;
-  background: rgba(248, 240, 216, 0.34);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
 .sd-mods-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  background: rgba(220, 200, 152, 0.55);
-  border-bottom: 1px solid #c8a870;
 }
 
 .sd-mods-tab {
   min-width: 0;
   border: 0;
-  border-right: 1px solid rgba(122, 80, 48, 0.18);
-  background: transparent;
   color: #5a3c1d;
-  padding: 7px 10px 8px;
-  text-align: left;
   cursor: pointer;
   font-family: inherit;
-  display: grid;
-  gap: 2px;
 }
 
 .sd-mods-tab:last-child {
@@ -214,35 +192,14 @@
 }
 
 .sd-mods-tab-active {
-  background: #f8f0d8;
-  box-shadow: inset 0 -2px 0 #7a5030;
   color: #2c1a0a;
 }
 
-.sd-mods-tab-label {
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.15;
-}
-
 .sd-mods-tab-hint {
-  font-size: 11px;
   color: #8a7060;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.sd-mods-tab-panel {
-  padding: 10px 12px 12px;
-}
-
-.sd-mods-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 4px;
 }
 
 .sd-mods-panel-actions {
@@ -251,22 +208,6 @@
   justify-content: flex-end;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.sd-mods-premium-hint {
-  color: #7a4f19;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.35;
-  max-width: 360px;
-}
-
-.sd-mods-extension-install-hint {
-  color: #5f421c;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.35;
-  max-width: 300px;
 }
 
 .sd-mods-extension-download {
@@ -350,20 +291,7 @@
 }
 
 .sd-mods-nexus-search-row {
-  display: flex;
-  gap: 6px;
   margin-bottom: 8px;
-}
-
-.sd-mods-search-type {
-  width: 96px;
-  flex: 0 0 96px;
-  font: inherit;
-  font-size: var(--sd-font-size-control);
-  color: #5a3c1d;
-  border: 1px solid #c8a87a;
-  background: rgba(255, 248, 220, 0.7);
-  padding: 4px 6px;
 }
 
 .sd-mods-nexus-search-row .sd-input {
@@ -388,7 +316,6 @@
   gap: 10px;
   color: #7a5c30;
   font-size: 12px;
-  margin: 2px 0 7px;
   flex-wrap: wrap;
 }
 
@@ -402,32 +329,21 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .sd-mods-nexus-page-jump {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
 }
 
 .sd-mods-nexus-page-input {
-  width: 72px;
-  min-width: 72px;
   padding: 4px 6px;
   text-align: center;
 }
 
 .sd-mods-nexus-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
   margin-bottom: 12px;
-}
-
-.sd-mods-nexus-search-list {
-  --sd-mods-nexus-search-card-height: 246px;
-  gap: 12px;
 }
 
 .sd-mods-nexus-search-list > .sd-mods-nexus-card {
@@ -444,14 +360,7 @@
 
 .sd-mods-nexus-card {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
-  grid-template-rows: minmax(118px, 1fr) auto auto;
-  gap: 9px 12px;
-  padding: 12px;
-  background: rgba(240, 225, 185, 0.2);
   border: 1px solid #dcc898;
-  border-radius: 2px;
-  min-height: 214px;
   position: relative;
   overflow: visible;
 }
@@ -487,7 +396,6 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  min-height: 118px;
 }
 
 .sd-mods-nexus-search-list .sd-mods-nexus-card-main {
@@ -498,17 +406,13 @@
 .sd-mods-nexus-card-header {
   display: flex;
   align-items: baseline;
-  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 3px;
 }
 
 .sd-mods-nexus-card-name {
-  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -516,23 +420,17 @@
 .sd-mods-nexus-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
   align-items: baseline;
   margin-bottom: 2px;
 }
 
 .sd-mods-nexus-card-stats {
   display: flex;
-  gap: 10px;
   font-size: 11px;
-  color: #8a7060;
-  margin-top: auto;
-  padding-top: 5px;
 }
 
 .sd-mods-nexus-card .sd-mods-meta-desc {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -543,14 +441,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   justify-items: stretch;
-  gap: 8px;
-  padding-top: 9px;
-  border-top: 1px solid rgba(140, 95, 40, 0.18);
 }
 
 .sd-mods-nexus-card .sd-mods-card-actions > button {
   width: 100%;
-  max-width: 220px;
   justify-self: center;
   justify-content: center;
 }
@@ -642,16 +536,6 @@
   gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
-  min-height: 30px;
-}
-
-.sd-mods-premium-install {
-  padding: 4px 7px;
-  font-size: 11px;
-  line-height: 1.2;
-  white-space: nowrap;
-  margin-left: auto;
-  min-height: 26px;
 }
 
 .sd-mods-extension-reset {
@@ -660,15 +544,6 @@
   line-height: 1.2;
   white-space: nowrap;
   min-height: 26px;
-}
-
-.sd-mods-installed-id {
-  font-size: 11px;
-  color: #8a7060;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 220px;
 }
 
 .sd-mods-dependency-tag {
@@ -772,51 +647,6 @@
   width: fit-content;
 }
 
-.sd-mods-install-log {
-  border: 1px solid #dcc898;
-  background: rgba(255, 248, 220, 0.45);
-  padding: 7px 9px;
-  margin-bottom: 8px;
-  display: grid;
-  gap: 5px;
-}
-
-.sd-mods-install-log-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #5a3c1d;
-}
-
-.sd-mods-install-job {
-  font-family: monospace;
-  font-weight: 400;
-  color: #8a7060;
-}
-
-.sd-mods-install-log-lines {
-  display: grid;
-  gap: 2px;
-}
-
-.sd-mods-install-log-line,
-.sd-mods-install-log-empty {
-  font-size: 12px;
-  color: #2c1a0a;
-  line-height: 1.45;
-}
-
-.sd-mods-install-log-error {
-  color: #b94040;
-}
-
-.sd-mods-install-log-warn {
-  color: #9a6200;
-}
-
 .sd-mods-nexus-skeleton-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -846,13 +676,6 @@
   color: #8a7060;
   line-height: 1.5;
   margin: 0 0 8px;
-}
-
-.sd-mods-sync-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
 }
 
 .sd-mods-sync-select {
@@ -920,36 +743,6 @@
   border-radius: 2px;
 }
 
-.sd-mods-card-error {
-  border-color: rgba(185, 64, 64, 0.4);
-  background: rgba(185, 64, 64, 0.05);
-}
-
-.sd-mods-card-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.sd-mods-card-header {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 3px;
-}
-
-.sd-mods-card-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #2c1a0a;
-}
-
-.sd-mods-card-version {
-  font-size: 11px;
-  color: #7a5c30;
-  font-weight: 400;
-}
-
 .sd-mods-parse-error {
   font-size: 12px;
   color: #b94040;
@@ -958,13 +751,6 @@
   padding: 3px 7px;
   border-radius: 2px;
   margin-top: 2px;
-}
-
-.sd-mods-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: baseline;
 }
 
 .sd-mods-meta-item {
@@ -1030,41 +816,9 @@
   line-height: 1.5;
 }
 
-.sd-mods-pending-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-bottom: 4px;
-}
-
-.sd-mods-pending-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  background: rgba(200, 168, 100, 0.08);
-  border: 1px dashed rgba(200, 168, 100, 0.5);
-  border-radius: 2px;
-}
-
-.sd-mods-pending-desc {
-  font-size: 12px;
-  color: #8a7060;
-  font-style: italic;
-}
-
 .sd-mods-settings-layout {
-  display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.2fr);
   gap: 10px;
-}
-
-.sd-mods-settings-left,
-.sd-mods-settings-right {
-  min-width: 0;
-  border: 1px solid #dcc898;
-  background: rgba(255, 248, 220, 0.34);
-  padding: 9px 10px;
 }
 
 .sd-mods-settings-empty {
@@ -1077,26 +831,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.sd-mods-enable-list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  max-height: 520px;
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.sd-mods-enable-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 50px;
-  align-items: center;
-  gap: 8px;
-  min-height: 52px;
-  padding: 7px 8px;
-  border: 1px solid rgba(122, 80, 48, 0.18);
-  background: rgba(255, 252, 235, 0.45);
 }
 
 .sd-mods-enable-main {
@@ -1125,15 +859,6 @@
   white-space: nowrap;
 }
 
-.sd-mods-enable-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
-  min-width: 0;
-  max-width: 116px;
-}
-
 .sd-mods-enable-dependencies {
   display: flex;
   min-width: 0;
@@ -1158,21 +883,12 @@
     border-bottom: 0;
   }
 
-  .sd-mods-panel-head {
-    flex-direction: column;
-  }
-
   .sd-mods-panel-actions {
     justify-content: flex-start;
   }
 
   .sd-mods-nexus-search-row {
     flex-direction: column;
-  }
-
-  .sd-mods-search-type {
-    width: 100%;
-    flex-basis: auto;
   }
 
   .sd-mods-nexus-list,
@@ -1200,10 +916,6 @@
     align-items: stretch;
   }
 
-  .sd-mods-premium-install {
-    margin-left: 0;
-  }
-
   .sd-mods-dependency-details,
   .sd-mods-premium-install,
   .sd-mods-extension-download,
@@ -1223,15 +935,6 @@
 
   .sd-mods-settings-layout {
     grid-template-columns: 1fr;
-  }
-
-  .sd-mods-enable-row {
-    grid-template-columns: minmax(0, 1fr) 50px;
-  }
-
-  .sd-mods-enable-tags {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
   }
 }
 
@@ -1336,15 +1039,6 @@
   font-size: 18px;
 }
 
-.sd-mods-workbench {
-  border-radius: 0;
-  background: #fff1cb;
-}
-
-.sd-mods-tab-panel {
-  padding: 12px;
-}
-
 .sd-mods-nexus-list,
 .sd-mods-list {
   align-items: stretch;
@@ -1394,7 +1088,6 @@
   display: grid;
   grid-template-rows: 76px minmax(0, 1fr);
   min-height: 0;
-  overflow: visible;
   border: 1px solid rgba(183, 126, 50, 0.5);
   border-radius: 3px;
   background:
@@ -1407,8 +1100,6 @@
 
 .sd-mods-tabs {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  background: rgba(245, 218, 157, 0.6);
-  border-bottom: 1px solid rgba(185, 126, 52, 0.52);
 }
 
 .sd-mods-tab {
@@ -1417,8 +1108,6 @@
   align-items: center;
   gap: 12px;
   padding: 12px 26px;
-  border-right: 1px solid rgba(185, 126, 52, 0.35);
-  background: rgba(255, 244, 210, 0.34);
   text-align: center;
 }
 
@@ -1446,15 +1135,6 @@
 .sd-mods-tab-hint {
   font-size: 12px;
   line-height: 1.15;
-}
-
-.sd-mods-tab-active {
-  background:
-    linear-gradient(180deg, rgba(255, 249, 224, 0.95), rgba(255, 236, 190, 0.82)),
-    #fff1cb;
-  box-shadow:
-    inset 0 -4px 0 #2f8a35,
-    inset 0 0 0 1px rgba(255, 252, 222, 0.62);
 }
 
 .sd-mods-tab-panel {
@@ -1575,7 +1255,6 @@
 
 .sd-mods-nexus-search-row {
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr) 92px;
   align-items: center;
   gap: 12px;
   margin: 0;
@@ -1590,12 +1269,6 @@
   background: rgba(255, 252, 238, 0.8);
 }
 
-.sd-mods-search-type {
-  width: 128px;
-  flex-basis: 128px;
-  padding: 6px 10px;
-}
-
 .sd-mods-quick-tags {
   display: flex;
   align-items: center;
@@ -1607,13 +1280,9 @@
 }
 
 .sd-mods-quick-tag {
-  min-width: 48px;
-  height: 26px;
   padding: 0 10px;
   border: 1px solid rgba(178, 121, 52, 0.38);
   border-radius: 4px;
-  background: rgba(245, 218, 157, 0.55);
-  color: #5a3517;
   font: inherit;
   font-size: 12px;
   font-weight: 800;
@@ -1658,7 +1327,6 @@
   padding: 10px;
   border-color: rgba(190, 136, 62, 0.44);
   border-radius: 3px;
-  background: rgba(255, 245, 211, 0.48);
   box-shadow: inset 0 0 0 1px rgba(255, 252, 225, 0.5);
 }
 
@@ -1722,77 +1390,6 @@
 
 .sd-mods-search-footer {
   min-height: 24px;
-}
-
-.sd-mods-install-progress-strip {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto minmax(140px, 0.72fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 8px 12px;
-}
-
-.sd-mods-install-progress-main {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.sd-mods-install-progress-main img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
-
-.sd-mods-install-progress-title,
-.sd-mods-install-progress-sub {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sd-mods-install-progress-title {
-  color: #3b2410;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.sd-mods-install-progress-sub,
-.sd-mods-install-progress-version {
-  color: #6d4b22;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.sd-mods-install-progress-bar {
-  height: 13px;
-  overflow: hidden;
-  border: 1px solid rgba(108, 75, 31, 0.48);
-  border-radius: 2px;
-  background: rgba(196, 165, 113, 0.52);
-  box-shadow: inset 0 0 0 1px rgba(76, 44, 15, 0.12);
-}
-
-.sd-mods-install-progress-bar span {
-  display: block;
-  width: var(--sd-install-progress, 0%);
-  height: 100%;
-  background:
-    linear-gradient(180deg, rgba(126, 211, 62, 0.95), rgba(51, 138, 31, 0.95)),
-    #4c9a28;
-}
-
-.sd-mods-install-progress-strip strong {
-  color: #2c1a0a;
-  font-size: 18px;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .sd-mods-nexus-total-bottom {
@@ -1874,15 +1471,6 @@
     flex-wrap: wrap;
   }
 
-  .sd-mods-nexus-search-row {
-    grid-template-columns: 1fr;
-  }
-
-  .sd-mods-search-type {
-    width: 100%;
-    flex-basis: auto;
-  }
-
   .sd-mods-nexus-list,
   .sd-mods-nexus-skeleton-grid {
     grid-template-columns: 1fr;
@@ -1896,15 +1484,6 @@
     height: auto;
     min-height: 0;
     max-height: none;
-  }
-
-  .sd-mods-install-progress-strip {
-    grid-template-columns: 1fr;
-    justify-items: stretch;
-  }
-
-  .sd-mods-install-progress-strip strong {
-    justify-self: start;
   }
 
   .sd-mods-nexus-total-bottom {
@@ -1974,10 +1553,6 @@
 
 .sd-mods-nexus-card .sd-mods-card-actions {
   border-top: 1px solid var(--sd-save-card-soft-line);
-}
-
-.sd-mods-install-progress-strip {
-  display: none;
 }
 
 @container sd-main-scroll (max-width: 880px) {
@@ -2080,8 +1655,6 @@
   background:
     linear-gradient(90deg, transparent, rgba(106, 61, 22, 0.72), transparent) center / 100% 1px no-repeat,
     repeating-linear-gradient(90deg, rgba(106, 61, 22, 0.42) 0 9px, transparent 9px 15px);
-  box-shadow: none;
-  filter: drop-shadow(0 1px rgba(255, 242, 190, 0.72));
 }
 
 .sd-server-page .sd-page-icon,
@@ -2099,7 +1672,6 @@
   object-fit: contain;
   flex-shrink: 0;
   image-rendering: pixelated;
-  filter: drop-shadow(2px 3px 0 rgba(75, 40, 14, 0.24));
 }
 
 .sd-server-page .sd-page-title,
@@ -2117,9 +1689,6 @@
   line-height: 1;
   font-weight: 900;
   letter-spacing: 0;
-  text-shadow:
-    1px 1px 0 rgba(255, 242, 190, 0.9),
-    2px 2px 0 rgba(88, 48, 16, 0.18);
 }
 
 .sd-server-page .sd-page-desc,

@@ -597,29 +597,6 @@ func (d *Driver) failRetryableRuntimeUpdateRepair(ctx context.Context, instance 
 	return errors.New(message)
 }
 
-func (d *Driver) recoverRuntimeUpdateAfterRepair(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status RuntimeUpdateApplyStatus, rebuildRetry bool) error {
-	gate := make(chan struct{})
-	var initialWriteErr error
-	job, err := d.jobs.Start(ctx, jobs.Spec{Type: RuntimeUpdateApplyJobType, DisplayName: "继续修复后的 Junimo 升级", TargetType: "instance", TargetID: instance.ID, CreatedBy: status.CreatedBy, Timeout: 2 * time.Hour, Run: func(runCtx context.Context, jobCtx *jobs.Context) error {
-		<-gate
-		if initialWriteErr != nil {
-			return errors.New("修复后续跑状态初始化失败")
-		}
-		if rebuildRetry {
-			return d.retryRuntimeUpdateAfterRepair(runCtx, jobCtx, docker, instance, status)
-		}
-		return d.runRuntimeUpdateApply(runCtx, jobCtx, docker, instance, status, nil)
-	}})
-	if err != nil {
-		return err
-	}
-	status.JobID = job.ID
-	status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	initialWriteErr = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
-	close(gate)
-	return initialWriteErr
-}
-
 func (d *Driver) reconcileRequiredRuntimeRepair(ctx context.Context, instance registry.Instance, apply RuntimeUpdateApplyStatus) {
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {

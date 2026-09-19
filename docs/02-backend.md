@@ -1,3 +1,32 @@
+## v0.7.2 发布准备（2026-09-19）
+
+- 纳入当前已完成的直连接口/前端读取、认证卡片、总览/共享纸色/响应式修复、素材与孤立实现清理、确定性构建及相关文档。详细范围、文件与既有验证见下方工作记录，完整专项矩阵见 docs/09-image-build.md 顶部。
+- 发布补齐：scripts/tests/release_direct_connect.py 接入 test_release_candidate_upgrade.sh 的真实世界夹具，在全新与 v0.7.1 Web 升级后验证停服端口读取、配置刷新、非法端口、世界隔离、匿名与普通用户权限及资源恢复；原有全量回归、升级/回滚和数据保持门禁继续执行。
+- 状态：准备提交 main 并由自动流程生成下一补丁；发布后回填唯一候选、tag、正式提升、三仓 digest 和清理证据。没有新增迁移或运行栈版本变化，不增加更老版本升级链。下方未发布记录由本版统一收口。
+
+## 2026-09-19：深度减负审计收口（本地完成，未发布）
+
+- 续查：4 份已无进程使用的旧 Panel Go 可执行缓存经逐项 SHA-256 校验后无损归档，71,020,544 → 21,999,800 B；保留最新可执行缓存和全部编译依赖。使用保留的项目 cache、禁用模块下载的 Windows `cmd/panel` build 通过，新增有效缓存占用单列。恢复现场与 candidate.tar 仍保留；完整路径、恢复条件和计量见审计报告续查节。
+- Git 续查获用户明确授权后保留全部对象重新打包，.git 从 2,045,047,302 降到 1,190,609,173 B；全部 78,947 对象、refs/reflog/index 不变，两次完整 fsck 通过。现有工作和并发错题本补充保留，没有提交、推送或修改后端运行契约。
+- 在已有改动上清理 9 个无调用者的内部 Go 实现及孤立变量，涉及 Junimo control_runtime_gate、driver、installer、nexus 和 web audit、install_handlers、lifecycle_handlers；净减 7,201 B。路由、GameDriver、持久认证/上传、迁移、Control DLL 和导出存档契约保留。逐项证据见 docs/project-load-audit-2026-09-18.md。
+- 最终隔离 Linux tmpfs 临时目录回归：1,924 个通过、8 个条件跳过，test/vet/build/tidy 均通过。Docker 磁盘临时目录仍复现既有安装错误日志测试的 15 秒等待超时；完整失败记录保留，边界与后续见 docs/07-later-optimizations.md，未放宽断言。
+- 最终镜像构建及 24 项真实 API 冒烟通过，覆盖初始化、登录/注销、权限、静态资源、独立数据卷中完整用户列表/session 跨重启。原有三个运行容器已恢复且健康；原六容器、23 卷保留，任务容器/卷/镜像和专属上下文缓存已回收。
+- 本轮证据位于 output/project-load-20260918，源码恢复副本与长日志已校验后压缩归档。没有提交、推送或发布，后续正式候选仍执行原发布门禁。
+
+## 2026-09-18：全局冗余代码清理（本地完成，未发布）
+
+- 全仓 Go 标识符引用与 AST 复核后，删除 25 个没有调用者的函数，以及无引用的导入清理计划类型。涉及 Junimo 安装/生命周期/旧新建存档链、Mod 依赖包装、运行栈辅助函数、storage 用户查询/会话包装、web 上传内部包装；活动 driver、HTTP handler、迁移、数据库结构和部署契约保持。
+- 清理按叶节点继续追踪失去调用者的辅助函数，包括 `sendNewGameCommandLegacy` 及其错误分类、旧存档目录发现/隔离包装、未提交导入清理包装。现有事务、恢复与回滚实现继续由原调用链和测试覆盖。
+- 验证：隔离 Linux `golang:1.25-alpine` 全包测试记录 1922 个通过项、8 个按条件跳过项；`TestInstallFailurePersistsActionableCause/guard` 首轮在 15 秒等待界限内未结束，随后完整父测试隔离连续 3 次通过。其余通过项未重复执行；`go vet ./...`、`go build ./...` 通过。任务缓存与容器使用 `anxi-cleanup-20260918` 专属名称。
+- 接手：本地清理未发布；测试日志及源码基线在系统临时目录 `anxi-cleanup-20260918`。后续识别无用代码需同时核对接口方法、测试、平台文件与动态调用，不按导出名称或单个平台编译结果直接删除。
+
+## 2026-09-18：直连地址独立读取世界端口（本地完成，未发布）
+
+- 新增登录态只读 `GET /api/instances/:id/direct-connect`，返回 `{gamePort, protocol}`，通过已有 `registry.DirectConnectConfigProvider` 读取实例配置。Stardew 继续由 Junimo driver 解析 `.env` 和默认 24642；游戏停服时可读取。
+- 原因：详情页和世界卡原先为取得端口先调用 `/public-ip`，外部查询失败返回 502 后端口一并丢失。新接口不发外部 IP 请求；原公网查询接口保持既有兼容契约。
+- 影响：`web/direct_connect{,_test}.go`、`web/instance_handlers.go`、registry capability 注释；无迁移、部署或端口映射变更。
+- 验证：Windows 定向 `TestDirectConnect|TestPublicIP`、`TestDriverDirectConnectConfig`，web/registry vet 和后端 build 通过。新回归覆盖未登录、错误方法、不存在实例、停服默认端口、多实例隔离、配置刷新、非法端口及外部请求计数为零。发布候选仍须补真实 Docker/升级后专项。
+
 ## v0.7.1 全量工作区发布（2026-09-17，已发布）
 
 - 本次纳入当前全部相关修改：性能/缓存/轮询、资源分层监控、安装失败解释、新世界 VNC 继承，以及桌面/移动端界面、素材与交互；完整范围和专项矩阵见 docs/09-image-build.md 的 v0.7.1 章节。

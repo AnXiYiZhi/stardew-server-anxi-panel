@@ -491,6 +491,9 @@ assert_upgraded_world_management() (
     jq -e '.instance.isDefault == false and .instance.state == "save_required"' "$response_file" >/dev/null
     world_dir="$data_dir/instances/$world_id"
     grep -Eq '^VNC_PASSWORD="?Patch7!"?$' "$world_dir/.env"
+    python3 /workspace/scripts/tests/release_direct_connect.py \
+      --url "http://127.0.0.1:$panel_port" --cookies "$cookie_file" \
+      --data-dir "$data_dir" --world-id "$world_id"
     if grep -Fq 'Patch7!' "$response_file"; then
       echo "candidate world E2E: API exposed inherited VNC password" >&2
       return 1

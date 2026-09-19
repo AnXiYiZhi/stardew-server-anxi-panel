@@ -4,25 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
-	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/netdns"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
-
-// dockerHubHTTPClient talks to Docker Hub's public API. It uses the
-// DNS-fallback transport so a flaky host resolver doesn't break version checks
-// (the same resolver failure that broke Nexus also broke these — see netdns).
-var dockerHubHTTPClient = netdns.NewClient(10 * time.Second)
 
 // imageTagPattern allows alphanumeric, dots, hyphens, and underscores.
 // This matches standard Docker tag conventions (no colons, no slashes).
@@ -556,67 +547,6 @@ func (s *server) handleInstanceInstallOptions(w http.ResponseWriter, r *http.Req
 	options := provider.InstallOptions()
 
 	writeJSON(w, http.StatusOK, installOptionsResponse{ImageTagOptions: options})
-}
-
-// checkTestedTagIsLatest returns true when the "latest" tag on Docker Hub points
-// to the same image digest as testedTag.  Network failure is logged and returns false.
-func checkTestedTagIsLatest(ctx context.Context, logger *slog.Logger, repo, testedTag string) bool {
-	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-
-	latestDigest := dockerHubTagDigest(ctx, logger, repo, "latest")
-	if latestDigest == "" {
-		logger.Warn("docker hub version check: could not fetch 'latest' digest", "repo", repo)
-		return false
-	}
-	testedDigest := dockerHubTagDigest(ctx, logger, repo, testedTag)
-	if testedDigest == "" {
-		logger.Warn("docker hub version check: could not fetch tested tag digest", "repo", repo, "tag", testedTag)
-		return false
-	}
-	match := latestDigest == testedDigest
-	logger.Info("docker hub version check", "repo", repo, "tested_tag", testedTag, "is_latest", match,
-		"latest_digest_prefix", latestDigest[:min(16, len(latestDigest))],
-		"tested_digest_prefix", testedDigest[:min(16, len(testedDigest))])
-	return match
-}
-
-// dockerHubTagDigest returns the manifest digest for the given Docker Hub tag.
-// Returns empty string on any error.
-func dockerHubTagDigest(ctx context.Context, logger *slog.Logger, repo, tag string) string {
-	url := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags/%s/", repo, tag)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return ""
-	}
-	resp, err := dockerHubHTTPClient.Do(req)
-	if err != nil {
-		logger.Warn("docker hub tag fetch failed", "repo", repo, "tag", tag, "error", err)
-		return ""
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		logger.Warn("docker hub tag fetch: unexpected status", "repo", repo, "tag", tag, "status", resp.StatusCode)
-		return ""
-	}
-	var payload struct {
-		Digest string `json:"digest"`
-		Images []struct {
-			Digest string `json:"digest"`
-		} `json:"images"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		logger.Warn("docker hub tag fetch: decode failed", "repo", repo, "tag", tag, "error", err)
-		return ""
-	}
-	if payload.Digest != "" {
-		return payload.Digest
-	}
-	if len(payload.Images) > 0 && payload.Images[0].Digest != "" {
-		return payload.Images[0].Digest
-	}
-	logger.Warn("docker hub tag fetch: no digest in response", "repo", repo, "tag", tag)
-	return ""
 }
 
 func min(a, b int) int {

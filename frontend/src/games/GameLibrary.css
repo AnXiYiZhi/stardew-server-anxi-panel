@@ -3,7 +3,6 @@
   --hub-muted: #94a6ad;
   --hub-bg: #071114;
   --hub-surface: #0d1b1f;
-  --hub-surface-strong: #12262a;
   --hub-line: #284047;
   --hub-signal: #8bcf68;
   --hub-focus: #73d8ff;
@@ -540,21 +539,6 @@
 }
 
 .game-hub-notice button { padding: 0 13px; }
-
-.worlds-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18px;
-  margin: -22px 0 28px;
-  color: var(--hub-muted);
-  font-family: Consolas, monospace;
-  font-size: 12px;
-}
-
-.worlds-toolbar button {
-  padding: 0 15px;
-}
 
 .game-world-rail {
   box-sizing: border-box;
@@ -1143,7 +1127,7 @@
 .game-hub:not(.game-hub--background-night) .game-carousel-card {
   border-color: rgba(103, 76, 37, 0.72);
   color: #29402e;
-  background: #f7e9bd;
+  background: var(--sd-card-bg);
   box-shadow:
     0 4px 0 rgba(102, 72, 34, 0.82),
     0 15px 28px rgba(71, 50, 25, 0.2);
@@ -1164,7 +1148,7 @@
   background:
     linear-gradient(rgba(119, 91, 43, 0.055) 1px, transparent 1px),
     linear-gradient(90deg, rgba(119, 91, 43, 0.055) 1px, transparent 1px),
-    linear-gradient(180deg, #fff7da, #efdda8);
+    var(--sd-card-bg);
   background-size: 12px 12px, 12px 12px, auto;
 }
 
@@ -1218,7 +1202,7 @@
 .game-hub:not(.game-hub--background-night) .world-choice {
   border-color: rgba(107, 77, 38, 0.68);
   color: #304530;
-  background: #f5e5b6;
+  background: var(--sd-card-bg);
   box-shadow:
     0 4px 0 rgba(104, 74, 35, 0.8),
     0 15px 26px rgba(72, 50, 24, 0.19);
@@ -1274,9 +1258,10 @@
   color: #4f8b2f;
   background:
     linear-gradient(45deg, rgba(101, 139, 69, 0.08) 25%, transparent 25%, transparent 75%, rgba(101, 139, 69, 0.08) 75%),
-    linear-gradient(45deg, rgba(101, 139, 69, 0.08) 25%, #f8edc8 25%, #f8edc8 75%, rgba(101, 139, 69, 0.08) 75%);
-  background-position: 0 0, 10px 10px;
-  background-size: 20px 20px;
+    linear-gradient(45deg, rgba(101, 139, 69, 0.08) 25%, transparent 25%, transparent 75%, rgba(101, 139, 69, 0.08) 75%),
+    var(--sd-card-bg);
+  background-position: 0 0, 10px 10px, 0 0;
+  background-size: 20px 20px, 20px 20px, auto;
   box-shadow:
     0 4px 0 rgba(88, 112, 50, 0.72),
     0 14px 24px rgba(72, 50, 24, 0.16);
@@ -1291,7 +1276,7 @@
 .game-hub:not(.game-hub--background-night) .world-rail-message {
   border-color: rgba(107, 77, 38, 0.54);
   color: #5f674f;
-  background: #f5e5b6;
+  background: var(--sd-card-bg);
 }
 
 .world-create-card--form {
@@ -1396,7 +1381,7 @@
   background:
     linear-gradient(rgba(119, 91, 43, 0.055) 1px, transparent 1px),
     linear-gradient(90deg, rgba(119, 91, 43, 0.055) 1px, transparent 1px),
-    linear-gradient(180deg, #fff7da, #efdda8);
+    var(--sd-card-bg);
   background-size: 12px 12px, 12px 12px, auto;
 }
 
@@ -1966,8 +1951,6 @@
   .game-install-inline { width: min(82vw, 400px); }
   .game-install-inline--form { padding-inline: 22px; }
   .world-rail-message { min-height: 350px; }
-  .worlds-toolbar { margin-top: -12px; align-items: stretch; flex-direction: column; }
-  .worlds-toolbar button { min-height: 44px; align-self: flex-start; }
 }
 
 @media (max-width: 700px) and (orientation: portrait) {
@@ -2026,9 +2009,6 @@
   .game-hub--library .game-install-inline { width: clamp(300px, 45dvh, 340px); min-height: clamp(280px, 78dvw, 304px); }
   .game-hub--library .game-install-inline--form,
   .game-hub--library .game-install-inline--progress { gap: 7px; padding: 12px 16px 12px 20px; }
-  .game-hub--library .game-install-inline--progress.has-auth-choice { min-height: 286px; gap: 6px; padding-block: 10px; }
-  .game-hub--library .game-install-inline--progress.has-auth-choice .game-install-step-list li { min-height: 21px; }
-  .game-hub--library .game-install-inline--progress.has-auth-choice .game-install-inline-action button { min-height: 52px; }
   .game-hub--library .game-install-field { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
   .game-hub--library .game-install-progress-head > strong { font-size: 17px; }
   .game-hub--library .game-install-step-list li { min-height: 24px; }
@@ -2083,9 +2063,6 @@
   .game-install-inline { width: clamp(300px, 42vw, 340px); min-height: clamp(280px, 78vh, 304px); }
   .game-install-inline--form,
   .game-install-inline--progress { gap: 7px; padding: 12px 16px 12px 20px; }
-  .game-install-inline--progress.has-auth-choice { min-height: 286px; gap: 6px; padding-block: 10px; }
-  .game-install-inline--progress.has-auth-choice .game-install-step-list li { min-height: 21px; }
-  .game-install-inline--progress.has-auth-choice .game-install-inline-action button { min-height: 52px; }
   .game-install-field { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
   .game-install-progress-head > strong { font-size: 17px; }
   .game-install-step-list li { min-height: 24px; }

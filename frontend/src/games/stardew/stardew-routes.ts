@@ -1,6 +1,6 @@
 import type { HealthDiagnosticsResponse, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
 import { activeInstanceId, normalizeInstanceId } from '../../instance-id.ts'
-import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
+import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PanelAccessConnection, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
 
 export type StardewRoute =
   | 'install'
@@ -44,7 +44,7 @@ export type StardewDashboardData = {
   updateApply: PanelUpdateApplyStatus | null
   inviteCode: string | null
   inviteCodeStatus: SteamInviteStatus | null
-  publicIP: PublicIPResult | null
+  publicIP: PanelAccessConnection | null
   // 降级错误摘要（不崩溃，只降级显示）
   savesError: string | null
   modsError: string | null
@@ -74,7 +74,7 @@ export type StardewDashboardData = {
   refreshHealth: () => Promise<void>
   applyHealthDiagnostics: (health: HealthDiagnosticsResponse) => void
   refreshInviteCode: () => Promise<void>
-  refreshPublicIP: (force?: boolean) => Promise<void>
+  refreshPublicIP: () => Promise<void>
   refreshUpdateStatus: (manual?: boolean) => Promise<void>
   runUpdateDryRun: (targetVersion: string) => Promise<void>
   applyUpdate: () => Promise<void>
@@ -91,7 +91,6 @@ export type StardewPageProps = {
   dashboardData: StardewDashboardData
   onNavigate: (route: StardewRoute, options?: StardewNavigateOptions) => void
   saveActionRequest?: StardewSaveActionRequest | null
-  requestedInstallJobId?: string
   onLogout: () => void
 }
 

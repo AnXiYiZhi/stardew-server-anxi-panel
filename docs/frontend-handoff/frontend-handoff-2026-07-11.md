@@ -1,3 +1,65 @@
+## v0.7.2 发布准备（2026-09-19）
+
+- 纳入当前已完成的直连接口/前端读取、认证卡片、总览/共享纸色/响应式修复、素材与孤立实现清理、确定性构建及相关文档。详细范围、文件与既有验证见下方工作记录，完整专项矩阵见 docs/09-image-build.md 顶部。
+- 发布补齐：scripts/tests/release_direct_connect.py 接入 test_release_candidate_upgrade.sh 的真实世界夹具，在全新与 v0.7.1 Web 升级后验证停服端口读取、配置刷新、非法端口、世界隔离、匿名与普通用户权限及资源恢复；原有全量回归、升级/回滚和数据保持门禁继续执行。
+- 状态：准备提交 main 并由自动流程生成下一补丁；发布后回填唯一候选、tag、正式提升、三仓 digest 和清理证据。没有新增迁移或运行栈版本变化，不增加更老版本升级链。下方未发布记录由本版统一收口。
+
+## 2026-09-19：深度减负审计收口（本地完成，未发布）
+
+- 修改 frontend/package.json/package-lock.json 的三项构建依赖分类，55 个锁条目版本/来源/完整性保持；Docker npm ci 与生成目录排除已实际构建验证。此次没有新增图片、CSS 或组件删除；初始 48 张素材删除属于已有工作。
+- 验证：27 项声明脚本与 production build、Chrome/Playwright 52 组页面/视口检查及 5 个手机导航交互通过，6 张代表截图保留。覆盖初始化/登录、游戏库/安装、9 路由、普通用户与 320/390/1024/1486/1920 宽度，无资源/控制台/破图/横向溢出错误。Browser 插件不可用时采用已安装 Playwright/Chrome，属于隔离 API 夹具。
+- 真实 Docker 另有 24 项 API、权限和独立数据卷跨重启验证通过；官网一处飞牛官方链接修复后 docs:build 通过，55 个文档外链已核实。frontend/public 和 dist 字节数保持。审计详情与保留理由见 docs/project-load-audit-2026-09-18.md。
+- 任务预览与测试容器/卷/镜像已清理，原三个运行容器恢复健康；本机证据压缩归档于 output/project-load-20260918，临时脚本移至其 scripts 子目录。工作仍在 main，未提交/推送/发布。
+
+## 2026-09-18：服务器与玩家页响应式布局修复（本地完成，未发布）
+
+- 根因：缩放壳的浏览器宽度与内容区 CSS 宽度不同；重复 `@media (max-width: 1180px)` 把根网格设成一列，却未覆盖高优先级广播第二列定位，产生隐式列；玩家活动则被强制拉到全宽。
+- 修改 `StardewPanel.css`、`ServerControlPage.css`、`PlayersPage.css`、`DiagnosticsPage.css`、`SettingsPage.css` 中相同遗留媒体规则，移除服务器/玩家结构覆盖，交由现有容器断点负责。玩家活动去掉 260px 最小高度并按内容对齐；其余布局、共享底色与业务接口沿用现有实现。
+- 夹具 `qa-layout-main.tsx` 增加 `/direct-connect` 非默认端口响应、`playerAuth=disabled`，用于检查地址完整性与没有待认证卡的玩家活动布局。
+- 验证：响应式关联链与 production build 通过；Browser 验证 841×700、1035×700、1180×1033、1473×1033，服务器整行卡片与父网格宽度吻合、地址和邀请码 scrollWidth=clientWidth，玩家有/无待认证区、活动翻页、跨页延迟样式加载通过，无页面横向溢出。390×844 移动端总览、控制、玩家导航及内容正常，root scrollWidth=clientWidth，无框架错误层。
+- 注意：QA 入口热更新时出现 createRoot 重复提示并可能落入真实路由登录页，必须重新导航完整 `qa-layout.html?...` 后再验收；重新载入夹具后无新增应用错误。测试不执行真实生命周期或玩家管理写操作，当前未发布。
+
+## 2026-09-18：统一浅奶油纸色（本地完成，未发布）
+
+- 用户要求将总览底色应用到其它页面；统一来源为 `stardew-theme.css` 的 `--sd-card-bg`（`#faf1dc` → `#f5e9ce`）。桌面历史卡片变量、移动卡片变量、总览卡片、登录/初始化卡片、暖昼游戏与世界列表、内联安装和共用确认框均引用共享主题；连接与表单行的旧独立底色也接入它。
+- 影响文件：`stardew-theme.css`、`StardewPanel.css`、`StardewMobileShell.css`、`pages/OverviewPage.css`、`pages/PlayersPage.css`、`pages/ServerControlPage.css`、`pages/SettingsPage.css`、`core/AuthCard.css`、`games/GameLibrary.css`。仅调整背景来源，保留现有结构、尺寸、素材、日夜选择及业务接口。
+- 验证：响应式关联链、游戏库状态与 production build 通过；更新既有暖昼底色断言。应用内 Browser 检查桌面七页、手机五页、登录与暖昼世界列表的实际计算背景和视口溢出，配色一致；手机与入口页独立加载共享主题即可取得变量，页面导航正常。测试结束恢复原有日夜偏好。
+- 接手：以共享主题变量维护纸面色，不再在桌面壳/移动壳复制渐变；总览密度与四格仍由该页维护。预览为隔离数据，本地未发布。
+
+## 2026-09-18：总览农场手册样式（本地完成，待视觉确认）
+
+- 修改 `OverviewPage.tsx/.css`：下方卡片采用浅奶油纸色渐变（`#faf1dc` → `#f5e9ce`）与 10px 圆角；连接行采用左右等宽列，中间状态/地址居中，操作区重设 `min-width: 0`；模组区保持启用、禁用、更新检查、读取状态的 2×2 四格，格子使用 7px 圆角、6–8px 间距和浅描边。近期事件通过标题栏“查看全部”进入任务日志；对应详情弹窗及未使用状态、导入已清理。顶部横幅素材、宽窗口信息条、数据调用、权限保持。零人数显示祝尼魔空态，运行/停服提示不同，错误与识别中保留各自反馈；成功停服事件显示中性色，模组读取状态显示语义色。
+- 素材 `overview_empty_junimo.webp` 为当前线程内置 ImageGen 生成的透明图，经 Sharp 无损缩放为 360×240 / 25,552 字节，页面显示 120×80。生成要求：从确认稿重现绿色祝尼魔、双叶、黑眼、粉色脸颊、小脚和稀疏草叶；正面像素画，真实透明背景，3:2 构图，无文字和 UI 框。原始输出 `exec-c76a99c8-128b-4ec2-b05e-dbfa247bf000.png` 保留在当前线程 generated_images。
+- `qa-layout-main.tsx` 增加 `overviewPlayers=empty/error/pending`；任务预览 `http://127.0.0.1:18108/qa-layout.html?state=stopped&steamInvite=enabled&overviewPlayers=empty&junimoRepair=export` 使用隔离样例数据。
+- 验证：响应式关联链、命令结果、生命周期状态、production build 通过；初版 Playwright/Chrome 的 10 场景覆盖 1473/1410/900/390/320px 视口、运行/停服、空/在线/错误/识别中、管理员/普通用户；图片载入、无横向溢出、控制台、设置/停止与审批确认取消、玩家及模组跳转通过。确认稿与浏览器截图经 `view_image` 对照，检查结构、配色、字级、素材与间距。
+- 下一步：底色统一已完成，见上方共享纸色章节；总览紧凑布局和四格细节按本页维护。候选发布补真实数据与写操作验收，当前本地未发布。
+- 紧凑布局：总览容器 ≤780px 时顶部信息单行排列，服务器控制继续左右两列，连接按钮与字体按宽度收紧；视口高度 ≤800px 时收紧面板、事件行和按钮间距。近期事件单行省略且保留 title，完整内容由任务日志查看；不裁切页面内容来掩盖溢出。
+- 细化验证：响应式关联链与 production build 再次通过；应用内 Browser 验证四格内容、“查看全部”跳转和 841×700、900×900、1035×700、1280×720、1473×1033 五种尺寸，覆盖停服/运行及单/双连接操作按钮；主内容 `scrollHeight === clientHeight`，底部按钮可见，无页面横向溢出，连接中心偏差 <0.01px，相关控制台为空。后续维持操作列显式最小宽度，并同时检查横向与纵向溢出。
+
+## 2026-09-18：全局素材与冗余代码减负（本地完成，未发布）
+
+- 变更：清理 48 个失效 PNG（13,579,067 字节），统一 favicon 引用；移除旧独立 `InstallPage.tsx/.css`、无依赖的二维码声明、未使用 API 包装/辅助函数/响应类型，以及页面 CSS 中失效类名、覆盖声明和空变量。
+- 主要文件：`frontend/public/assets/stardew/ui/`、`index.html`、`api.ts/types.ts`、`core/helpers.ts`、`core/PasswordInput.tsx`、`stardew/install-helpers.ts`、`stardew-routes.ts`、主题与各页面 CSS，以及安装/响应式回归脚本。安装入口继续走 `GameInstallRail`；现有认证卡片和直连改动保留。删除只面向退休页面的断言，现用安装请求、日志、授权、权限与重试测试继续执行。
+- 验证：27 项前端脚本覆盖全部声明测试，production build 通过；Chrome 的 46 组桌面/紧凑/手机页面与伪元素样式对照、手机导航交互，无新增可见布局差异、资源 404 或脚本错误。完整 public 资产 URL 检查涵盖动态猫/狗和农场图片，未发现悬空引用。构建目录约 28.45 → 15.44 MiB。
+- 接手：清理基于本次开始时的工作区快照，临时证据在系统临时目录 `anxi-cleanup-20260918`；Browser plugin not available，使用现有 Playwright/Chrome。后续候选按路径门禁验收，不重新接回独立安装页；字体回退、旧路由跳转、接口兼容及合法媒体条件不按“未出现在单张截图”判断为无用。
+
+## 2026-09-18：登录卡片视觉优化（本地完成，未发布）
+
+- 注册全屏补验：1920×1080 下，与 HEAD 原版 DOM/样式对照，卡片、三个字段、标签、输入框、显隐按钮、提示与注册按钮共 14 个元素的几何和全部 computed style 一致。右侧窄面板会触发紧凑布局；任务预览增加 `?view=setup&layout=desktop`，将真实 1920×1080 注册页等比缩放展示，便于在侧栏查看全屏效果。
+- 登录按钮采用居中文字；注册预览复用真实 `SetupPanel` 的管理员用户名、密码与确认密码字段。最新 Chrome 验证 1100/390/320px 视口注册卡片与按钮布局无溢出，production build 通过。任务预览地址 `http://127.0.0.1:18098/?view=setup`，仅展示与输入，不创建账号。
+- 改动：新增 `core/AuthCard.tsx/.css`；窗口与手机的紧凑卡片使用浅纸色、双细边框、顶部小鸡、居中标题和右上角版本号。桌面卡片最大 360px，手机最大 320px，输入和按钮至少 44px、输入字号 16px。错误消息使用 alert，加载消息使用 status。
+- 影响文件：`App.tsx`、`core/LoginPanel.tsx`、`core/SetupPanel.tsx`、`core/PasswordInput.tsx` 和响应式回归中的认证断言。全屏保留原 `App.css` 与场景图片，组件按原有媒体查询切换 scoped compact 样式；共享 context 让表单保持同一实例，缩放时账号、密码、显隐状态延续。接口无变化。
+- 验证：session-expiry、responsive-layout 及关联链、production build 通过。Chrome/Playwright 隔离 API 夹具验证登录/初始化成功跳转 `/games`、失败恢复和忙碌禁用；最终 1920×1080 截图与原全屏逐字节一致，1486×990/390×844/320×640 覆盖缩小尺寸、版本位置、密码显隐及往返缩放，无横向溢出和脚本错误。使用已安装的本机 Chrome/Playwright。
+- 视觉核对：最终截图检查徽标、标题、纸色双边框、字段尺寸、按钮和右上角版本。390px 手机卡片实测 320×362px，320px 手机卡片 284×360px。截图在 Codex visualizations 当日任务目录 `auth-fullscreen.png` / `auth-desktop.png` / `auth-mobile.png`。
+- 下一步：本地未发布；后续候选抽验真实认证及移动浏览器软键盘，继续保持全屏视觉、原断点、短视口滚动、焦点可见和 reduced-motion。
+
+## 2026-09-18：直连地址独立读取世界端口（本地完成，未发布）
+
+- 改动：`GameLibrary.tsx`、`useStardewDashboardData.ts` 通过新 `getInstanceDirectConnect` 读取世界端口，直接组合浏览器 hostname，消除公网 IP 查询失败导致的直连“检测失败”。同步只重读本地世界配置，停服也可显示。
+- 文件/类型：`api.ts`、`types.ts`、`game-library-state.ts`、`stardew-routes.ts`，以及 `LanDirectConnectCard.tsx`、`MobileHomePage.tsx`。默认 24642 省略及 IPv6 规则继续使用 `connection-address.ts`。
+- 验证：游戏库和响应式回归链、production build 通过；现有 Chrome/Playwright（Browser plugin not available）接口夹具在 1280×800/390×844 验证两世界端口、桌面/手机复制、同步后端口变化，未调用 `/public-ip`，无控制台错误和横向溢出。截图存系统临时目录 `direct-connect-qa-20260918`。
+- 下一步：改动本地未发布；新前端与新后端一同部署，候选补停服世界和 Web 升级后的真实 Docker 专项。
+
 ## 2026-09-18：官网 v0.7.1 页底与更新说明补齐
 
 - 首页 CURRENT RELEASE 改为读取现有 frontmatter.release，消除独立硬编码的旧版本；同步本版摘要。官网 changelog 与 GitHub Release 补充未进入世界玩家的占位记录修复，说明未完成创建时隐藏列表/人数/事件占位、完成创建后正常显示及保留正常历史玩家。
@@ -84,10 +146,11 @@
 
 ## 2026-09-17：右侧栏面板响应（本地完成，未发布）
 
+- 2026-09-18 配色调整：按显示的整数毫秒分为 `<200` 绿色、`200–399` 蓝色、`400–999` 黄色、`≥1000` 红色；指示灯与数值同时着色。蓝色及绿色数值样式限定面板响应组件，资源使用率颜色沿用原规则。变更文件为 `panel-response.ts`、`StardewPanel.css` 和既有 `test-panel-response.ts`。
 - `PanelResponse.tsx` 替换右侧栏原占位行，显示当前浏览器到 Panel 的 HTTP 往返耗时。复用既有 `GET /api/version` 内存版本响应，`panel-response` 时间戳查询参数与 `cache: no-store` 避免缓存命中；计时覆盖响应体接收，随后校验 200、版本 JSON 和取消状态。无新增后端接口或数据结构。
-- 独立组件每次完成后等待 5 秒再采样，3 秒超时；隐藏页面中止在途请求并暂停，恢复可见后重新测量，卸载清理定时器/请求/监听，不重叠采样。成功显示毫秒（不足 1ms 为 `<1 ms`），100/300ms 分别进入黄/红档；测量中、超时、连接失败和暂停为灰色。复用 `ResourceHint` 的悬停、点击、键盘焦点和 Escape 浮层，说明测量范围与自动重试。
+- 独立组件每次完成后等待 5 秒再采样，3 秒超时；隐藏页面中止在途请求并暂停，恢复可见后重新测量，卸载清理定时器/请求/监听，不重叠采样。成功显示毫秒（不足 1ms 为 `<1 ms`）；测量中、超时、连接失败和暂停为灰色。复用 `ResourceHint` 的悬停、点击、键盘焦点和 Escape 浮层，说明测量范围与自动重试。
 - 影响：`StardewPanel.tsx/.css`、`panel-response.ts`、`PanelResponse.tsx`、`qa-layout-main.tsx`、`test-panel-response.ts` 和 `package.json`。响应测试串联到 `test:responsive-layout`；完整响应计时、禁缓存、错误状态/无效正文/重定向/中止、毫秒和颜色边界回归及 production build 通过。
-- 浏览器：CUA Chrome 1518×989 真实 localhost:5173 页面测得约 5ms，说明浮层与布局正常；合成夹具验证 3 秒超时灰态、503 后自动恢复、约 414ms 红态，控制台无警告/错误。页面隐藏逻辑完成代码审查，当前 Browser 环境未实际触发 hidden，不将其计为浏览器实测。
+- 验证补充：`test:panel-response` 覆盖 132ms 及 200/400/1000ms 分界前后和四舍五入边界；production build 通过。Chrome/Playwright 使用真实展示函数与样式，验证 132/200/400/1000ms 对应绿/蓝/黄/红数值和四种指示灯。既有浏览器验收覆盖真实约 5ms 响应、说明浮层、3 秒超时灰态和 503 后自动恢复；页面隐藏分支仍仅代码审查，留待真实切后台验收。
 - 接手：前端 HMR 已生效；此项通过既有版本接口兼容当前后端，采样包含实际访问使用的代理链路。保持本地未发布，后续候选抽验远程访问、真实后台切换与失败恢复。
 
 ## 2026-09-17：世界卡片比例与信息排布（本地完成，未发布）

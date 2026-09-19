@@ -185,10 +185,6 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-func (s *Store) GetUserByID(ctx context.Context, id int64) (User, error) {
-	return getUserByID(ctx, s.db, id)
-}
-
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (User, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
@@ -405,17 +401,6 @@ func (s *Store) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) 
 	return nil
 }
 
-func (s *Store) RevokeUserSessions(ctx context.Context, userID int64) error {
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE sessions
-		SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-		WHERE user_id = ? AND revoked_at IS NULL
-	`, userID); err != nil {
-		return fmt.Errorf("revoke user sessions: %w", err)
-	}
-	return nil
-}
-
 func (s *Store) MarkUserLoggedIn(ctx context.Context, userID int64) error {
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE users
@@ -543,15 +528,6 @@ func createUserTx(ctx context.Context, tx *sql.Tx, params CreateUserParams) (Use
 		VALUES (?, ?, ?, ?)
 		RETURNING id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
 	`, params.Username, params.PasswordHash, params.Role, boolToInt(params.IsSuperAdmin))
-	return scanUserRow(row)
-}
-
-func getUserByID(ctx context.Context, db *sql.DB, id int64) (User, error) {
-	row := db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
-		FROM users
-		WHERE id = ?
-	`, id)
 	return scanUserRow(row)
 }
 

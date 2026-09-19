@@ -319,32 +319,6 @@ func (d *Driver) prepareRequiredRuntimeMaintenance(ctx context.Context, instance
 	return writeRequiredRuntimeUpdateStatus(instance.DataDir, *status)
 }
 
-func (d *Driver) waitRequiredRuntimeCommand(ctx context.Context, instance registry.Instance, commandID string, timeout time.Duration) error {
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		outcome, err := d.importCommandOutcome(ctx, instance.ID, instance.DataDir, commandID)
-		if err != nil {
-			return err
-		}
-		switch outcome.Status {
-		case CommandStatusSucceeded, CommandStatusDispatched:
-			return nil
-		case CommandStatusFailed, CommandStatusExpired:
-			return fmt.Errorf("command status %s: %s", outcome.Status, outcome.Message)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return errors.New("command acknowledgement timeout")
-		case <-ticker.C:
-		}
-	}
-}
-
 // ReadRequiredRuntimeUpdateStatus exposes the durable coordinator result to
 // the HTTP aggregation layer without making it the authority for apply logic.
 func (d *Driver) ReadRequiredRuntimeUpdateStatus(instance registry.Instance) (RequiredRuntimeUpdateStatus, error) {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Field } from './Field'
 import { PasswordInput } from './PasswordInput'
+import { useCompactAuthCard } from './AuthCard'
 
 export type LoginFormState = {
   username: string
@@ -22,17 +23,20 @@ export function LoginPanel({
   onSubmit: (e: FormEvent<HTMLFormElement>) => void
 }) {
   const [showPwd, setShowPwd] = useState(false)
+  const compact = useCompactAuthCard()
   return (
     <form className="form-grid" onSubmit={onSubmit} autoComplete="on">
       <Field label="用户名">
-        <input value={form.username} autoComplete="username" placeholder=" " required
+        <input name="username" value={form.username} autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder={compact ? '请输入用户名' : ' '} required
           onChange={(e) => onChange({ ...form, username: e.target.value })} />
       </Field>
       <Field label="密码">
-        <PasswordInput value={form.password} visible={showPwd} placeholder=" " autoComplete="current-password"
+        <PasswordInput inputName="password" iconOnly={compact} value={form.password} visible={showPwd} placeholder={compact ? '请输入密码' : ' '} autoComplete="current-password"
           onChange={(p) => onChange({ ...form, password: p })} onToggle={() => setShowPwd((v) => !v)} />
       </Field>
-      <button className="button" disabled={busy} type="submit">{busy ? '正在登录……' : '登录'}</button>
+      <button className="button" disabled={busy} type="submit">
+        <span>{busy ? '正在登录……' : '登录'}</span>
+      </button>
     </form>
   )
 }

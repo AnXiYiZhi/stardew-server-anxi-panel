@@ -138,16 +138,6 @@ export function jobDisplayName(job: Job): string {
   return localizedJobName(job)
 }
 
-export function statusClass(status: string): string {
-  if (status === 'succeeded' || status === 'running' || status === 'game_installed' || status === 'ready_to_start') {
-    return 'succeeded'
-  }
-  if (status === 'failed' || status === 'error' || status === 'steam_auth_failed') return 'failed'
-  if (status === 'canceled') return 'canceled'
-  if (status === 'steam_auth_running' || status === 'installing') return 'running'
-  return 'queued'
-}
-
 export function isTerminalJobStatus(status: JobStatus): boolean {
   return status === 'succeeded' || status === 'failed' || status === 'canceled'
 }
@@ -172,9 +162,4 @@ export function stateLabel(state: string): string {
 
 export function roundPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value * 10) / 10))
-}
-
-export function formatPercent(value: number): string {
-  const rounded = roundPercent(value)
-  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`
 }

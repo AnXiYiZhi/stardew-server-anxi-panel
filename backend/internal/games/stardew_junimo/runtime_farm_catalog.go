@@ -309,10 +309,6 @@ func (tx *newGameTransaction) waitForRuntimeFarmCatalog(ctx context.Context, tim
 	return &NewGameTransactionError{Code: "runtime_catalog_timeout", Message: "等待匹配 transactionId 的运行时农场目录超时"}
 }
 
-func runtimeCatalogHasFarm(farms []runtimeFarmType, requested string) bool {
-	return runtimeCatalogResolvedFarm(farms, requested) != ""
-}
-
 func runtimeCatalogResolvedFarm(farms []runtimeFarmType, requested string) string {
 	wanted := strings.ToLower(strings.TrimSpace(requested))
 	aliases := map[string][]string{

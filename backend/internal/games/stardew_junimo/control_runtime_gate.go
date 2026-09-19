@@ -150,11 +150,3 @@ func waitForControlRuntimeGate(ctx context.Context, dataDir string, timeout time
 func runningControlMatchesManifest(dataDir string) bool {
 	return InspectControlRuntimeGate(dataDir).State == ControlRuntimeGateReady
 }
-
-// waitForRunningControlManifest retains the legacy bool waiter for existing
-// callers. New lifecycle paths should use waitForControlRuntimeGate so context
-// cancellation, pending timeout, invalid state, and mismatch remain distinct.
-func waitForRunningControlManifest(ctx context.Context, dataDir string, timeout time.Duration) bool {
-	result, err := waitForControlRuntimeGate(ctx, dataDir, timeout)
-	return err == nil && result.State == ControlRuntimeGateReady
-}

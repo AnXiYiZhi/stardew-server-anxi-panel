@@ -111,11 +111,6 @@ func modUploadErrorCode(err error) string {
 	return "invalid_mod_zip"
 }
 
-// sanitizeErrorMessage is like sanitizeError but takes the raw error message string.
-func sanitizeErrorMessage(msg string) string {
-	return docker.RedactString(msg)
-}
-
 // sanitizeErrorMsg returns a user-safe error message with a Chinese prefix.
 // The internal error details are stripped; only the prefix is shown to the user.
 // If err is nil, returns the prefix with "未知错误".

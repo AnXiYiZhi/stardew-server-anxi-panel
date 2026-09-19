@@ -1,0 +1,303 @@
+.sd-auth-shell.sd-auth-shell--compact {
+  --auth-ink: #422817;
+  --auth-muted: #876b4e;
+  --auth-green: #386c35;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  justify-content: center;
+  grid-template-columns: minmax(0, 360px);
+  padding: 64px 24px calc(48px + env(safe-area-inset-bottom, 0px));
+  position: relative;
+  isolation: isolate;
+  color: var(--auth-ink);
+  background: #1a0e06;
+}
+
+.sd-auth-shell.sd-auth-shell--compact::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(rgba(12, 6, 1, 0.48), rgba(12, 6, 1, 0.48)),
+    url('/assets/stardew/ui/backgrounds/background_login_farm_generated.optimized.webp') center / cover no-repeat;
+}
+
+.sd-auth-shell.sd-auth-shell--compact.sd-auth-shell--booting::before {
+  background: #242d2b;
+}
+
+.sd-auth-shell--compact .sd-auth-card {
+  width: min(360px, 100%);
+  min-width: 0;
+  position: relative;
+  padding: 36px 24px 24px;
+  border: 3px solid #634027;
+  border-radius: 5px;
+  background: var(--sd-card-bg);
+  box-shadow: inset 0 0 0 3px #e3bb76, 0 4px 0 #3f281a, 0 18px 48px #180c0559;
+  animation: auth-card-appear 280ms ease-out both;
+}
+
+.sd-auth-shell--compact .sd-auth-card::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  border: 1px solid #d6ad67;
+  border-radius: 1px;
+}
+
+.sd-auth-shell--compact .sd-auth-mascot {
+  position: absolute;
+  top: -31px;
+  left: 50%;
+  width: 48px;
+  height: 55px;
+  object-fit: contain;
+  transform: translateX(-50%);
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 2px #2c180948);
+  pointer-events: none;
+}
+
+.sd-auth-shell--compact .sd-auth-heading {
+  text-align: center;
+}
+
+.sd-auth-shell--compact .sd-auth-eyebrow {
+  margin: 0 0 7px;
+  color: var(--auth-green);
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.6;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sd-auth-shell--compact .sd-auth-title {
+  margin: 0;
+  color: var(--auth-ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.sd-auth-shell--compact .sd-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 17px 0 15px;
+  color: #c69a54;
+}
+
+.sd-auth-shell--compact .sd-auth-divider::before,
+.sd-auth-shell--compact .sd-auth-divider::after {
+  content: '';
+  height: 1px;
+  background: currentColor;
+  flex: 1;
+  opacity: 0.65;
+}
+
+.sd-auth-shell--compact .sd-auth-divider span {
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 3px #c69a5425;
+}
+
+.sd-auth-shell--compact .sd-auth-card .form-grid {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.sd-auth-shell--compact .sd-auth-card .field {
+  min-width: 0;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.sd-auth-shell--compact .sd-auth-card .field input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1.5px solid #b79461;
+  border-radius: 4px;
+  outline: none;
+  background: #fffaf0;
+  color: var(--auth-ink);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.4;
+  box-shadow: inset 0 2px 3px #6748240b, 0 1px 0 #ffffffa6;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.sd-auth-shell--compact .sd-auth-card .field input::placeholder {
+  color: #927f68;
+  opacity: 1;
+}
+
+.sd-auth-shell--compact .sd-auth-card .field input:focus-visible {
+  border-color: var(--auth-green);
+  outline: none;
+  box-shadow: 0 0 0 3px #5f8d4326;
+}
+
+.sd-auth-shell--compact .sd-auth-card .password-input {
+  display: block;
+  position: relative;
+  min-width: 0;
+}
+
+.sd-auth-shell--compact .sd-auth-card .password-input input {
+  padding-right: 52px;
+}
+
+.sd-auth-shell--compact .sd-auth-card .password-toggle {
+  position: absolute;
+  inset: 0 2px 0 auto;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #715333;
+}
+
+.sd-auth-shell--compact .sd-auth-card .password-toggle:hover {
+  background: #b7946118;
+  color: var(--auth-ink);
+}
+
+.sd-auth-shell--compact .sd-auth-card .password-toggle svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.sd-auth-shell--compact .sd-auth-card .button {
+  position: relative;
+  min-height: 44px;
+  margin: 2px 0 3px;
+  padding: 9px 38px;
+  border: 2px solid #315b2b;
+  border-radius: 4px;
+  background: linear-gradient(#54883e, #407335);
+  color: #fffcec;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 1px #24481d;
+  box-shadow: inset 0 2px 0 #a5c3777d, 0 3px 0 #294c23;
+}
+
+.sd-auth-shell--compact .sd-auth-card .button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.sd-auth-shell--compact .sd-auth-card .button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 0 #a5c3777d, 0 1px 0 #294c23;
+}
+
+.sd-auth-shell--compact .sd-auth-card .password-toggle:focus-visible,
+.sd-auth-shell--compact .sd-auth-card .button:focus-visible {
+  outline: 2px solid var(--auth-green);
+  outline-offset: 4px;
+}
+
+.sd-auth-shell--compact .sd-auth-version {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  margin: 0;
+  color: var(--auth-muted);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.sd-auth-shell--compact .sd-auth-error {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border: 1px solid #bb60444d;
+  border-left: 3px solid #ad5039;
+  border-radius: 3px;
+  background: #fbe5d8;
+  color: #893c29;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.sd-auth-shell--compact .sd-auth-loading,
+.sd-auth-shell--compact .sd-auth-card .summary,
+.sd-auth-shell--compact .sd-auth-card .form-hint {
+  margin: 0;
+  color: var(--auth-muted);
+  font-size: 13px;
+  line-height: 1.7;
+  font-weight: 400;
+}
+
+@keyframes auth-card-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 480px) {
+  .sd-auth-shell.sd-auth-shell--compact {
+    grid-template-columns: minmax(0, 320px);
+    padding-inline: 18px;
+  }
+
+  .sd-auth-shell--compact .sd-auth-card {
+    padding: 36px 20px 22px;
+  }
+
+  .sd-auth-shell--compact .sd-auth-title {
+    font-size: clamp(20px, 5.7vw, 23px);
+  }
+
+  .sd-auth-shell--compact .sd-auth-eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.09em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-auth-shell--compact .sd-auth-card {
+    animation: none;
+  }
+
+  .sd-auth-shell--compact .sd-auth-card *,
+  .sd-auth-shell--compact .sd-auth-card *::before,
+  .sd-auth-shell--compact .sd-auth-card *::after {
+    transition: none;
+  }
+}
+
+.sd-auth-shell.sd-auth-shell--compact::after {
+  content: none;
+}

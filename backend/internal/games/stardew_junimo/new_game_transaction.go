@@ -857,64 +857,6 @@ func restoreNewGameMods(dataDir string, snapshot []newGameModSnapshot) error {
 	return errors.Join(errs...)
 }
 
-func (tx *newGameTransaction) newSaveDirs() ([]string, error) {
-	current, err := listSaveDirs(tx.dataDir)
-	if err != nil {
-		return nil, err
-	}
-	before := make(map[string]struct{}, len(tx.record.PreexistingSaveDirs))
-	for _, name := range tx.record.PreexistingSaveDirs {
-		before[name] = struct{}{}
-	}
-	var result []string
-	for _, name := range current {
-		if _, existed := before[name]; !existed {
-			result = append(result, name)
-		}
-	}
-	sort.Strings(result)
-	if strings.Join(tx.record.DetectedSaveDirs, "\x00") != strings.Join(result, "\x00") {
-		tx.record.DetectedSaveDirs = append([]string{}, result...)
-		if err := tx.persist(); err != nil {
-			return nil, err
-		}
-	}
-	return result, nil
-}
-
-func (tx *newGameTransaction) quarantineNewSaveDirs() error {
-	if err := tx.assertOwner(); err != nil {
-		return err
-	}
-	names, err := tx.newSaveDirs()
-	if err != nil {
-		return err
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	root := filepath.Join(tx.dataDir, ".local-container", "saves-quarantine", "new-game", tx.record.TransactionID)
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return err
-	}
-	for _, name := range names {
-		if err := tx.assertOwner(); err != nil {
-			return err
-		}
-		if err := validateSaveName(name); err != nil {
-			return err
-		}
-		src := filepath.Join(savesDir(tx.dataDir), "Saves", name)
-		dst := filepath.Join(root, name)
-		if err := os.Rename(src, dst); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		tx.record.QuarantinedSaveDirs = append(tx.record.QuarantinedSaveDirs, name)
-	}
-	sort.Strings(tx.record.QuarantinedSaveDirs)
-	return tx.persist()
-}
-
 type newGameFileStability struct {
 	size    int64
 	modTime time.Time

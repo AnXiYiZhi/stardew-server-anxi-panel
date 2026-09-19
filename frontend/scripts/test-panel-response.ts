@@ -35,7 +35,10 @@ await assert.rejects(measurePanelResponse(controller.signal, async () => new Res
 
 for (const [ms, text, level] of [
   [0, '<1 ms', 'ok'], [0.5, '<1 ms', 'ok'], [42.4, '42 ms', 'ok'],
-  [100, '100 ms', 'warn'], [300, '300 ms', 'crit'],
+  [132, '132 ms', 'ok'], [199, '199 ms', 'ok'],
+  [199.5, '200 ms', 'info'], [200, '200 ms', 'info'], [399, '399 ms', 'info'],
+  [399.5, '400 ms', 'warn'], [400, '400 ms', 'warn'], [999, '999 ms', 'warn'],
+  [999.5, '1000 ms', 'crit'], [1000, '1000 ms', 'crit'], [2500, '2500 ms', 'crit'],
 ] as const) {
   assert.deepEqual(panelResponsePresentation({ status: 'ok', milliseconds: ms }), { text, level })
 }

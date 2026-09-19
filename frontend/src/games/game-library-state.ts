@@ -1,4 +1,4 @@
-import type { CreateInstanceRequest, Instance, InstanceState, Job, PublicIPResult } from '../types'
+import type { CreateInstanceRequest, DirectConnectConfig, Instance, InstanceState, Job } from '../types'
 import { classifyInstallationState } from './stardew/installation-state.ts'
 import { formatStardewAddress } from './stardew/connection-address.ts'
 
@@ -9,7 +9,7 @@ export type StardewCatalogItem = {
   state: InstanceState | null
   stateLoading: boolean
   stateError: string | null
-  connection: PublicIPResult | null
+  connection: DirectConnectConfig | null
   connectionLoading: boolean
   connectionError: string | null
   hasActiveInstallJob: boolean

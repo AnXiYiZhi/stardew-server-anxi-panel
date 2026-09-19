@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import { ApiError, createInstance, getInstances, getInstancePublicIP, getInstanceState, getJobs, getStardewGameInstallation, startInstance, stopInstance } from '../api'
+import { ApiError, createInstance, getInstances, getInstanceDirectConnect, getInstanceState, getJobs, getStardewGameInstallation, startInstance, stopInstance } from '../api'
 import { stardewInstallPath } from '../app-routes'
 import { errorMessage, stateLabel } from '../core/helpers'
 import type { CurrentUser, GameInstallation } from '../types'
@@ -98,7 +98,7 @@ function useStardewCatalog(): CatalogState & {
       if (connectionRequests.has(instanceId)) return
       connectionRequests.add(instanceId)
       updateItem(instanceId, { connectionLoading: true, connectionError: null })
-      void getInstancePublicIP(instanceId)
+      void getInstanceDirectConnect(instanceId)
         .then((connection) => updateItem(instanceId, { connection, connectionLoading: false, connectionError: null }))
         .catch((error) => updateItem(instanceId, {
           connection: null,

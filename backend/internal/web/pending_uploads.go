@@ -542,16 +542,6 @@ func (s *durablePendingUploadStore) transferOwnership(dataDir, token, operationI
 	return nil
 }
 
-func (s *durablePendingUploadStore) ownedOperation(dataDir, token string) (string, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry, err := readDurablePendingUpload(dataDir, token)
-	if err != nil {
-		return "", false, err
-	}
-	return entry.OperationID, entry.Status == "owned", nil
-}
-
 // findOwnedByOperation recovers the durable token side of an import from the
 // operation identity. The raw bearer token is intentionally unavailable after
 // the original HTTP submission, so automatic recovery uses the on-disk token

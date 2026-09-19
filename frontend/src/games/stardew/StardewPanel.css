@@ -431,17 +431,6 @@
   filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.55));
 }
 
-.sd-topbar-dropdown {
-  position: absolute;
-  z-index: 1;
-  right: clamp(12px, 1.15vw, 22px);
-  width: clamp(15px, 1.35vw, 25px);
-  height: clamp(12px, 1vw, 19px);
-  object-fit: contain;
-  image-rendering: pixelated;
-  filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.6));
-}
-
 .sd-topbar-user-dot {
   position: absolute;
   right: clamp(16px, 1.25vw, 24px);
@@ -484,14 +473,6 @@
 .sd-topbar-username,
 .sd-topbar-meta-icon {
   display: none;
-}
-
-.sd-topbar-meta-icon {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-  image-rendering: pixelated;
-  opacity: 0.75;
 }
 
 /* ── 左侧导航栏 ──────────────────────────────────────────────────────────── */
@@ -556,26 +537,6 @@
   image-rendering: pixelated;
 }
 
-.sd-sidebar-head {
-  padding: 7px 6px;
-  border-bottom: 1px solid #3d2510;
-  display: flex;
-  gap: 4px;
-  align-items: flex-start;
-  flex-shrink: 0;
-}
-
-.sd-sidebar-chicken {
-  width: 20px;
-  height: 23px;
-  image-rendering: pixelated;
-  flex-shrink: 0;
-}
-
-.sd-nav-divider {
-  display: none;
-}
-
 .sd-nav-list {
   position: relative;
   z-index: 2;
@@ -611,27 +572,6 @@
   box-shadow:
     inset 0 1px 0 rgba(151, 91, 37, 0.18),
     inset 0 -2px 0 rgba(13, 6, 2, 0.38);
-}
-
-.sd-sidebar-help {
-  width: calc(100cqi * 96 / 105);
-  box-sizing: border-box;
-  height: calc(100cqi * 28 / 105);
-  flex-shrink: 0;
-  border-top: 1px solid #3d2510;
-  background-image: none;
-  background-color: transparent;
-  image-rendering: pixelated;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #c0a068;
-  font-size: clamp(11px, 7.6cqi, 13px);
-  font-weight: 700;
-  margin-top: auto;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .sd-sidebar .sd-nav-item {
@@ -845,23 +785,11 @@
 /* ── 右侧 Ops Rail ───────────────────────────────────────────────────────── */
 
 .sd-opsrail {
-  background-color: #180d04;
-  background-image:
-    linear-gradient(rgba(20, 10, 4, 0.74), rgba(20, 10, 4, 0.78)),
-    url('/assets/stardew/ui/panels/right_rail_shell_middle_tile.png');
-  background-repeat: repeat-y;
-  background-position: top center;
-  background-size: 100% auto;
   border-left: 0;
-  padding: clamp(54px, 4.6vw, 74px) clamp(16px, 1.4vw, 22px) clamp(26px, 2vw, 36px);
   overflow-y: auto;
-  display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 0;
   font-size: 12px;
-  color: #f5dca8;
-  image-rendering: pixelated;
 }
 
 .sd-opsrail-section {
@@ -870,58 +798,12 @@
   gap: 4px;
 }
 
-.sd-opsrail-heading {
-  font-size: 13px;
-  font-weight: 800;
-  color: #5a3c1d;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 3px;
-}
-
 .sd-opsrail-job {
   padding: 5px 7px;
   border: 1px solid #dcc898;
   border-radius: 0;
-  background: #f8f0d8;
   display: grid;
   gap: 2px;
-}
-
-.sd-opsrail-job-type {
-  font-size: 13px;
-  font-weight: 700;
-  color: #2c1a0a;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sd-opsrail-job-meta {
-  font-size: 12px;
-  color: #5a3c1d;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.sd-opsrail-empty {
-  font-size: 12px;
-  color: #8a7060;
-  font-style: italic;
-  padding: 2px 0;
-}
-
-.sd-opsrail-link {
-  font-size: 12px;
-  color: #3a7020;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  text-align: left;
-  font: inherit;
-  text-decoration: underline;
 }
 
 .sd-opsrail-link:hover {
@@ -1001,52 +883,7 @@
 
 /* ── 状态摘要卡片 ─────────────────────────────────────────────────────────── */
 
-.sd-state-card {
-  padding: var(--sd-card-padding);
-  border: 1px solid #dcc898;
-  border-radius: 0;
-  background: #f8f0d8;
-  display: grid;
-  gap: 6px;
-}
-
-.sd-state-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  color: #2c1a0a;
-}
-
-.sd-state-label {
-  color: #5a3c1d;
-  font-weight: 700;
-  flex-shrink: 0;
-  min-width: 72px;
-}
-
-.sd-state-value {
-  font-weight: 700;
-}
-
 /* ── 功能清单 ─────────────────────────────────────────────────────────────── */
-
-.sd-feature-list {
-  display: grid;
-  gap: 4px;
-}
-
-.sd-feature-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #2c1a0a;
-}
-
-.sd-feature-item.connected { color: #1f5f1e; }
-
-.sd-feature-item.pending   { color: #5a3c1d; }
 
 /* ── 行内导航链接 ─────────────────────────────────────────────────────────── */
 
@@ -1065,83 +902,7 @@
 
 /* ── Overview 布局（覆盖整个主内容区）──────────────────────────────────────── */
 
-.sd-bstat {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.sd-bstat img {
-  width: 14px;
-  height: 14px;
-  image-rendering: pixelated;
-}
-
-.sd-bstat-v {
-  font-weight: 700;
-  color: #2c1a0a;
-  font-size: 13px;
-}
-
-.sd-bstat-l {
-  color: #5a3c1d;
-  font-size: 13px;
-}
-
 /* 状态徽章 */
-
-.sd-state-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 2px;
-}
-
-.sd-state-badge-running {
-  background: rgba(74, 158, 48, 0.15);
-  color: #4a9e30;
-  border: 1px solid #4a9e30;
-}
-
-.sd-state-badge-stopped {
-  background: rgba(138, 112, 96, 0.12);
-  color: #6a5040;
-  border: 1px solid #8a7060;
-}
-
-.sd-state-badge-error {
-  background: rgba(192, 32, 32, 0.12);
-  color: #c02020;
-  border: 1px solid #c02020;
-}
-
-.sd-state-badge-starting,
-.sd-state-badge-stopping {
-  background: rgba(208, 128, 16, 0.12);
-  color: #d08010;
-  border: 1px solid #d08010;
-}
-
-.sd-state-badge-unknown,
-.sd-state-badge-ready_to_start,
-.sd-state-badge-game_installed,
-.sd-state-badge-save_required {
-  background: rgba(208, 128, 16, 0.12);
-  color: #d08010;
-  border: 1px solid #d08010;
-}
-
-.sd-state-badge-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: sd-pulse-dot 2s infinite;
-}
 
 @keyframes sd-pulse-dot {
   0%, 100% { opacity: 1; }
@@ -1151,18 +912,7 @@
 /* Overview 服务器控制 section */
 
 .sd-ctrl-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
-}
-
-.sd-ctrl-div {
-  color: #dcc898;
-  margin: 0 2px;
-  font-size: 16px;
-  line-height: 1;
-  flex-shrink: 0;
 }
 
 .sd-start-save-required {
@@ -1173,7 +923,6 @@
   min-width: 0;
   padding: 3px 6px;
   border: 1px solid var(--sd-gold-border);
-  background: var(--sd-gold-light);
   color: var(--sd-gold-text);
   font-size: 12px;
   line-height: 1.45;
@@ -1187,115 +936,13 @@
 
 /* 2×2 指标格 */
 
-.sd-metric-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-  padding: 6px;
-  flex-shrink: 0;
-}
-
 /* 指标卡语义色：name/sub 标签跟随 modifier 变色 */
 
 /* 玩家表头 */
 
-.sd-player-hd {
-  padding: 4px 6px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #2c1a0a;
-  background: #dcc898;
-  border-top: 1px solid #dcc898;
-  border-bottom: 1px solid #dcc898;
-  flex-shrink: 0;
-}
-
 /* 右侧事件列表 */
 
-.sd-ev-title {
-  padding: 4px 8px;
-  font-size: 13px;
-  font-weight: 700;
-  border-bottom: 1px solid #dcc898;
-  background: #dcc898;
-  flex-shrink: 0;
-  color: #2c1a0a;
-}
-
-.sd-ev-list {
-  flex: 1;
-}
-
-.sd-ev-item {
-  display: flex;
-  gap: 5px;
-  padding: 3px 8px;
-  border-bottom: 1px solid #dcc898;
-  font-size: 12px;
-}
-
-.sd-ev-time {
-  color: #8a7060;
-  flex-shrink: 0;
-  font-size: 11px;
-  padding-top: 1px;
-}
-
-.sd-ev-text {
-  color: #2c1a0a;
-  line-height: 1.4;
-  flex: 1;
-}
-
-.sd-all-logs-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #dcc898;
-  border-top: 1px solid #7a5030;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
-  padding: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #5a3c1d;
-  flex-shrink: 0;
-  width: 100%;
-  font-family: inherit;
-  font-weight: 400;
-}
-
-.sd-all-logs-btn:hover { color: #3a7020; }
-
 /* 右侧资源包 section */
-
-.sd-pack-section {
-  padding: 5px 8px;
-  flex-shrink: 0;
-}
-
-.sd-pack-title {
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 4px;
-  color: #2c1a0a;
-}
-
-.sd-pack-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 0;
-  border-bottom: 1px solid #dcc898;
-  font-size: 12px;
-}
-
-.sd-pack-name {
-  flex: 1;
-  font-weight: 700;
-  color: #2c1a0a;
-}
 
 /* ── 危险操作确认弹框 ─────────────────────────────────────────────────────── */
 
@@ -1342,7 +989,7 @@
 
 .sd-confirm-dialog {
   box-sizing: border-box;
-  background: #f8f0d8;
+  background: var(--sd-card-bg);
   border: 3px solid #3d2510;
   border-radius: 2px;
   padding: 18px 22px;
@@ -1492,16 +1139,6 @@
 
 /* 预格式化命令输出 */
 
-.sd-srv-result-pre {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 140px;
-  overflow-y: auto;
-  margin: 0;
-}
-
 /* "待接入"小标签 */
 
 .sd-srv-badge-pending {
@@ -1570,18 +1207,10 @@
 
 /* ── 响应式 ───────────────────────────────────────────────────────────────── */
 
-@media (max-width: 960px) {
-  /* 任务页：窄屏改为单列（列表在上，详情在下） */
-}
-
 @media (max-width: 720px) {
   .sd-shell {
     --sd-sidebar-width: clamp(178px, 22vw, 210px);
     grid-template-columns: clamp(178px, 22vw, 210px) minmax(0, 1fr) 0;
-  }
-
-  .sd-opsrail {
-    display: none;
   }
 }
 
@@ -1665,12 +1294,6 @@
     padding: 0;
     background-image: none;
     box-shadow: none;
-  }
-
-  .sd-nav-divider {
-    width: 1px;
-    height: auto;
-    margin: 2px 2px;
   }
 
   /* 覆盖桌面 .sd-sidebar .sd-nav-item 的高特异性规则 */
@@ -1815,10 +1438,6 @@
 
   /* 指标格：移动端改为单列 */
 
-  .sd-metric-grid {
-    grid-template-columns: 1fr;
-  }
-
   /* 控制行：邀请码在窄屏可换行 */
 
   .sd-ctrl-row {
@@ -1846,19 +1465,11 @@
 .sd-player-events-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
 }
 
 .sd-player-event {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: center;
   gap: 8px;
-  padding: 7px 8px;
-  border: 1px solid rgba(220, 200, 152, 0.7);
-  border-radius: 2px;
-  background: rgba(255, 248, 220, 0.35);
 }
 
 .sd-player-event-dot {
@@ -1888,7 +1499,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
@@ -1918,12 +1528,10 @@
 }
 
 .sd-player-event-desc {
-  margin-top: 2px;
   font-size: 12px;
   color: #8a7060;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sd-player-event-time {
@@ -1973,10 +1581,6 @@
 }
 
 /* 玩家同步区域 */
-
-@media (max-width: 640px) {
-  /* iOS Safari 对 font-size < 16px 的表单控件聚焦时会自动放大整页 */
-}
 
 /* 区块标题 */
 
@@ -2125,16 +1729,6 @@
   padding: 10px 12px;
 }
 
-.sd-opsrail {
-  background-color: #180d04;
-  background-image:
-    linear-gradient(rgba(20, 10, 4, 0.74), rgba(20, 10, 4, 0.78)),
-    url('/assets/stardew/ui/panels/right_rail_shell_middle_tile.png');
-  background-repeat: repeat-y;
-  background-size: 100% auto;
-  color: #f5dca8;
-}
-
 .sd-opsrail-section {
   border: 1px solid #5a3518;
   background: rgba(28, 16, 8, 0.72);
@@ -2156,21 +1750,6 @@
   color: #d7b77f;
 }
 
-.sd-opsrail-link {
-  color: #f5c96b;
-  text-decoration: none;
-}
-
-.sd-bstat {
-  background: rgba(248, 240, 216, 0.8);
-  border: 1px solid rgba(122, 80, 48, 0.42);
-  padding: 3px 7px;
-}
-
-.sd-pack-section {
-  padding: 10px;
-}
-
 .sd-server-page .sd-srv-section,
 .sd-saves-page #saves-section > *,
 .sd-jobs-page .sd-jobs-toolbar,
@@ -2189,31 +1768,13 @@
 }
 
 @media (max-width: 1180px) {
-  .sd-ov-metric-strip,
-  .sd-players-overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 
   .sd-ov-summary-grid,
-  .sd-server-page,
-  .sd-players-page,
   .sd-diag-main-grid,
   .sd-settings-page {
     grid-template-columns: 1fr;
   }
 
-  .sd-server-page .sd-page-header,
-  .sd-server-summary-card,
-  .sd-server-lifecycle,
-  .sd-server-broadcast,
-  .sd-server-command,
-  .sd-server-quick,
-  .sd-players-page .sd-page-header,
-  .sd-players-overview-section,
-  .sd-players-info-section,
-  .sd-players-list-section,
-  .sd-players-events-section,
-  .sd-players-actions-section,
   .sd-diag-page .sd-diag-header,
   .sd-diag-page .sd-diag-status-panel,
   .sd-diag-page .sd-diag-resource-panel,
@@ -2249,9 +1810,7 @@
   container-type: inline-size;
 }
 
-/* 中段平铺：seamless 版已裁掉原图四周纯黑边
-   （原 right_rail_shell_middle_tile.png 的 x130..1406 / y27..1005），
-   立柱外沿与元素边缘对齐，repeat-y 衔接处不再出现横向黑带 */
+/* 中段平铺：裁边木纹让立柱外沿与元素边缘对齐，repeat-y 无缝衔接。 */
 
 .sd-opsrail-bg {
   position: absolute;
@@ -2528,11 +2087,26 @@
   transition: width 600ms ease;
 }
 
-/* 阈值配色：使用率 <60 绿 / ≥60 黄 / ≥85 红，面板响应 <100ms 绿 / ≥100 黄 / ≥300 红。
+/* 阈值配色：使用率 <60 绿 / ≥60 黄 / ≥85 红，面板响应 <200ms 绿 / ≥200 蓝 / ≥400 黄 / ≥1000 红。
    在线玩家为 0 时红；面板响应无有效采样时灰色。 */
 
 .sd-panel-response .sd-opsrail-hstat-row {
   width: 100%;
+}
+
+.sd-panel-response.sd-opsrail-hstat--ok .sd-opsrail-hstat-value {
+  color: #aade72;
+}
+
+.sd-panel-response.sd-opsrail-hstat--info .sd-opsrail-hstat-orb {
+  background: radial-gradient(circle at 35% 28%, #d8f2ff 0%, #76c5f4 40%, #348ccb 72%, #225b91 100%);
+  box-shadow:
+    inset 0 -2px 0 rgba(20, 64, 107, 0.6),
+    0 1px 0 rgba(24, 9, 2, 0.55);
+}
+
+.sd-panel-response.sd-opsrail-hstat--info .sd-opsrail-hstat-value {
+  color: #8ed0ff;
 }
 
 .sd-opsrail-hstat--unknown .sd-opsrail-hstat-orb {
@@ -2770,70 +2344,14 @@
 
 /* ── FE-OVERVIEW-PROTOTYPE-IMAGE2-1 总览页原型视觉重皮肤 ─────────────── */
 
-.sd-bstat {
-  min-height: 24px;
-  border: 1px solid rgba(91, 49, 15, 0.62);
-  border-radius: 2px;
-  background:
-    linear-gradient(180deg, rgba(255, 240, 183, 0.92), rgba(229, 184, 99, 0.82));
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 222, 0.28),
-    0 2px 0 rgba(67, 38, 13, 0.38);
-  padding: 3px 7px;
-}
-
-.sd-bstat img {
-  width: 16px;
-  height: 16px;
-}
-
-.sd-bstat-l,
-.sd-bstat-v {
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-.sd-state-badge {
-  min-height: 24px;
-  border-radius: 3px;
-  padding: 3px 8px;
-  border-width: 2px;
-  background:
-    linear-gradient(180deg, rgba(255, 241, 190, 0.92), rgba(231, 195, 116, 0.86));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 220, 0.3);
-  font-size: 12px;
-}
-
 /* 两列网格；中缝线由 .sd-ov-section::before 绘制。
    .sd-ctrl-div 元素只在有邀请码时渲染，作网格列会导致
    无邀请码时邀请面板落进 1px 列，因此这里直接隐藏它。 */
 
 .sd-ctrl-row {
   display: grid;
-  grid-template-columns: minmax(300px, 0.95fr) minmax(300px, 1.05fr);
   gap: 14px;
   align-items: center;
-}
-
-.sd-ctrl-row > .sd-ctrl-div {
-  display: none;
-}
-
-.sd-lifecycle-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.sd-ctrl-div {
-  width: 1px;
-  height: 74px;
-  overflow: hidden;
-  color: transparent;
-  background: linear-gradient(180deg, transparent, rgba(110, 67, 26, 0.62), transparent);
-  box-shadow: 1px 0 rgba(255, 239, 188, 0.72);
 }
 
 .sd-start-save-required {
@@ -2843,188 +2361,18 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 214, 0.5);
 }
 
-.sd-player-hd span {
-  margin-left: auto;
-  color: #348728;
-  font-size: 12px;
-}
-
-.sd-ev-list {
-  position: relative;
-  z-index: 1;
-  padding: 5px 12px 8px;
-}
-
-.sd-ev-item {
-  align-items: center;
-  gap: 8px;
-  min-height: 35px;
-  padding: 7px 0;
-  border-bottom: 1px solid rgba(157, 93, 32, 0.34);
-  font-size: 13px;
-}
-
-.sd-ev-time {
-  margin-left: auto;
-  order: 2;
-  color: #7a5123;
-  font-size: 12px;
-}
-
-.sd-ev-text {
-  min-width: 0;
-  color: #2c1a0a;
-  font-weight: 700;
-}
-
-.sd-pack-section {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  gap: 4px;
-  padding: 10px 14px 14px;
-}
-
-.sd-pack-row {
-  min-height: 38px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(157, 93, 32, 0.34);
-  font-size: 13px;
-}
-
-.sd-pack-name {
-  color: #2c1a0a;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.sd-pack-row .sd-btn-tan {
-  min-width: 108px;
-}
-
-.sd-all-logs-btn {
-  position: relative;
-  z-index: 1;
-  min-height: 40px;
-  border-top: 2px solid rgba(119, 67, 23, 0.48);
-  background:
-    linear-gradient(180deg, rgba(255, 238, 178, 0.7), rgba(220, 166, 76, 0.45));
-  color: #6a3d13;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.sd-all-logs-btn:hover {
-  color: #265b1c;
-  background:
-    linear-gradient(180deg, rgba(255, 241, 184, 0.86), rgba(225, 177, 89, 0.62));
-}
-
 @media (max-width: 1180px) {
   .sd-ctrl-row {
     grid-template-columns: 1fr;
   }
 }
 
-@container sd-main-scroll (max-width: 1180px) {
-  .sd-ctrl-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-
-  .sd-bstat {
-    max-width: 100%;
-    min-height: 22px;
-    padding: 2px 5px;
-  }
-
-  .sd-bstat:nth-child(n + 3) {
-    display: none;
-  }
-
-  .sd-bstat-l,
-  .sd-bstat-v {
-    font-size: 11px;
-  }
-}
-
 /* ── FE-SERVER-PROTOTYPE-IMAGE2-1 服务器页原型视觉重皮肤 ─────────────── */
-
-.sd-server-page .sd-invite-box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 64px;
-  padding: 8px;
-  border: 3px double rgba(153, 90, 32, 0.56);
-  background:
-    linear-gradient(180deg, rgba(255, 244, 204, 0.7), rgba(244, 205, 137, 0.36)),
-    #fff1c4;
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 250, 220, 0.62),
-    0 2px 0 rgba(90, 49, 16, 0.24);
-}
-
-.sd-server-page .sd-invite-code {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #1d6d2a;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: clamp(22px, 3.1cqi, 32px);
-  line-height: 1;
-  font-weight: 900;
-  letter-spacing: 3px;
-  text-align: center;
-  text-shadow: 1px 1px 0 rgba(255, 247, 190, 0.9);
-}
 
 /* ── FE-OVERVIEW-PROTOTYPE-IMAGE2-2 总览页最终覆盖 ─────────────── */
 
-.sd-bstat {
-  min-height: 23px;
-  border-color: rgba(81, 44, 14, 0.72);
-  background:
-    linear-gradient(180deg, rgba(255, 238, 178, 0.88), rgba(222, 171, 79, 0.82));
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 253, 215, 0.42),
-    0 2px 0 rgba(58, 32, 10, 0.46);
-  backdrop-filter: blur(1px);
-}
-
-.sd-state-badge {
-  border-color: #684016;
-  background:
-    radial-gradient(circle at 7px 7px, rgba(255, 250, 207, 0.42) 0 1px, transparent 1.4px) 0 0 / 14px 14px,
-    linear-gradient(180deg, #ffe8aa, #dda24e);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 249, 205, 0.38),
-    0 2px 0 rgba(56, 31, 11, 0.45);
-}
-
 .sd-ctrl-row {
   grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr);
-}
-
-.sd-lifecycle-actions {
-  min-height: 62px;
-  align-content: center;
-}
-
-.sd-ev-item,
-.sd-pack-row {
-  border-bottom-color: rgba(142, 82, 27, 0.38);
-}
-
-.sd-all-logs-btn {
-  background:
-    linear-gradient(180deg, rgba(255, 237, 177, 0.78), rgba(211, 150, 61, 0.5));
-  box-shadow: inset 0 1px rgba(255, 247, 203, 0.6);
 }
 
 @container sd-main-scroll (max-width: 1180px) {
@@ -3057,19 +2405,11 @@
   .sd-ctrl-row {
     grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr);
   }
-
-  .sd-lifecycle-actions {
-    justify-content: flex-start;
-  }
 }
 
 @container sd-main-scroll (min-width: 901px) {
   .sd-ctrl-row {
     grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr);
-  }
-
-  .sd-lifecycle-actions {
-    justify-content: flex-start;
   }
 }
 
@@ -3087,21 +2427,13 @@
 
 /* ── FE-PLAYERS-PROTOTYPE-IMAGE2-1 玩家管理页原型视觉重皮肤 ─────── */
 
-.sd-overview-invite-card .sd-players-invite-row {
-  margin-top: 0;
-}
-
 .sd-player-events-list {
   gap: 0;
-  margin-top: 8px;
   border: 2px solid rgba(132, 78, 31, 0.32);
   background: rgba(255, 242, 199, 0.3);
 }
 
 .sd-player-event {
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  min-height: 42px;
-  padding: 6px 10px;
   border: 0;
   border-bottom: 1px solid rgba(132, 78, 31, 0.2);
   border-radius: 0;
@@ -3120,10 +2452,6 @@
 .sd-player-event-time {
   color: var(--sd-players-muted);
   font-weight: 700;
-}
-
-@media (max-width: 640px) {
-  /* iOS Safari 对 font-size < 16px 的表单控件聚焦时会自动放大整页 */
 }
 
 /* ── 统一页面左上标题：复用导航按钮图标，并对齐玩家管理页尺寸 ── */
@@ -3191,8 +2519,6 @@
   background:
     linear-gradient(90deg, transparent, rgba(106, 61, 22, 0.72), transparent) center / 100% 1px no-repeat,
     repeating-linear-gradient(90deg, rgba(106, 61, 22, 0.42) 0 9px, transparent 9px 15px);
-  box-shadow: none;
-  filter: drop-shadow(0 1px rgba(255, 242, 190, 0.72));
 }
 
 .sd-server-page .sd-page-icon,
@@ -3210,7 +2536,6 @@
   object-fit: contain;
   flex-shrink: 0;
   image-rendering: pixelated;
-  filter: drop-shadow(2px 3px 0 rgba(75, 40, 14, 0.24));
 }
 
 .sd-server-page .sd-page-title,
@@ -3228,9 +2553,6 @@
   line-height: 1;
   font-weight: 900;
   letter-spacing: 0;
-  text-shadow:
-    1px 1px 0 rgba(255, 242, 190, 0.9),
-    2px 2px 0 rgba(88, 48, 16, 0.18);
 }
 
 .sd-server-page .sd-page-desc,
@@ -3306,12 +2628,6 @@
 /* ── FE-CARD-UNIFY-SAVES-1 非模组页小框统一为存档页羊皮纸样式 ───────────── */
 
 :root {
-  --sd-save-card-bg:
-    linear-gradient(165deg, rgba(255, 248, 225, 0.42), rgba(255, 248, 225, 0) 44%),
-    #f6e2b2;
-  --sd-save-card-bg-strong:
-    linear-gradient(165deg, rgba(255, 248, 225, 0.48), rgba(255, 248, 225, 0) 44%),
-    #f4dfae;
   --sd-save-card-border: #a06c2c;
   --sd-save-card-border-dark: #8a5a22;
   --sd-save-card-title: #3a250e;
@@ -3583,27 +2899,12 @@
   height: 22px;
 }
 
-.sd-metric-label,
-.sd-metric-hint {
-  color: var(--sd-save-card-muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.sd-metric-value {
-  color: var(--sd-save-card-title);
-  font-size: 17px;
-  line-height: 1.2;
-}
-
 .sd-players-invite-row,
 .sd-server-page .sd-invite-box,
 .sd-settings-port-edit-row,
 .sd-server-message-row,
 .sd-server-command-row {
-  background:
-    linear-gradient(165deg, rgba(255, 252, 240, 0.35), rgba(255, 252, 240, 0) 46%),
-    #e9c887;
+  background: var(--sd-card-bg);
   border-color: #c08c3e;
   box-shadow: inset 0 0 0 2px rgba(255, 244, 214, 0.3);
 }
@@ -3741,22 +3042,6 @@
 
 /* "其他备份" 区块只有列表卡、没有策略卡，需要占满整行，不能被两栏网格挤到左侧窄栏。 */
 
-@container sd-main-scroll (max-width: 620px) {
-
-  /* 移动端默认滚动条不可见，加惯性滚动 + 右侧渐变提示，让用户知道备份表格可以横滑 */
-}
-
-/* FE-UNIFIED-CARD-PARCHMENT-TONE-1: share the softened parchment tone across small cards. */
-
-:root {
-  --sd-save-card-bg:
-    linear-gradient(180deg, rgba(255, 245, 214, 0.96), rgba(248, 226, 174, 0.94)),
-    #f7e3ad;
-  --sd-save-card-bg-strong:
-    linear-gradient(180deg, rgba(255, 245, 214, 0.96), rgba(248, 226, 174, 0.94)),
-    #f7e3ad;
-}
-
 /* FE-SETTINGS-FILL-GAP-1: stack settings sections in two columns so lower panels fill open space. */
 
 /* FE-SETTINGS-PROTOTYPE-EXACT-2: restore the settings page to the accepted 09-settings card map. */
@@ -3788,63 +3073,11 @@
 
 /* FE-OVERVIEW-PROTOTYPE-EXACT-1 总览邀请码：窄列内收敛不溢出 */
 
-.sd-overview-invite-card .sd-players-invite-row {
-  grid-template-columns: minmax(84px, 0.5fr) minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
-.sd-overview-invite-card .sd-players-invite-code {
-  min-height: 40px;
-  padding: 0 12px;
-  font-size: clamp(15px, 1.7cqi, 20px);
-  letter-spacing: 1px;
-}
-
-.sd-overview-invite-card .sd-players-copy-btn,
-.sd-overview-invite-card .sd-players-refresh-btn {
-  min-width: 56px;
-}
-
 /* FE-OVERVIEW-PROTOTYPE-EXACT-1 统计卡单位行 + 模组状态卡对齐原型 */
 
 /* FE-OVERVIEW-METRIC-TYPE-UNIFY-1: soften the four overview metric cards into one type system. */
 
 /* FE-OVERVIEW-PROTOTYPE-EXACT-1 生命周期状态行 */
-
-.sd-lifecycle-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  align-content: flex-start;
-  flex-wrap: nowrap;
-  gap: 9px;
-}
-
-.sd-lifecycle-btns {
-  display: flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sd-lifecycle-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #7c5629;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.sd-lifecycle-status-val {
-  color: #2f7d1f;
-  font-weight: 900;
-}
-
-.sd-lifecycle-status-val-stopped {
-  color: #c02020;
-}
 
 /* FE-PLAYERS-PROTOTYPE-CURRENT-1 玩家页按 05-players 原型锁定卡片比例 */
 
@@ -3913,11 +3146,6 @@
   opacity: 0.45;
 }
 
-@container sd-main-scroll (max-width: 760px) {
-
-  /* 移动端默认滚动条不可见，加惯性滚动 + 右侧渐变提示，让用户知道表格可以横滑 */
-}
-
 /* FE-OVERVIEW-BANNER-SCENE-IMAGE2-1: use the image2 overview prototype scene as the runtime banner asset. */
 
 /* FE-DIAGNOSTICS-PROTOTYPE-V02-LAYOUT-1: match version-02 diagnostics card placement and ratios. */
@@ -3965,100 +3193,10 @@
 
 /* FE-MODS-PROTOTYPE-V02-LAYOUT-1 follow-up: reuse unified parchment card styling */
 
-@media (max-width: 640px) {
-
-  .sd-install-complete-card .sd-btn-green,
-  .sd-install-complete-card .sd-btn-tan {
-    align-self: stretch;
-  }
-
-  .sd-install-actions .sd-btn-green,
-  .sd-install-actions .sd-btn-tan,
-  .sd-install-form-actions .sd-btn-green,
-  .sd-install-form-actions .sd-btn-tan,
-  .sd-install-guard-actions .sd-btn-green,
-  .sd-install-guard-actions .sd-btn-tan {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-.sd-install-guard-mobile > .sd-btn-tan {
-  flex: 0 0 auto;
-}
-
-@media (max-width: 1180px) {
-
-  .sd-ov-section::before,
-  .sd-ctrl-div {
-    display: none;
-  }
-
-  .sd-lifecycle-actions,
-  .sd-invite-wrap {
-    justify-content: flex-start;
-  }
-}
-
-@container sd-main-scroll (max-width: 1180px) {
-
-  .sd-ov-section::before,
-  .sd-ctrl-div {
-    display: none;
-  }
-
-  .sd-lifecycle-actions,
-  .sd-invite-wrap {
-    justify-content: flex-start;
-  }
-}
-
-@container sd-main-scroll (max-width: 1180px) {
-
-  .sd-ov-section::before,
-  .sd-ctrl-div {
-    display: none;
-  }
-}
-
-@media (max-width: 900px) {
-
-  .sd-ov-section::before,
-  .sd-ctrl-div {
-    display: none;
-  }
-
-  .sd-lifecycle-actions,
-  .sd-invite-wrap {
-    justify-content: flex-start;
-  }
-}
-
-@container sd-main-scroll (max-width: 900px) {
-
-  .sd-ov-section::before,
-  .sd-ctrl-div {
-    display: none;
-  }
-
-  .sd-lifecycle-actions,
-  .sd-invite-wrap {
-    justify-content: flex-start;
-  }
-}
-
 .sd-invite-card-wrap {
   display: grid;
   gap: 7px;
   min-width: 0;
-}
-
-.sd-server-state-main .sd-dot {
-  width: 23px;
-  height: 23px;
-  box-shadow:
-    0 0 0 3px rgba(255, 246, 190, 0.72),
-    0 2px 0 rgba(78, 47, 15, 0.36);
 }
 
 .sd-server-page .sd-srv-hint {
@@ -4275,26 +3413,10 @@
   }
 }
 
-.sd-saves-active-actions .sd-btn-green {
-  min-width: 126px;
-}
-
-.sd-saves-page .sd-save-card-create .sd-btn-green {
-  position: relative;
-  z-index: 1;
-  align-self: center;
-  margin-right: 6px;
-  flex: 0 0 auto;
-}
-
 .sd-saves-upload-strip .sd-btn-green {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-}
-
-.sd-saves-page .sd-save-backup-policy .sd-btn-green {
-  margin-left: auto;
 }
 
 .sd-main-scroll > .sd-saves-page {
@@ -4334,33 +3456,15 @@
 }
 
 .sd-players-invite-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
-  padding: 6px 8px;
-  background: rgba(220, 200, 152, 0.25);
-  border: 1px solid #dcc898;
-  border-radius: 2px;
-  margin-top: 8px;
 }
 
 .sd-players-invite-label {
-  font-size: 12px;
-  color: #8a7060;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   flex-shrink: 0;
 }
 
 .sd-players-invite-code {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1f5f1e;
-  letter-spacing: 0.08em;
   flex: 1;
-  min-width: 0;
 }
 
 .sd-players-invite-empty,
@@ -4373,7 +3477,6 @@
 
 .sd-players-invite-error {
   font-size: 13px;
-  color: #b94040;
   flex: 1;
 }
 
@@ -4391,9 +3494,7 @@
   padding: 9px 10px;
   border: 2px solid rgba(132, 78, 31, 0.36);
   border-radius: 3px;
-  background:
-    linear-gradient(180deg, rgba(255, 242, 195, 0.76), rgba(241, 201, 124, 0.26)),
-    rgba(255, 241, 197, 0.58);
+  background: var(--sd-card-bg);
   box-shadow:
     inset 0 0 0 1px rgba(255, 249, 214, 0.74),
     0 1px 0 rgba(255, 245, 198, 0.62);
@@ -4529,10 +3630,6 @@
   --sd-main-viewport-inset-left: clamp(14px, 1.1vw, 18px);
 }
 
-.sd-players-actions-section > .sd-srv-hint {
-  display: none;
-}
-
 .sd-main:has(.sd-mods-page) {
   padding: clamp(16px, 1.5vw, 24px) clamp(18px, 1.7vw, 28px);
 }
@@ -4628,24 +3725,6 @@
   --sd-main-viewport-inset-right: clamp(14px, 1.1vw, 18px);
   --sd-main-viewport-inset-bottom: clamp(24px, 3.2vw, 38px);
   --sd-main-viewport-inset-left: clamp(14px, 1.1vw, 18px);
-}
-
-@media (max-width: 640px) {
-
-  .sd-settings-port-edit-row .sd-btn-green,
-  .sd-settings-port-edit-row .sd-btn-tan {
-    flex: 1 1 calc(50% - 3px);
-    justify-content: center;
-  }
-}
-
-@media (max-width: 640px) {
-
-  .sd-settings-port-edit-row .sd-btn-green,
-  .sd-settings-port-edit-row .sd-btn-tan {
-    flex: 1 1 calc(50% - 3px);
-    justify-content: center;
-  }
 }
 
 .sd-settings-security-item .sd-dot {

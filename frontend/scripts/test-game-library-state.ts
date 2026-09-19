@@ -61,7 +61,7 @@ function item(
     } as InstanceState,
     stateLoading: false,
     stateError: null,
-    connection: { ip: '203.0.113.24', checkedAt: '2026-08-31T01:00:00Z', cached: false, gamePort: 24642, protocol: 'udp' },
+    connection: { gamePort: 24642, protocol: 'udp' },
     connectionLoading: false,
     connectionError: null,
     hasActiveInstallJob,

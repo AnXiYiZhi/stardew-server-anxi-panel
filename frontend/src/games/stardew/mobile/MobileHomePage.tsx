@@ -65,9 +65,9 @@ function inviteInfo(
 function hostInfo(dashboardData: StardewDashboardData): { text: string; copyable: boolean } {
   const address = formatStardewAddress(dashboardData.publicIP?.ip, dashboardData.publicIP?.gamePort)
   if (address) return { text: address, copyable: true }
-  if (dashboardData.publicIPRefreshing) return { text: '检测中…', copyable: false }
-  if (dashboardData.publicIPError) return { text: '检测失败', copyable: false }
-  return { text: '未检测', copyable: false }
+  if (dashboardData.publicIPRefreshing) return { text: '读取中…', copyable: false }
+  if (dashboardData.publicIPError) return { text: '读取失败', copyable: false }
+  return { text: '未读取', copyable: false }
 }
 
 // 和 ServerSummaryCard.tsx 的 SEASON_ZH/saveDate 同构，展示游戏内日期而不是面板/SMAPI 版本号。

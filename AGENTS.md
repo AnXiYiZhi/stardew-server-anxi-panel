@@ -11,6 +11,8 @@
 
 大型长期文档、接手记录和错题本先用 `rg -n` 定位任务章节，再按精确行段读取；单次默认不超过 80 行或 12000 字符，长行文档还须限制字符总量。输出被截断时只补读缺失范围，不将截断内容视为已读，也不再次批量整读。
 
+长期文档读取不与源码或其它长期文档合并输出；错题本检索默认 `rg -n -m 8`，定位到章节后只读该短段，避免宽模式命中长行耗尽输出预算。
+
 每次工作开始前先阅读 `docs/01-project-overview.md` 和 `.agents/error-notebook.md`，再按任务范围阅读：
 
 - 后端任务：`docs/02-backend.md` 和 `docs/backend-handoff/` 下最新的后端接手文档。
@@ -66,6 +68,8 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 
 ## Shell、工具与文件编码约定
 
+- 停止关联进程前先快照精确 PID、可执行路径与归属；父进程退出可能使子进程在检查后自行退出，允许已确认退出的目标，但不能跳过对仍存活进程的归属检查。强制停止后用有界 `WaitForExit` 确认，不立即假定整个进程组已消失，也不对已退出的 Process 对象继续读取延迟获取的 Path。
+
 ### 生产 SSH
 
 - Windows 当前用户已持久安装 `Posh-SSH 3.2.7`，模块路径为 `C:\Users\anxi\Documents\PowerShell\Modules\Posh-SSH\3.2.7`。连接飞牛服务器时优先在 PowerShell 7 中使用 `New-SSHSession`、`Invoke-SSHCommand` 和 `Remove-SSHSession`，不要再临时安装 Paramiko、Plink 或其它 SSH 客户端。
@@ -86,7 +90,7 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - PowerShell 通过 `ConvertFrom-Json` 或 `Invoke-RestMethod` 读取 ISO 8601 时间时，不得直接与原始字符串比较；先确认值类型，统一转为 UTC 并以不变区域格式规范化，再做精确断言。
 - PowerShell 的语句形式 `foreach (...) { ... }`、`if (...) { ... }` 不能直接接管道；需要继续传给 `Format-Table`、`ConvertTo-Json` 等命令时，先用 `@(...)` 收集输出，或改用 `ForEach-Object`。工具调用中的单行批处理默认使用 `ForEach-Object`，不要写语句式 `foreach` 后再接管道。
 - Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。Windows 当前 PATH 的裸 `bash`/`Get-Command bash` 可能命中没有发行版的 WSL relay，必须从 `Get-Command git` 的真实安装根反解并验证 `bin\bash.exe --version`，或使用已验证的 Linux 容器；不得先执行 PATH `bash` 试错。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
-- Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。CI 使用 workflow 明确配置的 Python。
+- Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。使用 Pillow 等额外依赖前分别验证模块可用性，优先使用工作区 bundled runtime；读取/写入仓库 UTF-8 文本必须显式指定 `encoding='utf-8'`，不能仅设置 stdout 编码。CI 使用 workflow 明确配置的 Python。
 - Docker 操作前先运行 `docker info`；Docker Desktop 未启动时先启动并轮询就绪。临时资源必须使用任务专属前缀/label，创建前查重，清理前核对归属；禁止 `docker system prune`、`docker volume prune` 或模糊批量删除。`golang:*-alpine` 中执行 Go 命令使用 `sh -c`，不要用可能重置 PATH 的 `sh -lc`。
 - 正式候选预取上一正式版和固定 fixture 镜像时，每个精确引用必须使用最多三次的有界 `docker pull`，单次 GHCR/Docker Hub token、TLS 或 EOF 失败不得直接判成镜像缺失；成功后必须 `docker image inspect` 再打包进入隔离 DinD。重试不关闭 TLS/认证、不改变引用，也不得重放 push、tag 或 workflow dispatch。
 - 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前同时检查 `Get-NetTCPConnection -State Listen` 和 `netsh interface ipv4 show excludedportrange protocol=tcp`，默认端口也必须不在排除范围内；清理后再次检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留。清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。

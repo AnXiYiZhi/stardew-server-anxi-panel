@@ -1,3 +1,32 @@
+# v0.7.2 发布候选（2026-09-19，准备中）
+
+- 本版范围：发布当前 main 已完成的直连端口独立读取、紧凑登录/初始化卡片、总览布局与空态插画、共享浅奶油纸色、服务器/玩家响应式修复；清理失效素材、旧独立安装页与无调用者的前后端代码；构建依赖分类、锁文件确定性安装、Docker 上下文排除及公开文档链接修复。相关代码、测试、素材、长期文档和执行规则一同提交；output、缓存、运行数据和临时审计脚本保持忽略。
+- 上一正式版由 GitHub Releases 确认为 v0.7.1；下一补丁由 main push 自动生成 v0.7.2。没有数据库迁移、部署格式、长期数据结构、运行栈 manifest 或 Control DLL 修改；只要求 v0.7.1 → 候选代表升级。正式候选须固定完整 SHA、版本和 UTC build date，并从干净且与 origin/main 相同的 main 构建。
+- 补齐 scripts/tests/release_direct_connect.py，由已有真实世界创建夹具在全新候选及 Web 升级后的两个世界分别执行；使用隔离 DinD、任务专属世界/普通用户，恢复原始 .env 字节并删除测试用户，随后由既有世界删除链确认 volume 与目录回收。
+
+| 受影响链路 | 本版专项与关键边界 | 必须取得的证据 |
+| --- | --- | --- |
+| 直连配置 | 停服读取、缺省 24642、自定义/最大/非法端口、重复刷新、多个世界隔离、匿名拒绝、普通用户只读、方法/不存在实例、恢复原配置 | Go handler/driver 回归；全新与升级后的真实 HTTP/Docker 专项；已有桌面/手机复制与同步浏览器验证 |
+| 认证与界面 | 初始化/登录/注销、普通用户权限、紧凑/全屏状态、共享纸色、总览空态/错误/等待、服务器/玩家容器断点、移动导航和静态资源完整性 | 全部前端状态回归及 production build；既有 52 组浏览器/5 个移动导航证据；候选真实认证、用户/实例状态和静态 HTTP |
+| 清理与构建 | 活动 driver、事务/恢复、安装/存档/Mod/备份/用户契约不退化；确定性 npm ci、嵌入 DLL/manifest 和前端素材可用 | 后端全包 test/vet/build、脚本/ShellCheck、兼容清单、updater/Docker integration、Docker 镜像构建 |
+| 新装及升级 | 全新 health/version/未初始化/重启；v0.7.1 Web check/dry-run/管理员 apply/预期断线重连/终态；同一候选 unhealthy 回滚；SQLite/初始化/长期数据/非目标资源/重启保持 | 不可变候选真实 E2E，不以直接 updater 或 compose 替代 |
+| 条件长链 | Junimo 源码有清理、公开文档变化，预期选择 SMAPI 真实下载/Junimo integration/网站构建；manifest 未变预期跳过远程制品复核 | 仅以 run-release-gates.sh 对上一 tag 的实际路径判定为准 |
+| 正式交付 | annotated tag 仍等于 origin/main；精确 digest 提升；三仓版本/latest 六引用与 OCI 一致；正式 health/version、GitHub Release 和部署资产 | 自动 tag/正式 workflow 与发布后独立核验；最终回填 workflow、耗时、故障与清理 |
+
+- 既有本地验证：前端全部 27 项脚本、生产构建、52 组浏览器与 5 个移动导航；后端 Linux tmpfs 1,924 pass/8 skip、vet/build/tidy；Docker 24 项 API 冒烟和官网构建。磁盘临时目录的历史 15 秒等待波动保留原断言，本次不可变候选必须完整通过，不能用本地证据代替。
+- 当前阶段：范围确认与专项补齐；尚未创建正式 tag 或提升镜像。下方旧“未发布”是本版纳入工作的历史过程，完成后以本节正式证据为准。
+
+# 2026-09-19 项目深度减负（本地验证完成，未发布）
+
+- 续查仅处理本地旧 Go 可执行缓存：4 份共 71,020,544 B 经解压 SHA-256 验证后归档为 21,999,800 B；保留最新缓存和开发依赖，Windows build 通过。`backend/.codex-test/phase2-candidate.tar` 的 0.3.14-rc/revision label 已识别，但不能代替正式候选证明；二次 gzip 仅省 0.46%，保留原 tar 并清除探针。此次 Dockerfile、源码、镜像和发布输入未改，未重建或发布镜像；原容器/卷和存档导入现场保留。
+- 用户追加授权后的 Git repack 保留所有 78,947 对象及 refs/reflog/index，.git 减少 854,438,129 B；两次完整 fsck 均通过。这是本地 Git 存储收益，不计入源码、构建镜像或 Docker 层收益，也没有触发 main 推送/候选发布。
+- frontend builder 改用 npm ci --include=dev，构建工具归开发依赖且锁解析不变；.dockerignore 排除嵌套测试现场、node_modules、Python/Vite/官网缓存与精确 C# bin/obj，保留嵌入 DLL/manifest、源码、锁文件和实际测试输入。
+- 实际 COPY backend/frontend/browser-extensions 输入：1,294 文件、263,512,784 B → 762 文件、22,079,473 B，减少 241,433,311 B（91.6%）。这是三个 COPY 源的完整输入，不能把 BuildKit 增量传输日志或共享层当作同一口径。
+- 相同 dev 版本、commit=3236500ec6d5112f5b8cef15347e4aaea3752308、build date=2026-09-18T13:51:35Z 下，首批前后镜像均 59,417,588 B；追加 Go 清理后的最终镜像为 59,417,134 B，仅减 454 B。最终运行 manifest 为 sha256:822957de5f2fa66845909e8bfe19b6e7fad418c28e6b75962534be1d613f5756。这是脏工作区本地审计构建，不是正式候选。
+- 最终镜像 24 项独立数据卷 API 冒烟通过，覆盖 health/version、初始化/重复请求、身份与权限、静态资源、完整用户列表和 session 跨重启。Linux tmpfs 全量 1,924 pass/8 skip，vet/build/tidy 通过；原 Docker 磁盘临时目录下的历史等待超时有完整失败记录，不宣称已修复。前端状态/production 和官网 docs:build 通过。
+- Docker/WSL 恢复后原三个运行容器全部健康，原六容器和 23 卷保留。任务一个容器、三个卷、五个镜像标签已回收；八条独占上下文缓存按精确 ID 与实时 shared/reclaimable 状态清理。默认 builder 的可复用/共享记录保留，Docker 逻辑 df、宿主可用空间及 VHDX 不混算净收益。
+- 本机证据在 output/project-load-20260918：recovery-baseline.zip 保存源码与原始差异，compact-evidence.tar.xz 保存完整元数据/长日志，均有逐项 SHA-256 清单；任务脚本归档至 scripts 子目录。正式发布仍需原不可变候选、真实 Web 升级/回滚及所有适用门禁，本轮未提交/推送/tag/发布。
+
 # v0.7.1 正式发布验收（2026-09-17，released）
 
 - 候选 35234039329 的代码门禁、世界管理、静态 HTTP 和三级资源专项通过，安装夹具传入 Alpine 3.20 作为 Junimo 版本而被精确版本门禁拒绝（HTTP 500）。夹具改从 install-options 读取唯一 recommended tag，在隔离 daemon 为占位 server 镜像使用该 tag，并保留实际 SteamCMD 失败/重试与持久化断言；本机同代码镜像在独立 DinD 的完整 Python 专项已通过。独立 Compatibility 35234039188 成功；修复测试输入后重新建立候选，不复用失败证明。

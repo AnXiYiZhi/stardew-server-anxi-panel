@@ -1,3 +1,32 @@
+## v0.7.2 发布准备（2026-09-19）
+
+- 纳入当前已完成的直连接口/前端读取、认证卡片、总览/共享纸色/响应式修复、素材与孤立实现清理、确定性构建及相关文档。详细范围、文件与既有验证见下方工作记录，完整专项矩阵见 docs/09-image-build.md 顶部。
+- 发布补齐：scripts/tests/release_direct_connect.py 接入 test_release_candidate_upgrade.sh 的真实世界夹具，在全新与 v0.7.1 Web 升级后验证停服端口读取、配置刷新、非法端口、世界隔离、匿名与普通用户权限及资源恢复；原有全量回归、升级/回滚和数据保持门禁继续执行。
+- 状态：准备提交 main 并由自动流程生成下一补丁；发布后回填唯一候选、tag、正式提升、三仓 digest 和清理证据。没有新增迁移或运行栈版本变化，不增加更老版本升级链。下方未发布记录由本版统一收口。
+
+## 2026-09-19：深度减负审计收口（本地完成，未发布）
+
+- 续查交接：只归档 4 份无进程使用的旧 `.gocache/*/*-d/panel.exe`，精确路径在 `output/project-load-20260919-followup/compression-manifest.json`；71,020,544 B 原文件由 21,999,800 B 可校验 archive 替代，最新一份与编译包 cache 保留。`compact.py verify` 核验恢复字节；按需只恢复 manifest 中不存在的精确路径。清理后 Windows cmd/panel build 通过，未修改接口/业务源码。candidate.tar 压缩收益仅 0.46%，保留原格式；历史存档导入现场继续保护，后续不要整目录删除。
+- Git 后续：用户追加授权后仅重新打包全部对象，节省 854,438,129 B；78,947 个对象以及 refs/reflog/index/config 保持，两次完整 fsck 通过。不可达对象仍在 cruft pack，禁止将它们误认为本轮已批准过期清除；恢复能力不依赖删除 reflog。证据与并发错题本记录的保全结果均在同一 followup 目录。
+- 修改：9 个内部孤立 Go 实现及旧 pull 正则/Hub client 清理，涉及 Junimo control_runtime_gate/driver/installer/nexus 和 web audit/install_handlers/lifecycle_handlers；净减 7,201 B。活动路由、权限/恢复事务、迁移、Control DLL、多游戏接口与导出存档辅助函数保留。
+- 验证：最终 Linux tmpfs 全量 1,924 pass/8 skip，vet/build/tidy 通过；Docker 镜像与 24 项初始化/权限/持久化重启 API 冒烟通过。磁盘临时目录的安装错误日志测试仍偶发超时，保留失败证据与原断言，后续见 docs/07-later-optimizations.md。Control 源码/依赖未改，本轮未重编译。
+- 运行恢复：原 stardew-2-server-1、anxi-install-test-20260905、anxi-panel 全部健康，原六容器/23 卷保全；任务容器/卷/镜像和八条专属上下文缓存已清理。历史 save-import 恢复现场、candidate.tar、data/授权及可复用缓存保留。
+- 接手先读 docs/project-load-audit-2026-09-18.md；完整基线、任务差异、摘要、归档与脚本在 output/project-load-20260918。代码已有工作的差异单独保留，本轮未提交、推送或发布。
+
+## 2026-09-18：全局冗余代码清理（本地完成，未发布）
+
+- 收尾：任务 Go 容器已退出并自动清理；`anxi-cleanup-20260918-gomod/gocache` 经精确归属与无引用检查后删除，未操作业务数据和生产资源。
+- 改动：删除 25 个全仓无调用者的 Go 函数及一个失效计划类型，覆盖 `stardew_junimo` 的旧安装/新建/导入辅助链、Mod 与运行栈包装、`storage/auth.go/jobs.go` 和 `web/lifecycle_handlers.go/pending_uploads.go`。按 AST 函数边界删除并跟进孤立辅助函数；没有改动活动事务、HTTP 接口、迁移、运行栈清单或部署资产。
+- 验证：Linux 隔离容器全包测试中 1922 项通过、8 项条件跳过。安装失败持久化的 guard 子例首次超过既有 15 秒等待，完整父测试独立连续重跑 3 次通过；所有其他包/用例维持原通过证据。vet/build 通过，完整日志保存在系统临时目录 `anxi-cleanup-20260918`。
+- 下一步：本地未发布，后续候选按原发布门禁运行。避免恢复无人使用的旧函数；增加兼容分支前先查当前 driver 与事务实现。此次前端 API 包装删除不代表服务端兼容端点退役。
+
+## 2026-09-18：直连地址独立读取世界端口（本地完成，未发布）
+
+- 改动与接口：`GET /api/instances/:id/direct-connect` 登录可读，仅调用实例 driver 的 `DirectConnectConfig`，返回 `{gamePort, protocol}`。世界配置读取与公网出口检测解耦，停服不影响读取，旧 `/public-ip` 契约保留。
+- 文件：`backend/internal/web/direct_connect.go`、`direct_connect_test.go`、`instance_handlers.go`，以及 registry capability 注释。没有在 Web 层新增 Stardew 配置规则。
+- 验证：连接接口和驱动端口定向回归、web/registry vet、后端 build 通过；模拟外部服务 503 时 direct-connect 请求计数为零。覆盖鉴权、方法、实例不存在、24642 默认、24643/24644 刷新、多实例隔离和非法配置。
+- 接手：本地未发布；下一候选在真实 Docker 停服世界及升级后验证地址/复制/同步。访问主机来自浏览器 hostname，游戏端口来自 driver；不使用浏览器 HTTP 端口。
+
 ## v0.7.1 全量工作区发布（2026-09-17，已发布）
 
 - 首次候选 35232312967 因 DinD 缺少 Python 停止，后续修复两平台依赖和夹具 driverId/精确安装版本契约；最终以 35236076995 完成全量候选验收，旧失败候选未提升，门禁断言保持。详情见发布文档。

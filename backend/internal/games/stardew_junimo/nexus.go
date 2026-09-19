@@ -46,7 +46,7 @@ var nexusArchiveHTTPClient = netdns.NewClient(nexusArchiveTimeout)
 
 // ErrNexusAPIKeyMissing is returned when a key-gated Nexus operation is
 // requested but no Nexus API key is configured in panel settings. Keyword
-// search does not require a key (see nexusSearchByKeyword).
+// search does not require a key (see nexusSearchByKeywordPage).
 var ErrNexusAPIKeyMissing = errors.New("未配置 Nexus Mods API Key")
 
 // ErrInvalidNexusQuery is returned when a Nexus install/download request is missing a valid mod ID.
@@ -436,14 +436,6 @@ type nexusGraphQLResponse struct {
 type nexusGraphQLModsPage struct {
 	Results []NexusModSearchResult
 	Total   int
-}
-
-func nexusSearchByKeyword(ctx context.Context, apiKey, query string) ([]NexusModSearchResult, error) {
-	page, err := nexusSearchByKeywordPage(ctx, apiKey, query, nexusDefaultPageSize, 0)
-	if err != nil {
-		return nil, err
-	}
-	return page.Results, nil
 }
 
 func nexusSearchByKeywordPage(ctx context.Context, apiKey, query string, count, offset int) (nexusGraphQLModsPage, error) {

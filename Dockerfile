@@ -5,7 +5,7 @@ FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --frozen-lockfile 2>/dev/null || npm install
+RUN npm ci --include=dev
 COPY frontend/ ./
 COPY backend/internal/games/installerrors/catalog.json /app/backend/internal/games/installerrors/catalog.json
 RUN npm run build

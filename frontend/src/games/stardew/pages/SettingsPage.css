@@ -1,22 +1,8 @@
 /* SettingsPage page-only styles. Loaded with the lazy page chunk. */
 
-
 @media (max-width: 640px) {
   .sd-settings-section-toolbar {
     flex-wrap: wrap;
-  }
-
-  .sd-settings-port-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sd-settings-port-edit-row {
-    align-items: stretch;
-  }
-
-  .sd-settings-port-input {
-    width: 100%;
-    flex: 1 1 100%;
   }
 
   .sd-settings-user-actions {
@@ -26,13 +12,10 @@
 }
 
 .sd-settings-page {
-  display: flex;
   flex-direction: column;
-  gap: var(--sd-section-gap);
 }
 
 .sd-settings-section {
-  background: rgba(240, 224, 192, 0.55);
   border: 1px solid rgba(180, 140, 80, 0.35);
   border-radius: 2px;
   padding: 10px 12px;
@@ -53,38 +36,15 @@
 .sd-settings-section-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
   margin-bottom: 8px;
 }
 
 .sd-settings-info-grid {
-  display: flex;
   flex-direction: column;
-  gap: 5px;
 }
 
 .sd-settings-info-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 13px;
-}
-
-.sd-settings-port-grid {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.2fr);
-  gap: 8px;
-}
-
-.sd-settings-port-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  padding: 8px 10px;
-  background: rgba(255, 248, 220, 0.48);
-  border: 1px solid rgba(180, 140, 80, 0.22);
-  border-radius: 2px;
 }
 
 .sd-settings-port-label {
@@ -93,27 +53,12 @@
   color: #7a5c30;
 }
 
-.sd-settings-port-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: #2c1a0a;
-}
-
 .sd-settings-port-desc {
-  font-size: 12px;
   color: #6b4a22;
   line-height: 1.4;
 }
 
-.sd-settings-port-edit-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
 .sd-settings-port-input {
-  width: 120px;
   flex: 0 0 120px;
 }
 
@@ -126,13 +71,6 @@
 }
 
 @media (max-width: 640px) {
-  .sd-settings-port-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sd-settings-port-edit-row {
-    align-items: stretch;
-  }
 
   .sd-settings-port-input {
     width: 100%;
@@ -150,10 +88,6 @@
 .sd-settings-value {
   font-size: 13px;
   color: #2c1a0a;
-}
-
-.sd-settings-value-bold {
-  font-weight: 700;
 }
 
 .sd-settings-mono {
@@ -208,25 +142,15 @@
 }
 
 .sd-settings-create-form {
-  background: rgba(255, 245, 210, 0.8);
-  border: 1px solid rgba(180, 140, 80, 0.4);
-  border-radius: 2px;
-  padding: 8px 10px;
   margin-bottom: 8px;
 }
 
 .sd-settings-form-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #4a2c0a;
   margin-bottom: 7px;
 }
 
 .sd-settings-form-row {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 5px;
 }
 
 .sd-settings-form-label {
@@ -243,20 +167,11 @@
 }
 
 .sd-settings-user-list {
-  display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .sd-settings-user-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
-  padding: 7px 10px;
-  background: rgba(255, 248, 220, 0.6);
-  border: 1px solid rgba(180, 140, 80, 0.25);
-  border-radius: 2px;
   font-size: 13px;
 }
 
@@ -267,42 +182,27 @@
 .sd-settings-user-name {
   font-weight: 700;
   color: #2c1a0a;
-  min-width: 80px;
 }
 
 .sd-settings-user-login {
   font-size: 11px;
-  color: #8a7060;
   flex: 1;
 }
 
 .sd-settings-user-actions {
   display: flex;
-  gap: 4px;
   flex-shrink: 0;
 }
 
 .sd-settings-audit-table {
-  border: 1px solid rgba(180, 140, 80, 0.25);
-  border-radius: 2px;
-  overflow: hidden;
   margin-bottom: 6px;
 }
 
 .sd-settings-audit-head,
 .sd-settings-audit-row {
   display: grid;
-  grid-template-columns: 140px 80px 120px 1fr 100px;
   gap: 0;
   font-size: 12px;
-}
-
-.sd-settings-audit-head {
-  background: rgba(180, 140, 80, 0.18);
-  font-weight: 700;
-  color: #5a3c1d;
-  padding: 5px 8px;
-  border-bottom: 1px solid rgba(180, 140, 80, 0.25);
 }
 
 .sd-settings-audit-head > span {
@@ -310,17 +210,11 @@
 }
 
 .sd-settings-audit-row {
-  padding: 5px 8px;
   color: #2c1a0a;
-  border-bottom: 1px solid rgba(180, 140, 80, 0.12);
 }
 
 .sd-settings-audit-row:last-child {
   border-bottom: none;
-}
-
-.sd-settings-audit-row:hover {
-  background: rgba(240, 224, 192, 0.5);
 }
 
 .sd-settings-audit-row > span {
@@ -334,24 +228,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: flex-end;
 }
 
 .sd-settings-security-list {
-  display: flex;
   flex-direction: column;
-  gap: 7px;
-}
-
-.sd-settings-security-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
 }
 
 .sd-settings-security-item-title {
-  font-size: 13px;
-  font-weight: 700;
   color: #2c1a0a;
   margin-bottom: 2px;
 }
@@ -362,46 +245,24 @@
   line-height: 1.5;
 }
 
-.sd-settings-code {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 11px;
-  background: rgba(100, 60, 20, 0.1);
-  padding: 0 3px;
-  border-radius: 1px;
-  color: #4a2c0a;
-}
-
 .sd-settings-pending-badge {
   font-size: 11px;
-  font-weight: 400;
-  color: #8a6030;
-  background: rgba(200, 168, 100, 0.2);
   border: 1px solid rgba(180, 140, 80, 0.3);
   border-radius: 2px;
   padding: 1px 5px;
 }
 
 .sd-settings-pending-list {
-  display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .sd-settings-pending-item {
-  display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 8px;
-  background: rgba(200, 190, 170, 0.3);
-  border: 1px dashed rgba(180, 140, 80, 0.3);
-  border-radius: 2px;
-  opacity: 0.7;
 }
 
 .sd-settings-pending-item-left {
-  display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .sd-settings-pending-item-label {
@@ -413,10 +274,6 @@
 .sd-settings-pending-item-desc {
   font-size: 11px;
   color: #7a5c30;
-}
-
-.sd-settings-page {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .sd-settings-page .sd-page-header,
@@ -432,17 +289,11 @@
 .sd-settings-page {
   --sd-settings-ink: #3c2415;
   --sd-settings-muted: #76542d;
-  --sd-settings-line: rgba(166, 111, 45, 0.42);
   --sd-settings-border: #b8782f;
   --sd-settings-border-dark: #7d451c;
-  --sd-settings-paper: #f8e3aa;
-  --sd-settings-paper-light: #fff1c6;
-  --sd-settings-paper-deep: #eac27a;
   --sd-settings-shadow: rgba(77, 40, 14, 0.24);
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px;
-  padding: clamp(12px, 1.45vw, 22px);
   color: var(--sd-settings-ink);
 }
 
@@ -451,21 +302,16 @@
   align-items: center;
   gap: 12px;
   border: 0;
-  padding: 0 2px 2px;
   background: transparent;
   box-shadow: none;
 }
 
 .sd-settings-page .sd-page-icon {
-  width: 42px;
-  height: 42px;
   margin: 0;
   filter: drop-shadow(0 2px 0 rgba(82, 43, 17, 0.28));
 }
 
 .sd-settings-page .sd-page-title {
-  font-size: clamp(24px, 2.6vw, 34px);
-  line-height: 1;
   font-weight: 900;
   letter-spacing: 0;
   color: #4b2a0f;
@@ -474,53 +320,9 @@
     0 2px 0 rgba(82, 43, 17, 0.18);
 }
 
-.sd-settings-page .sd-page-desc {
-  display: none;
-}
-
-.sd-settings-top-grid,
-.sd-settings-main-grid,
-.sd-settings-bottom-grid {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-
-.sd-settings-top-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.sd-settings-main-grid {
-  grid-template-columns: minmax(360px, 1.03fr) minmax(360px, 0.97fr);
-  align-items: start;
-}
-
-.sd-settings-bottom-grid {
-  grid-template-columns: minmax(360px, 1.05fr) minmax(340px, 0.95fr);
-  align-items: start;
-}
-
-.sd-settings-bottom-stack {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-
 .sd-settings-page .sd-settings-section {
   position: relative;
   min-width: 0;
-  border: 2px solid var(--sd-settings-border);
-  border-radius: 4px;
-  padding: 12px 14px 14px;
-  background:
-    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.32) 0 1px, transparent 2px),
-    radial-gradient(circle at 76% 84%, rgba(112, 72, 27, 0.1) 0 1px, transparent 2px),
-    linear-gradient(180deg, rgba(255, 246, 209, 0.96), rgba(244, 212, 143, 0.92));
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 247, 201, 0.72),
-    inset 0 0 18px rgba(153, 89, 28, 0.14),
-    0 2px 0 var(--sd-settings-border-dark),
-    0 7px 14px var(--sd-settings-shadow);
   overflow: hidden;
 }
 
@@ -554,14 +356,12 @@
 }
 
 .sd-settings-page .sd-settings-section-title {
-  min-height: 32px;
   margin: 0 0 10px;
   padding: 0 0 8px;
   display: flex;
   align-items: center;
   gap: 9px;
   color: #4b2a0f;
-  font-size: 18px;
   font-weight: 900;
   line-height: 1.1;
   border-bottom: 1px solid rgba(139, 82, 28, 0.26);
@@ -570,8 +370,6 @@
 
 .sd-settings-page .sd-settings-section-title::before {
   content: "";
-  width: 26px;
-  height: 26px;
   flex: 0 0 26px;
   background-repeat: no-repeat;
   background-position: center;
@@ -625,13 +423,8 @@
 }
 
 .sd-settings-info-row {
-  min-height: 36px;
   display: grid;
-  grid-template-columns: minmax(78px, 0.42fr) minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
-  padding: 6px 4px;
-  border-bottom: 1px solid rgba(139, 82, 28, 0.14);
 }
 
 .sd-settings-info-row:last-child {
@@ -649,16 +442,12 @@
 
 .sd-settings-security-summary-list {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 16px;
 }
 
 .sd-settings-security-summary-item {
   min-width: 0;
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) max-content;
   align-items: center;
-  gap: 7px;
   color: var(--sd-settings-ink);
   font-size: 13px;
 }
@@ -738,9 +527,7 @@
 }
 
 .sd-settings-user-list::before {
-  content: "用户名\a0\a0\a0\a0\a0\a0\a0\a0\a0 角色\a0\a0 状态\a0\a0 最后登录\a0\a0\a0\a0\a0\a0\a0 操作";
   display: block;
-  padding: 7px 10px;
   border-bottom: 1px solid rgba(139, 82, 28, 0.32);
   background: rgba(209, 165, 89, 0.28);
   color: #5b3718;
@@ -751,15 +538,9 @@
 
 .sd-settings-user-row {
   display: grid;
-  grid-template-columns: minmax(58px, 0.8fr) 56px 46px minmax(76px, 0.92fr) minmax(104px, 0.9fr);
   align-items: center;
-  gap: 6px;
-  min-height: 42px;
-  padding: 7px 8px;
   border: 0;
   border-bottom: 1px solid rgba(139, 82, 28, 0.16);
-  border-radius: 0;
-  background: rgba(255, 247, 218, 0.38);
 }
 
 .sd-settings-user-row:last-child {
@@ -801,26 +582,18 @@
   grid-column: 5;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 5px;
 }
 
 .sd-settings-audit-table {
-  border: 1px solid rgba(139, 82, 28, 0.3);
-  border-radius: 3px;
-  background: rgba(255, 244, 204, 0.34);
   overflow: hidden;
 }
 
 .sd-settings-audit-head,
 .sd-settings-audit-row {
-  grid-template-columns: minmax(108px, 1.05fr) minmax(54px, 0.58fr) minmax(72px, 0.8fr) minmax(70px, 0.86fr) minmax(68px, 0.7fr);
   align-items: center;
-  column-gap: 6px;
 }
 
 .sd-settings-audit-head {
-  min-height: 36px;
-  padding: 7px 10px;
   background: rgba(209, 165, 89, 0.28);
   border-bottom: 1px solid rgba(139, 82, 28, 0.32);
   color: #5b3718;
@@ -828,10 +601,7 @@
 }
 
 .sd-settings-audit-row {
-  min-height: 37px;
-  padding: 6px 10px;
   border-bottom: 1px solid rgba(139, 82, 28, 0.14);
-  background: rgba(255, 247, 218, 0.28);
 }
 
 .sd-settings-audit-row:hover {
@@ -839,30 +609,7 @@
 }
 
 .sd-settings-audit-pagination {
-  margin-top: 8px;
   flex-wrap: wrap;
-}
-
-.sd-settings-port-grid {
-  grid-template-columns: minmax(150px, 0.78fr) minmax(260px, 1.22fr);
-  gap: 10px;
-}
-
-.sd-settings-port-card {
-  padding: 9px 10px;
-  border: 1px solid rgba(139, 82, 28, 0.22);
-  border-radius: 3px;
-  background: rgba(255, 246, 213, 0.36);
-}
-
-.sd-settings-port-value {
-  color: #3b230d;
-  font-size: 22px;
-  line-height: 1;
-}
-
-.sd-settings-port-edit-row {
-  gap: 7px;
 }
 
 .sd-settings-port-input {
@@ -894,15 +641,10 @@
 
 .sd-settings-security-list {
   display: grid;
-  gap: 9px;
 }
 
 .sd-settings-security-item {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
-  gap: 10px;
-  padding: 0 2px 9px;
-  border-bottom: 1px solid rgba(139, 82, 28, 0.14);
 }
 
 .sd-settings-security-item:last-child {
@@ -923,19 +665,14 @@
   display: grid;
   gap: 0;
   border: 1px solid rgba(139, 82, 28, 0.28);
-  border-radius: 3px;
   overflow: hidden;
 }
 
 .sd-settings-pending-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 10px;
-  padding: 8px 10px;
   border: 0;
   border-bottom: 1px solid rgba(139, 82, 28, 0.14);
-  border-radius: 0;
-  background: rgba(255, 247, 218, 0.32);
   opacity: 1;
 }
 
@@ -951,11 +688,6 @@
 }
 
 @container sd-main-scroll (max-width: 920px) {
-  .sd-settings-top-grid,
-  .sd-settings-main-grid,
-  .sd-settings-bottom-grid {
-    grid-template-columns: 1fr;
-  }
 
   .sd-settings-users-section .sd-settings-section-toolbar,
   .sd-settings-audit-section .sd-settings-section-toolbar {
@@ -1045,16 +777,13 @@
 
 .sd-settings-content-grid {
   display: grid;
-  grid-template-columns: minmax(340px, 0.98fr) minmax(360px, 1.02fr);
   align-items: start;
-  gap: 14px;
   min-width: 0;
 }
 
 .sd-settings-stack {
   display: grid;
   align-content: start;
-  gap: 14px;
   min-width: 0;
 }
 
@@ -1515,25 +1244,11 @@
 @media (max-width: 1180px) {
 
   .sd-ov-summary-grid,
-  .sd-server-page,
-  .sd-players-page,
   .sd-diag-main-grid,
   .sd-settings-page {
     grid-template-columns: 1fr;
   }
 
-  .sd-server-page .sd-page-header,
-  .sd-server-summary-card,
-  .sd-server-lifecycle,
-  .sd-server-broadcast,
-  .sd-server-command,
-  .sd-server-quick,
-  .sd-players-page .sd-page-header,
-  .sd-players-overview-section,
-  .sd-players-info-section,
-  .sd-players-list-section,
-  .sd-players-events-section,
-  .sd-players-actions-section,
   .sd-diag-page .sd-diag-header,
   .sd-diag-page .sd-diag-status-panel,
   .sd-diag-page .sd-diag-resource-panel,
@@ -1593,8 +1308,6 @@
   background:
     linear-gradient(90deg, transparent, rgba(106, 61, 22, 0.72), transparent) center / 100% 1px no-repeat,
     repeating-linear-gradient(90deg, rgba(106, 61, 22, 0.42) 0 9px, transparent 9px 15px);
-  box-shadow: none;
-  filter: drop-shadow(0 1px rgba(255, 242, 190, 0.72));
 }
 
 .sd-server-page .sd-page-icon,
@@ -1612,7 +1325,6 @@
   object-fit: contain;
   flex-shrink: 0;
   image-rendering: pixelated;
-  filter: drop-shadow(2px 3px 0 rgba(75, 40, 14, 0.24));
 }
 
 .sd-server-page .sd-page-title,
@@ -1630,9 +1342,6 @@
   line-height: 1;
   font-weight: 900;
   letter-spacing: 0;
-  text-shadow:
-    1px 1px 0 rgba(255, 242, 190, 0.9),
-    2px 2px 0 rgba(88, 48, 16, 0.18);
 }
 
 .sd-server-page .sd-page-desc,
@@ -1941,9 +1650,7 @@
 .sd-settings-port-edit-row,
 .sd-server-message-row,
 .sd-server-command-row {
-  background:
-    linear-gradient(165deg, rgba(255, 252, 240, 0.35), rgba(255, 252, 240, 0) 46%),
-    #e9c887;
+  background: var(--sd-card-bg);
   border-color: #c08c3e;
   box-shadow: inset 0 0 0 2px rgba(255, 244, 214, 0.3);
 }
@@ -2061,24 +1768,6 @@
 .sd-install-title-strip .sd-page-title,
 .sd-settings-page .sd-page-title {
   text-shadow: none;
-}
-
-@media (max-width: 640px) {
-
-  .sd-settings-port-edit-row .sd-btn-green,
-  .sd-settings-port-edit-row .sd-btn-tan {
-    flex: 1 1 calc(50% - 3px);
-    justify-content: center;
-  }
-}
-
-@media (max-width: 640px) {
-
-  .sd-settings-port-edit-row .sd-btn-green,
-  .sd-settings-port-edit-row .sd-btn-tan {
-    flex: 1 1 calc(50% - 3px);
-    justify-content: center;
-  }
 }
 
 .sd-settings-security-item .sd-dot {

@@ -65,10 +65,6 @@ func (idx modRelationshipIndex) resolve(modID string) (int, error) {
 	return -1, fmt.Errorf("Mod %q does not exist", modID)
 }
 
-func (idx modRelationshipIndex) dependencyClosure(seed int) []int {
-	return idx.walk(seed, true, false)
-}
-
 func (idx modRelationshipIndex) connectedClosure(seed int) []int {
 	seen := map[int]bool{}
 	queue := []int{seed}

@@ -10,10 +10,10 @@ export function panelResponsePresentation(sample: PanelResponseSample) {
     const text = { loading: '测量中', timeout: '超时', error: '连接失败', paused: '已暂停' }[sample.status]
     return { text, level: 'unknown' as const }
   }
-  const ms = sample.milliseconds
+  const ms = Math.round(sample.milliseconds)
   return {
-    text: ms < 1 ? '<1 ms' : `${Math.round(ms)} ms`,
-    level: ms >= 300 ? 'crit' as const : ms >= 100 ? 'warn' as const : 'ok' as const,
+    text: sample.milliseconds < 1 ? '<1 ms' : `${ms} ms`,
+    level: ms >= 1000 ? 'crit' as const : ms >= 400 ? 'warn' as const : ms >= 200 ? 'info' as const : 'ok' as const,
   }
 }
 

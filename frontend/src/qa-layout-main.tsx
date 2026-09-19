@@ -361,7 +361,7 @@ const backups = {
 const backupPolicy = { policy: { gameSaveBackups: true, retainGameDays: 5 } }
 const restartSchedule = { schedule: { instanceId: 'stardew', enabled: false, shutdownTime: '04:00', startupTime: '04:10', timezone: 'Asia/Shanghai', warningMinutes: [10, 5, 1], backupBeforeShutdown: true, skipIfPlayersOnline: true } }
 const passwordStatus = {
-  enabled: true,
+  enabled: params.get('playerAuth') !== 'disabled',
   authenticatedCount: 3,
   pendingCount: 1,
   timeoutSeconds: 60,
@@ -571,6 +571,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/mods\/nexus\/install$/, { jobId: 'job_mobile_nexus_install' }],
   [/\/mods\/nexus\/extension\/download$/, {}],
   [/\/health\/diagnostics$/, health],
+  [/\/direct-connect$/, { gamePort: 24643, protocol: 'udp' }],
   [/\/invite-code$/, STEAM_INVITE_ENABLED
     ? { steamInviteEnabled: true, status: STATE === 'running' ? 'ready' : 'server_stopped', inviteCode: STATE === 'running' ? 'ANXI-FARM-2024' : '' }
     : { steamInviteEnabled: false, status: 'disabled', inviteCode: '' }],
@@ -956,6 +957,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (url.includes('/api/version') && applyFetchCount > 4) return jsonRes({ version: '0.1.15', commit: 'new-build', buildDate: now.toISOString() })
   }
   if (url.includes('/api/')) {
+    if (/\/players$/.test(path) && params.has('overviewPlayers')) {
+      const mode = params.get('overviewPlayers')
+      if (mode === 'error') return jsonRes({ message: 'QA 模拟：在线玩家读取失败' }, 503)
+      return jsonRes({ instanceId: 'stardew', state: STATE, source: 'junimo', onlineCount: mode === 'pending' ? 3 : 0, maxPlayers: 10, players: [], parseStatus: 'exact', updatedAt: iso(0), recentEvents: [] })
+    }
     if (PLAYER_MOD_STATE === 'error' && /\/players\/[^/]+\/mods$/.test(path)) {
       return jsonRes({ code: 'player_mod_context_read_failed', message: 'QA 模拟：玩家 Mod 上下文读取失败' }, 503)
     }

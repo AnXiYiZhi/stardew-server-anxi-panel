@@ -2,9 +2,9 @@ import { LifecycleIcon } from '../LifecycleIcon'
 import { useEffect, useState } from 'react'
 import './OverviewPage.css'
 import { approvePlayerAuth, getInstancePasswordStatus, getJunimoUpdate, getRuntimeComponents, peekInstanceRead } from '../../../api'
-import type { InstancePasswordStatus, Job, JunimoUpdateInfo, RuntimeComponentsInfo, StardewPlayerInfo } from '../../../types'
-import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
-import { jobErrorSummary, jobEventLabel, jobStatusLabel, shortEventTime } from '../../../core/job-presentation'
+import type { InstancePasswordStatus, JunimoUpdateInfo, RuntimeComponentsInfo, StardewPlayerInfo } from '../../../types'
+import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
+import { jobErrorSummary, jobEventLabel, shortEventTime } from '../../../core/job-presentation'
 import { ModalPortal } from '../../../core/ModalPortal'
 import { InviteCodeCard } from '../InviteCodeCard'
 import { LanDirectConnectCard } from '../LanDirectConnectCard'
@@ -34,7 +34,6 @@ function isPendingApproval(player: StardewPlayerInfo) {
 
 export function OverviewPage({ user, instanceId, instanceState, onNavigate, dashboardData }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
-  const [selectedEvent, setSelectedEvent] = useState<Job | null>(null)
   const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
   const [approveTarget, setApproveTarget] = useState<StardewPlayerInfo | null>(null)
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null)
@@ -84,11 +83,12 @@ export function OverviewPage({ user, instanceId, instanceState, onNavigate, dash
   const enabledModCount = visibleMods.filter((m) => m.enabled).length
   const disabledModCount = modCount - enabledModCount
   const onlineCount = dashboardData.players?.onlineCount
+  const showPlayerEmptyState = !dashboardData.playersError && onlineCount === 0
   const maxPlayers = dashboardData.players?.maxPlayers
   const playerSummary =
     onlineCount != null
       ? maxPlayers != null
-        ? `${onlineCount}/${maxPlayers}`
+        ? `${onlineCount} / ${maxPlayers}`
         : String(onlineCount)
       : state === 'running'
         ? '识别中'
@@ -320,7 +320,7 @@ export function OverviewPage({ user, instanceId, instanceState, onNavigate, dash
             <span className="sd-overview-player-count">{playerSummary}</span>
             {isAdmin ? <button className="sd-overview-detail" onClick={() => { void openRuntimeSettings() }} aria-label="修改联机人数上限">修改上限</button> : null}
           </header>
-          <div className="sd-overview-player-list">
+          <div className={`sd-overview-player-list${onlinePlayers.length ? '' : ' is-empty'}`}>
             {onlinePlayers.length ? onlinePlayers.slice(0, Math.max(4, priorityPlayerCount)).map((player) => (
               <div className="sd-overview-player" key={player.uniqueMultiplayerId || player.name}>
                 <span className="sd-overview-avatar" aria-hidden="true">{player.name.slice(0, 1)}</span>
@@ -339,7 +339,13 @@ export function OverviewPage({ user, instanceId, instanceState, onNavigate, dash
                 ) : null}
                 <i className={`sd-overview-online-dot${isPendingApproval(player) ? ' is-pending' : ''}`} aria-label={isPendingApproval(player) ? '待批准' : '在线'} />
               </div>
-            )) : <p className="sd-overview-empty">{dashboardData.playersError ? '在线玩家读取失败，请稍后重试。' : onlineCount === 0 ? '暂无在线玩家。' : isRunning ? '正在读取玩家信息…' : '服务器运行后显示在线玩家。'}</p>}
+            )) : showPlayerEmptyState ? (
+              <div className="sd-overview-player-empty" role="status">
+                <img src="/assets/stardew/ui/sprites/overview_empty_junimo.webp" width="120" height="80" alt="" />
+                <strong>暂无在线玩家</strong>
+                <p>{isRunning ? '玩家加入农场后，将显示在这里。' : '服务器启动后，玩家可加入农场。'}</p>
+              </div>
+            ) : <p className="sd-overview-empty" role="status">{dashboardData.playersError ? '在线玩家读取失败，请稍后重试。' : isRunning ? '正在读取玩家信息…' : '服务器运行后显示在线玩家。'}</p>}
           </div>
           {approveFeedback ? <p className={approveFeedback.kind === 'failed' ? 'sd-overview-error' : 'sd-overview-approval-feedback'} role={approveFeedback.kind === 'failed' ? 'alert' : 'status'}>{approveFeedback.message}</p> : null}
           <button className="sd-overview-link sd-overview-player-more" onClick={() => onNavigate('players')}>查看全部玩家 →</button>
@@ -351,11 +357,10 @@ export function OverviewPage({ user, instanceId, instanceState, onNavigate, dash
           </header>
           <div className="sd-overview-event-list">
             {recentJobs.length ? recentJobs.map((job) => (
-              <div key={job.id} className={`sd-overview-event is-${job.status}`}>
+              <div key={job.id} className={`sd-overview-event is-${job.status}${job.status === 'succeeded' && (job.type === 'stardew_stop' || (job.type === 'stardew_lifecycle' && job.operation === 'stop')) ? ' is-stopped' : ''}`}>
                 <i className="sd-overview-event-dot" aria-hidden="true" />
                 <span className="sd-overview-event-name" title={jobEventLabel(job)}>{jobEventLabel(job)}</span>
                 <time dateTime={job.createdAt} title={formatDate(job.createdAt)}>{shortEventTime(job.createdAt)}</time>
-                {job.status === 'failed' ? <button className="sd-overview-detail" onClick={() => setSelectedEvent(job)} aria-label={`查看${jobDisplayName(job)}的失败详情`}>查看详情</button> : null}
               </div>
             )) : <p className="sd-overview-empty">{dashboardData.loading ? '正在读取事件…' : '暂无事件记录'}</p>}
           </div>
@@ -363,29 +368,14 @@ export function OverviewPage({ user, instanceId, instanceState, onNavigate, dash
         <section className="sd-overview-panel sd-overview-mods">
           <header className="sd-overview-panel-head"><h2><img src={OVERVIEW_ICONS.mods} alt="" />模组状态</h2></header>
           <div className="sd-overview-mod-grid">
-            <div><strong>{dashboardData.mods ? enabledModCount : '—'}</strong><span>已启用</span></div>
+            <div><strong className="is-ok">{dashboardData.mods ? enabledModCount : '—'}</strong><span>已启用</span></div>
             <div><strong>{dashboardData.mods ? disabledModCount : '—'}</strong><span>已禁用</span></div>
             <div><strong>—</strong><span>更新待检查</span></div>
-            <div><strong>{dashboardData.modsError ? '失败' : dashboardData.mods ? '正常' : '—'}</strong><span>读取状态</span></div>
+            <div><strong className={dashboardData.modsError ? 'is-error' : dashboardData.mods ? 'is-ok' : undefined}>{dashboardData.modsError ? '失败' : dashboardData.mods ? '正常' : '—'}</strong><span>读取状态</span></div>
           </div>
           <button className="sd-btn-tan sd-overview-manage" onClick={() => onNavigate('mods')}>管理模组</button>
         </section>
       </div>
-
-      {selectedEvent ? (
-        <ModalPortal className="sd-confirm-overlay" role="dialog" ariaLabelledBy="overview-event-title" onEscape={() => setSelectedEvent(null)}>
-          <div className="sd-confirm-dialog sd-overview-event-dialog">
-            <h3 id="overview-event-title">{jobEventLabel(selectedEvent)}</h3>
-            <p>{jobErrorSummary(selectedEvent.errorMessage)}</p>
-            <p>任务状态：{jobStatusLabel(selectedEvent.status)} · {formatDate(selectedEvent.createdAt)}</p>
-            {selectedEvent.errorMessage ? <details><summary>原始诊断信息</summary><pre>{selectedEvent.errorMessage}</pre></details> : null}
-            <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setSelectedEvent(null)}>关闭</button>
-              <button className="sd-btn-green" onClick={() => { setSelectedEvent(null); onNavigate('jobs', { jobId: selectedEvent.id }) }}>查看任务日志</button>
-            </div>
-          </div>
-        </ModalPortal>
-      ) : null}
 
       {approveTarget ? (
         <ModalPortal

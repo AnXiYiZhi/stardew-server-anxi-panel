@@ -259,7 +259,7 @@ ssh 管理员用户名@NAS局域网IP
 
 5. 登录后运行 `sudo -i` 进入 root Shell，再按本文“通用 Linux”章节创建临时 root sshd。
 
-飞牛初始化时创建的首位管理员通常具有较高管理权限；具体界面和权限以当前系统版本为准，可参考 [飞牛初始化说明](https://help.feiniuos.com/10001.html)。较新的飞牛版本可能在升级后重新关闭 SSH，因此如果局域网连接被拒绝，要同时检查 SSH 总开关和用户 SSH 权限。
+飞牛初始化时创建的首位管理员通常具有较高管理权限；具体界面和权限以当前系统版本为准，可参考 [飞牛初始化说明](https://help.fnnas.com/articles/v1/start/install-os)。较新的飞牛版本可能在升级后重新关闭 SSH，因此如果局域网连接被拒绝，要同时检查 SSH 总开关和用户 SSH 权限。
 
 在飞牛 Shell 中启动 Pinggy：
 

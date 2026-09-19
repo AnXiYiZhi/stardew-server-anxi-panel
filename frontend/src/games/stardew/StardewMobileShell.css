@@ -27,16 +27,9 @@
   image-rendering: pixelated;
 }
 
-/* ── M6 手机端卡片视觉统一：背景取 PC 总览页“存档/模组”卡片色，
-   边框/圆角/阴影取 PC 总览页“在线玩家”卡片样式。两张 PC 卡片刚好共用
-   同一个 --sd-save-card-bg 背景值，这里单独抽出命名清楚的变量，不直接
-   依赖 StardewPanel.css 的 --sd-save-card-* 系列（那份变量只在挂载
-   StardewPanel.tsx 时才加载，移动端不可用）。只覆盖背景/边框/圆角/阴影，
-   不改 `.sd-panel` 的 padding，各页面卡片各自的 padding 保持不变。 */
+/* 手机卡片通过共享主题引用总览纸色；边框、圆角、阴影和各页面内距独立维护。 */
 :root {
-  --stardew-mobile-card-bg:
-    linear-gradient(180deg, rgba(255, 245, 214, 0.96), rgba(248, 226, 174, 0.94)),
-    #f7e3ad;
+  --stardew-mobile-card-bg: var(--sd-card-bg);
   --stardew-mobile-card-border: 2px solid #a06c2c;
   --stardew-mobile-card-radius: 9px;
   --stardew-mobile-card-shadow:

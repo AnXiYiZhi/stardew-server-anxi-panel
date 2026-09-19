@@ -1,5 +1,11 @@
 # 后期优化文档
 
+## Docker 磁盘临时目录中的安装错误回归时限（待独立排查，2026-09-19）
+
+- 深度减负终验中，既有 `TestInstallFailurePersistsActionableCause` 的 space/dns 分支在连续写入 1,100 条 SQLite 日志后未在原有 15 秒等待内完成；同环境单独三轮复验仍有一次 dns 超时。此前接手记录也有该父测试 guard 分支超时。保留完整失败日志，未调整断言、等待时限或发布门禁。
+- 同一 Go 镜像、源码和缓存，把测试临时目录切为 Linux tmpfs 后，全量 1,924 个通过、8 个条件跳过，vet/build/tidy 通过。真实镜像另用独立 Docker 数据卷完成初始化、权限、完整用户列表和 session 跨重启验证。tmpfs 结果不能表述为磁盘临时目录的时限问题已修复。
+- 后续单独测量该测试的 SQLite 日志写入与 Docker backing filesystem 延迟，再决定优化方向。证据位于本机 `output/project-load-20260918/compact-evidence.tar.xz` 的 final-backend 与 final-backend-tmpfs 日志条目；本次保留现有安全与持久化回归覆盖。
+
 ## Windows 存档导入事务回归稳定性（已随 v0.7.0 发布，2026-09-05）
 
 - Review 修复的辅助 Windows Web 全包测试中，既有 `TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction` 出现一次 journal 读取验证失败；五次定向复验中一次停在 staged、未形成预期 bootstrap/backup。没有改动此导入实现或放宽断言。日志在 `output/review-fixes-web.log` 和 `output/review-fixes-web-targeted.log`。

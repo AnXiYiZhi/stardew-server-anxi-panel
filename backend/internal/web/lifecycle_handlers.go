@@ -47,10 +47,6 @@ type pendingUploadStore struct {
 	entries map[string]*pendingUpload
 }
 
-func newPendingUploadStore() *pendingUploadStore {
-	return &pendingUploadStore{entries: make(map[string]*pendingUpload)}
-}
-
 func (s *pendingUploadStore) put(instanceID, tempDir, saveName string, preview registry.SaveInfo) string {
 	token := newToken()
 	s.mu.Lock()
@@ -70,25 +66,6 @@ func (s *pendingUploadStore) put(instanceID, tempDir, saveName string, preview r
 		ExpiresAt:  now.Add(uploadTokenTTL),
 	}
 	return token
-}
-
-func (s *pendingUploadStore) claim(token, instanceID string) (*pendingUpload, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry, ok := s.entries[token]
-	if !ok {
-		return nil, fmt.Errorf("上传令牌无效或已过期")
-	}
-	if time.Now().After(entry.ExpiresAt) {
-		delete(s.entries, token)
-		_ = os.RemoveAll(entry.TempDir)
-		return nil, fmt.Errorf("upload token expired")
-	}
-	if entry.InstanceID != instanceID {
-		return nil, fmt.Errorf("上传令牌与实例不匹配")
-	}
-	delete(s.entries, token)
-	return entry, nil
 }
 
 func (s *pendingUploadStore) cancel(token string) {

@@ -613,49 +613,6 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	return &registry.Job{ID: job.ID}, nil
 }
 
-func shouldResumeSteamCMD(phase string) bool {
-	switch phase {
-	case "steamcmd_auth_running",
-		"steamcmd_guard_choice_required",
-		"steamcmd_guard_required",
-		"steamcmd_guard_mobile_required",
-		"steamcmd_downloading",
-		"steamcmd_failed",
-		"steamcmd_image_pull_failed":
-		return true
-	default:
-		return false
-	}
-}
-
-// authAlreadySucceeded reports whether the instance has already passed Steam
-// authentication at least once, based on its persisted phase/state. These
-// phases only occur after auth succeeds (download started/failed, post-auth
-// failure) or once the game is installed, so they double as a durable,
-// cross-session "auth done" signal that lets later operations skip steam-auth.
-func authAlreadySucceeded(state, phase string) bool {
-	switch phase {
-	case "download_failed",
-		"post_auth_failed",
-		"smapi_install_failed",
-		"game_downloading",
-		"steam_sdk_downloading",
-		"smapi_installing",
-		"game_installed":
-		return true
-	}
-	switch state {
-	case storage.InstanceStateGameInstalled,
-		storage.InstanceStateSaveRequired,
-		storage.InstanceStateReadyToStart,
-		storage.InstanceStateStarting,
-		storage.InstanceStateRunning,
-		storage.InstanceStateStopped:
-		return true
-	}
-	return false
-}
-
 // SendSteamGuardInput writes a Steam Guard code to the active install job's
 // stdin pipe.  Implements registry.SteamGuardSender.
 func (d *Driver) SendSteamGuardInput(jobID string, input string) error {

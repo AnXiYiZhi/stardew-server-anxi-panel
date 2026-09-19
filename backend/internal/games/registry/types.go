@@ -27,8 +27,8 @@ type GameDriver interface {
 }
 
 // DirectConnectConfig describes the driver-owned network endpoint exposed by
-// one instance. The web layer combines this with its public-IP resolver rather
-// than guessing game-specific ports.
+// one instance. Callers can combine it with the panel access host without
+// resolving an external address or guessing game-specific ports.
 type DirectConnectConfig struct {
 	GamePort int    `json:"gamePort"`
 	Protocol string `json:"protocol"`

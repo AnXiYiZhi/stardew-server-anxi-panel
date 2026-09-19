@@ -19,10 +19,6 @@ import {
 } from '../src/games/stardew/steam-invite-state.ts'
 import type { InstallationDiagnostic, InstanceState, Job, JobLog, JobStatus } from '../src/types.ts'
 
-const installPageSource = readFileSync(
-  new URL('../src/games/stardew/pages/InstallPage.tsx', import.meta.url),
-  'utf8',
-).replace(/\r\n?/g, '\n')
 const gameInstallRailSource = readFileSync(
   new URL('../src/games/GameInstallRail.tsx', import.meta.url),
   'utf8',
@@ -40,66 +36,16 @@ const apiSource = readFileSync(
   'utf8',
 ).replace(/\r\n?/g, '\n')
 
-assert.match(installPageSource, /const \[editingSteamCredentials, setEditingSteamCredentials\] = useState\(false\)/)
-assert.match(installPageSource, /onClick=\{\(\) => \{ setEditingSteamCredentials\(true\); setShowForm\(true\); setInstallError\(''\) \}\}/)
-assert.match(installPageSource, /\{isInstalled \? \(\s*<button[\s\S]*?setEditingSteamCredentials\(true\)[\s\S]*?修改 Steam 账号密码\s*<\/button>\s*\) : null\}/)
-assert.match(installPageSource, /await updateSteamCredentials\(\{ steamUsername, steamPassword \}\)/)
-assert.match(installPageSource, /await dashboardData\.refreshInstanceState\(\)/)
-assert.match(installPageSource, /onSubmit=\{editingSteamCredentials \? handleSteamCredentialsSubmit : handleInstallSubmit\}/)
-assert.match(installPageSource, /!editingSteamCredentials && !optionsLoading/)
-assert.match(installPageSource, /\{!editingSteamCredentials \? \(\s*<div className="sd-install-field">\s*<label className="sd-install-field-label">VNC 密码<\/label>/)
-assert.match(apiSource, /\/steam-credentials`, \{\s*method: 'PUT',\s*body,/)
+assert.match(apiSource, /\/install`, \{\s*method: 'POST',\s*body,/)
+assert.match(gameInstallRailSource, /installInstance\(\{ steamUsername, steamPassword, vncPassword \}, targetId\)/)
 assert.doesNotMatch(apiSource, /forceReauth/)
-assert.doesNotMatch(installPageSource, /forceReauth|setForceReauth/)
-assert.doesNotMatch(installPageSource, /from 'qrcode'|打开扫码窗口|>扫码登录</)
-assert.match(installPageSource, /const automaticChoice = effectivePhase === 'auth_method_required'/)
-assert.match(installPageSource, /handleAuthMethodSelect\('1'\)/)
-assert.doesNotMatch(installPageSource, /选择 Steam 登录方式|选择 Steam Guard 验证方式|SteamCMD 需要重新授权<\/div>/)
 assert.match(gameInstallRailSource, /sourceInstallation\.reason === 'required_files_missing'/)
 assert.match(gameInstallRailSource, /sourceState\?\.driverPhase === 'install_verification_failed'/)
 assert.match(gameInstallRailSource, /liveState\?\.installationDiagnostic\?\.requiredFiles === 'missing'/)
-assert.match(installPageSource, /启用 Steam 邀请码（需要再次登录授权）/)
-assert.match(installPageSource, /\{isAdmin \? \(\s*<>\s*<button[\s\S]*?启用 Steam 邀请码/)
-assert.doesNotMatch(installPageSource, /只会检查 Auth 镜像并启动一次性登录容器；session 保存后容器立即停止/)
-assert.match(installPageSource, /const steamInviteAuthorizationCleanupPending = instanceState\?\.steamInviteEnabled === true/)
-assert.match(installPageSource, /const steamInviteAuthorizationReady = instanceState\?\.steamInviteEnabled === true/)
-assert.match(installPageSource, /Steam 邀请码已启用/)
-assert.match(installPageSource, /Steam 邀请码授权收尾中…/)
-assert.match(installPageSource, /disabled=\{steamInviteAuthorizationReady \|\| steamInviteAuthorizationCleanupPending \|\| steamAuth\.busy/)
-assert.doesNotMatch(installPageSource, /现有 SteamCMD 授权缓存和 SteamAuth session 保持不变/)
-assert.doesNotMatch(installPageSource, /只有缓存或 session 被实际判定失效时，相关流程才会使用新凭据重新登录/)
-assert.doesNotMatch(installPageSource, /原 SteamAuth session 会失效/)
 assert.doesNotMatch(steamAuthHookSource, /session|只启动一次性 SteamAuth 授权容器/)
-assert.match(installPageSource, /修改 Steam 账号密码/)
-assert.match(installPageSource, /确认修改 Steam 账号密码/)
-assert.doesNotMatch(installPageSource, /SteamCMD 与 Steam 邀请码授权共用这里保存的 Steam 账号密码/)
-assert.doesNotMatch(installPageSource, /Steam 邀请码授权失败，可点击上方按钮重试/)
-assert.doesNotMatch(installPageSource, /Steam 邀请码已按需启用，正在等待登录授权/)
-assert.doesNotMatch(installPageSource, /Steam 邀请码二维码授权失败，可点击/)
-assert.doesNotMatch(installPageSource, /更换 SteamCMD/)
-assert.doesNotMatch(installPageSource, /steam-auth 国内网络波动导致下载失败/)
-assert.doesNotMatch(installPageSource, /SteamCMD 兜底/)
-assert.match(installPageSource, /latestInstallLogsFirst\(displayableLogs\)/)
-assert.match(installPageSource, /最新日志在最上方（倒序显示）/)
-assert.doesNotMatch(installPageSource, /scrollTo\(\{ top: 0/)
-assert.doesNotMatch(installPageSource, /scrollHeight/)
 assert.match(steamAuthHookSource, /const response = await steamAuthLogin\(\)/)
 assert.match(steamAuthHookSource, /onStarted\?\.\(response\.jobId\)/)
 assert.match(steamAuthHookSource, /onNavigate\('install', \{ installJobId: response\.jobId \}\)/)
-assert.match(installPageSource, /onStarted: \(jobId\) => \{\s*setInstallJobId\(jobId\)\s*setInstallJob\(null\)\s*setLogs\(\[\]\)/)
-assert.match(installPageSource, /if \(requestedInstallJobId\) return/)
-assert.match(installPageSource, /const latestSteamTaskJob = installJobId \? installPageJobs\.selected : installJobForDisplay\(installPageJobs\)/)
-assert.match(installPageSource, /const selectedSteamTaskLogs = latestSteamTaskJob\?\.id === installJobId \? logs : \[\]/)
-assert.match(installPageSource, /const selectedTaskFailurePhase = latestSteamTaskJob\?\.status === 'failed'/)
-assert.match(installPageSource, /installationWorkflowComplete && !hasActiveSteamAuthJob && !selectedTaskIsSteamAuth/)
-assert.match(
-  installPageSource,
-  /const res = await installInstance\(body\)\s*onNavigate\('install', \{ installJobId: res\.jobId \}\)\s*setInstallJobId\(res\.jobId\)/,
-)
-assert.match(
-  installPageSource,
-  /if \(jobId\) \{\s*onNavigate\('install', \{ installJobId: jobId \}\)\s*if \(jobId !== installJobId\)/,
-)
 assert.equal(routeToPath('install', { installJobId: 'job_auth_new' }), '/instances/stardew/install?jobId=job_auth_new')
 assert.equal(
   installFailureDisplayMessage('credentials_required', 'credentials_required', '', undefined, null, []),

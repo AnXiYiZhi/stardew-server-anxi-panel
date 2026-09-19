@@ -684,10 +684,6 @@
   margin-top: 12px;
 }
 
-.sd-mmods-dialog-actions-wrap {
-  flex-wrap: wrap;
-}
-
 .sd-mmods-dialog-actions button {
   min-height: 44px;
   min-width: 74px;

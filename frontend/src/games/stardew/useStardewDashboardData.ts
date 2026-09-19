@@ -6,7 +6,7 @@ import {
   getLatestJobLogs,
   getHealthDiagnostics,
   getInstancePlayers,
-  getInstancePublicIP,
+  getInstanceDirectConnect,
   getInviteCode,
   getJobs,
   getMods,
@@ -14,7 +14,7 @@ import {
   getStardewState,
 } from '../../api'
 import type { HealthDiagnosticsResponse } from '../../api'
-import type { InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
+import type { DirectConnectConfig, InstanceState, Job, JobLog, ModsListResult, PanelAccessConnection, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import { formatStardewAddress } from './connection-address'
 import type { StardewDashboardData } from './stardew-routes'
@@ -33,13 +33,12 @@ import {
 const STEAM_INVITE_POLL_INTERVAL_MS = 5_000
 const STEAM_INVITE_POLL_MAX_ATTEMPTS = 125
 
-function resolvePanelAccessHost(connection: PublicIPResult): PublicIPResult | null {
+function resolvePanelAccessHost(connection: DirectConnectConfig): PanelAccessConnection | null {
   const host = window.location.hostname.trim()
   if (!formatStardewAddress(host, connection.gamePort)) return null
   return {
     ...connection,
     ip: host,
-    source: 'panel-access-host',
   }
 }
 
@@ -54,7 +53,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   const [health, setHealth] = useState<HealthDiagnosticsResponse | null>(null)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [inviteCodeStatus, setInviteCodeStatus] = useState<SteamInviteStatus | null>(null)
-  const [publicIP, setPublicIP] = useState<PublicIPResult | null>(null)
+  const [publicIP, setPublicIP] = useState<PanelAccessConnection | null>(null)
 
   const [savesError, setSavesError] = useState<string | null>(null)
   const [modsError, setModsError] = useState<string | null>(null)
@@ -460,13 +459,13 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
     }
   }, [instanceId, updateInviteCode])
 
-  const refreshPublicIP = useCallback(async (force = false) => {
+  const refreshPublicIP = useCallback(async () => {
     const generation = ++publicIPRequestGenerationRef.current
     setPublicIPRefreshing(true)
     setPublicIPError(null)
     setPublicIP(null)
     try {
-      const connection = await getInstancePublicIP(instanceId, force)
+      const connection = await getInstanceDirectConnect(instanceId)
       if (generation !== publicIPRequestGenerationRef.current) return
       const res = resolvePanelAccessHost(connection)
       if (!res) {

@@ -21,19 +21,8 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
-// Pull progress patterns.
-// Docker Compose V2 non-TTY output has two observed formats:
-//
-//	Modern: "Image sdvd/server:tag Pulling" / "Image sdvd/server:tag Pulled"
-//	Older:  "Pulling steam-auth (sdvd/...)" / "Status: Downloaded newer image for ..."
-//
-// regexPullCount covers the "[+] Pulling X/Y" summary line present in some versions.
-var (
-	regexPullCount      = regexp.MustCompile(`(?i)pulling (\d+)/(\d+)`)
-	regexPullStart      = regexp.MustCompile(`(?i)(^image \S+\s+pulling\s*$|^pulling \S+ \()`)
-	regexPullDone       = regexp.MustCompile(`(?i)(^image \S+\s+pulled\s*$|^status: (downloaded newer image|image is up to date))`)
-	regexImagePullLayer = regexp.MustCompile(`(?i)^([0-9a-f]+):\s+(pulling fs layer|waiting|downloading|extracting|download complete|pull complete|already exists)\s*$`)
-)
+// regexImagePullLayer recognizes layer progress from docker image pull.
+var regexImagePullLayer = regexp.MustCompile(`(?i)^([0-9a-f]+):\s+(pulling fs layer|waiting|downloading|extracting|download complete|pull complete|already exists)\s*$`)
 
 // installRunner carries everything needed to execute one install job.
 //
@@ -969,24 +958,9 @@ func (r *installRunner) clearSteamAuthSessionVolumes(ctx context.Context, jobCtx
 	return nil
 }
 
-func (r *installRunner) clearSteamCMDAuthorizationVolumes(ctx context.Context, jobCtx *jobs.Context) {
-	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
-	loginVolume, homeVolume := r.driver.sharedSteamAuthorizationVolumes(makeRegistryInstanceFromStorage(r.instance))
-	names := []string{
-		loginVolume,
-		homeVolume,
-		projectName + "_steamcmd-user-local",
-		projectName + "_steamcmd-root-local",
-	}
-	_, _ = jobCtx.Info(ctx, "正在清除 SteamCMD 安装授权缓存；Steam 邀请码 session 和游戏文件保持不变。")
-	if _, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
-		_, _ = jobCtx.Warn(ctx, "清除 SteamCMD 授权缓存卷时出现问题，将继续尝试重新认证："+paneldocker.RedactString(err.Error()))
-	}
-}
-
 // markSteamAuthCompleted persists that Steam authentication has succeeded at
 // least once. It is a durable, cross-session signal that lets later operations
-// skip the interactive steam-auth login step (see authAlreadySucceeded).
+// select the appropriate persisted-auth route for later operations.
 func (r *installRunner) markSteamAuthCompleted(jobCtx *jobs.Context, state string) error {
 	if err := sjconfig.SetSteamAuthCompletedState(r.instance.DataDir, state); err != nil {
 		_, _ = jobCtx.Warn(context.Background(), "记录 Steam 认证状态失败，后续可能需要再次认证。")
@@ -1884,14 +1858,6 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
-// truncate returns s truncated to at most n bytes.
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
-
 // buildSteamAuthOpts reads the .env file and returns the container configuration
 // needed by RunSteamAuthTTY. The compose project name (= lowercase dir basename)
 // is used to derive the Docker named-volume identifiers.
@@ -2020,14 +1986,6 @@ func imageReferenceTag(ref string) string {
 		return ""
 	}
 	return strings.TrimSpace(ref[lastColon+1:])
-}
-
-func steamCMDImageRef(envVals map[string]string) string {
-	refs := steamCMDImageRefs(envVals)
-	if len(refs) > 0 {
-		return refs[0]
-	}
-	return DefaultSteamCMDImage
 }
 
 func steamCMDImageRefs(envVals map[string]string) []string {
@@ -2303,56 +2261,4 @@ func migrateAllowInsecureSetup(envPath string) (bool, error) {
 	return true, sjconfig.UpdateEnvFile(envPath, map[string]string{
 		"ALLOW_INSECURE_SETUP": "true",
 	})
-}
-
-// makePullLineHandler returns a stateful line handler for docker compose pull output.
-// It writes each line to the job log with a "[pull] " prefix, emits a special
-// "[pull:progress:X:Y]" log entry whenever the count changes, and calls onProgress.
-func makePullLineHandler(jobCtx *jobs.Context, onProgress func(done, total int)) func(string) {
-	var (
-		mu       sync.Mutex
-		total    int
-		done     int
-		lastEmit string
-		useCount bool
-	)
-
-	return func(line string) {
-		_, _ = jobCtx.Info(context.Background(), "[pull] "+line)
-
-		mu.Lock()
-		defer mu.Unlock()
-
-		changed := false
-
-		if m := regexPullCount.FindStringSubmatch(line); m != nil {
-			d, _ := strconv.Atoi(m[1])
-			tot, _ := strconv.Atoi(m[2])
-			if tot > 0 {
-				useCount = true
-				done = d
-				if tot > total {
-					total = tot
-				}
-				changed = true
-			}
-		} else if !useCount {
-			if regexPullStart.MatchString(line) {
-				total++
-				changed = true
-			} else if regexPullDone.MatchString(line) {
-				done++
-				changed = true
-			}
-		}
-
-		if changed && total > 0 {
-			tag := fmt.Sprintf("[pull:progress:%d:%d]", done, total)
-			if tag != lastEmit {
-				lastEmit = tag
-				_, _ = jobCtx.Info(context.Background(), tag)
-				onProgress(done, total)
-			}
-		}
-	}
 }

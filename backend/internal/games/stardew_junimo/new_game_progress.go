@@ -237,11 +237,6 @@ func (tx *newGameTransaction) observeNewGameProgress() (NewGameProgressEvidence,
 	}, nil
 }
 
-func (tx *newGameTransaction) hasNewGameCreationProgress() (bool, error) {
-	evidence, err := tx.observeNewGameProgress()
-	return evidence.Observed, err
-}
-
 // bindTargetSave durably binds a proven, unambiguous candidate to the exact
 // transaction marker consumed by the Control Mod. CandidateSave is persisted
 // first so an interrupted marker write is safely retryable with the same ID.

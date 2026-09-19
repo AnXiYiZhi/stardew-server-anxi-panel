@@ -176,22 +176,6 @@ export function extractSteamDownloadProgress(logs: JobLog[], jobType: string | u
   return latest
 }
 
-export function hasSteamSdkDownloadStarted(logs: JobLog[], jobType: string | undefined): boolean {
-  if (jobType !== 'stardew_install') return false
-  return logs.some((log) => {
-    const lower = log.message.toLowerCase()
-    return lower.includes('[steam]') && (lower.includes('downloading app 1007') || lower.includes('.steam-sdk'))
-  })
-}
-
-export function hasSteamSdkDownloadCompleted(logs: JobLog[], jobType: string | undefined): boolean {
-  if (jobType !== 'stardew_install') return false
-  return logs.some((log) => {
-    const lower = log.message.toLowerCase()
-    return lower.includes('[steam]') && lower.includes('app installed to:') && lower.includes('/data/game/.steam-sdk')
-  })
-}
-
 function fileCountPercent(done: number, total: number): number {
   if (total <= 0) return 0
   return roundPercent((done / total) * 100)
@@ -283,21 +267,6 @@ export function calcSteamDownloadTaskProgress(
     percent: roundPercent((gameProgress?.percent ?? 0) / 2),
     label: '正在校验/下载 Stardew Valley 游戏文件；已存在且校验通过的文件会自动跳过。',
   }
-}
-
-export function extractRecentSteamQrText(logs: JobLog[]): string {
-  const steamLines = logs
-    .filter((log) => log.message.startsWith('[steam] '))
-    .map((log) => log.message.replace(/^\[steam\] /, ''))
-  let qrIndex = -1
-  for (let i = steamLines.length - 1; i >= 0; i -= 1) {
-    if (steamLines[i].toLowerCase().includes('qr')) {
-      qrIndex = i
-      break
-    }
-  }
-  if (qrIndex < 0) return steamLines.slice(-20).join('\n')
-  return steamLines.slice(qrIndex, qrIndex + 40).join('\n')
 }
 
 export function installFailureDisplayMessage(

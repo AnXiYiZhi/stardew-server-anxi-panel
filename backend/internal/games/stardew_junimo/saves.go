@@ -339,10 +339,6 @@ func readWhichFarmFromMainFile(saveFolder, saveName string) string {
 	return readWhichFarmFromReader(file)
 }
 
-func readWhichFarmFromData(data []byte) string {
-	return readWhichFarmFromReader(bytes.NewReader(data))
-}
-
 func readWhichFarmFromReader(r io.Reader) string {
 	startTag := []byte("<whichFarm>")
 	endTag := []byte("</whichFarm>")

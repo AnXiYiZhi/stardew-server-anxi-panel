@@ -329,20 +329,6 @@
   color: var(--sd-brown-light);
 }
 
-.sd-mctrl-summary-block {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #dcc898;
-}
-
-.sd-mctrl-summary-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
 .sd-mctrl-dialog-actions {
   display: flex;
   flex-wrap: wrap;

@@ -113,10 +113,6 @@ func installNexusModWithTicketExpected(ctx context.Context, dataDir, apiKey stri
 	return installRemoteArchive(ctx, dataDir, link, result, expectedVersion, replaceUniqueID, logf)
 }
 
-func InstallModFromDirectURL(ctx context.Context, dataDir, rawURL string, result NexusModSearchResult, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
-	return installModFromDirectURLExpected(ctx, dataDir, rawURL, result, "", "", logf)
-}
-
 func installModFromDirectURLExpected(ctx context.Context, dataDir, rawURL string, result NexusModSearchResult, expectedVersion, replaceUniqueID string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
 	if err := validateRemoteArchiveURL(rawURL); err != nil {
 		return nil, err

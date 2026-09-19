@@ -8,14 +8,10 @@ import type {
   ComposePsResponse,
   CreateInstanceRequest,
   CreateInstanceResponse,
-  DockerStatusResponse,
   GameInstallation,
   Instance,
   InstallJobResponse,
-  InstallOptionsResponse,
-  SteamCredentialsResponse,
   InstanceVNCConfig,
-  InstanceServerPasswordConfig,
   InstancePlayerAuthConfig,
   UpdateInstancePlayerAuthConfig,
   InstancePasswordStatus,
@@ -23,7 +19,6 @@ import type {
   GameLanguageSettings,
   InstanceRenderingResult,
   InstanceState,
-  JunimoConfigRepairResult,
   JunimoUpdateInfo,
   JunimoUpdateDryRunStatus,
   JunimoUpdateApplyStatus,
@@ -45,13 +40,10 @@ import type {
   FarmTypeCatalogResponse,
   NewGameModSelection,
   NexusModSearchResponse,
-  NexusModSearchResult,
   NexusSettingsStatus,
   OKResponse,
   PanelUser,
-  PrepareResponse,
-  PublicIPResult,
-  PreflightResult,
+  DirectConnectConfig,
   BackupCreateResult,
   BackupPolicy,
   BackupPolicyResult,
@@ -161,10 +153,6 @@ async function performRequest<T>(path: string, options: RequestOptions = {}, ses
   return (await response.json()) as T
 }
 
-export function getDockerStatus() {
-  return request<DockerStatusResponse>('/api/docker/status')
-}
-
 export function getComposePs(instanceId = defaultInstanceId, signal?: AbortSignal) {
   return request<ComposePsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/docker/ps`, { signal })
 }
@@ -189,20 +177,12 @@ export function getStardewGameInstallation() {
   return request<GameInstallation>('/api/games/stardew/installation')
 }
 
-export function getInstance(instanceId = defaultInstanceId) {
-  return request<Instance>(`/api/instances/${encodeURIComponent(instanceId)}`)
-}
-
 export function getInstanceState(instanceId = defaultInstanceId, signal?: AbortSignal) {
   return request<InstanceState>(`/api/instances/${encodeURIComponent(instanceId)}/state`, { signal })
 }
 
 export function getJunimoUpdate(instanceId = defaultInstanceId, signal?: AbortSignal) {
   return request<JunimoUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update`, { signal })
-}
-
-export function repairJunimoUpdateConfig(instanceId = defaultInstanceId) {
-  return request<JunimoConfigRepairResult>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/repair-config`, { method: 'POST' })
 }
 
 export function getJunimoUpdateDryRun(instanceId = defaultInstanceId, signal?: AbortSignal) {
@@ -305,13 +285,6 @@ export function getJob(id: string) {
   return request<JobResponse>(`/api/jobs/${encodeURIComponent(id)}`)
 }
 
-export function getJobLogs(id: string, after = 0, limit = 1000) {
-  const params = new URLSearchParams()
-  params.set('after', String(after))
-  params.set('limit', String(Math.min(limit, 1000)))
-  return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
-}
-
 export function getLatestJobLogs(id: string, limit = 1000) {
   const params = new URLSearchParams()
   params.set('latest', 'true')
@@ -321,14 +294,6 @@ export function getLatestJobLogs(id: string, limit = 1000) {
 
 export function getStardewState(instanceId = defaultInstanceId, signal?: AbortSignal) {
   return getInstanceState(instanceId, signal)
-}
-
-export function prepareInstance(instanceId = defaultInstanceId) {
-  return request<PrepareResponse>(`/api/instances/${encodeURIComponent(instanceId)}/prepare`, { method: 'POST' })
-}
-
-export function getInstallOptions(instanceId = defaultInstanceId) {
-  return request<InstallOptionsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/install-options`)
 }
 
 export function installInstance(
@@ -343,16 +308,6 @@ export function installInstance(
 ) {
   return request<InstallJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/install`, {
     method: 'POST',
-    body,
-  })
-}
-
-export function updateSteamCredentials(
-  body: { steamUsername: string; steamPassword: string },
-  instanceId = defaultInstanceId,
-) {
-  return request<SteamCredentialsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/steam-credentials`, {
-    method: 'PUT',
     body,
   })
 }
@@ -387,10 +342,6 @@ export function createJobEventSource(id: string, after = 0) {
   return new EventSource(`/api/jobs/${encodeURIComponent(id)}/stream${query ? `?${query}` : ''}`, {
     withCredentials: true,
   })
-}
-
-export function getSavesPreflight(instanceId = defaultInstanceId) {
-  return request<PreflightResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/preflight`)
 }
 
 export function createNewGame(config: NewGameConfig, requestId: string, instanceId = defaultInstanceId) {
@@ -453,9 +404,8 @@ export function getInviteCode(instanceId = defaultInstanceId) {
   return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`)
 }
 
-export function getInstancePublicIP(instanceId = defaultInstanceId, refresh = false) {
-  const query = refresh ? '?refresh=1' : ''
-  return request<PublicIPResult>(`/api/instances/${encodeURIComponent(instanceId)}/public-ip${query}`)
+export function getInstanceDirectConnect(instanceId = defaultInstanceId) {
+  return request<DirectConnectConfig>(`/api/instances/${encodeURIComponent(instanceId)}/direct-connect`)
 }
 
 export function getInstanceVNCConfig(instanceId = defaultInstanceId) {
@@ -466,17 +416,6 @@ export function updateInstanceVNCPort(port: string, instanceId = defaultInstance
   return request<InstanceVNCConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/vnc-port`, {
     method: 'PUT',
     body: { port },
-  })
-}
-
-export function getInstanceServerPassword(instanceId = defaultInstanceId) {
-  return request<InstanceServerPasswordConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-password`)
-}
-
-export function updateInstanceServerPassword(password: string, instanceId = defaultInstanceId) {
-  return request<InstanceServerPasswordConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-password`, {
-    method: 'PUT',
-    body: { password },
   })
 }
 
@@ -565,10 +504,6 @@ export function createSaveBackup(name: string, instanceId = defaultInstanceId) {
     `/api/instances/${encodeURIComponent(instanceId)}/saves/${encodeURIComponent(name)}/backup`,
     { method: 'POST' },
   )
-}
-
-export function getSaveBackupPolicy(instanceId = defaultInstanceId) {
-  return request<BackupPolicyResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups/policy`)
 }
 
 export function updateSaveBackupPolicy(policy: BackupPolicy, instanceId = defaultInstanceId) {
@@ -734,24 +669,6 @@ export function searchNexusMods(query: string, page = 1, pageSize = 20, instance
   return request<NexusModSearchResponse>(
     `/api/instances/${encodeURIComponent(instanceId)}/mods/nexus/search?${params.toString()}`,
   )
-}
-
-export function installNexusMod(result: NexusModSearchResult, instanceId = defaultInstanceId) {
-  return request<LifecycleJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/mods/nexus/install`, {
-    method: 'POST',
-    body: {
-      modId: result.modId,
-      name: result.name,
-      summary: result.summary,
-      author: result.author,
-      version: result.version,
-      updatedAt: result.updatedAt,
-      endorsementCount: result.endorsementCount,
-      downloadCount: result.downloadCount,
-      pictureUrl: result.pictureUrl,
-      nexusUrl: result.nexusUrl,
-    },
-  })
 }
 
 export function getNexusSettings() {

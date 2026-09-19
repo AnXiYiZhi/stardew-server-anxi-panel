@@ -23,10 +23,6 @@ export type UserResponse = {
   user: CurrentUser
 }
 
-export type PanelUserResponse = {
-  user: PanelUser
-}
-
 export type UsersResponse = {
   users: PanelUser[]
 }
@@ -45,24 +41,6 @@ export type CommandResult = {
   timedOut: boolean
   stdoutTruncated?: boolean
   stderrTruncated?: boolean
-}
-
-export type DockerAvailability = {
-  available: boolean
-  result?: CommandResult
-}
-
-export type ComposeProjectStatus = {
-  workDir: string
-  workDirExists: boolean
-  composeFileExists: boolean
-  ready: boolean
-}
-
-export type DockerStatusResponse = {
-  docker: DockerAvailability
-  compose: DockerAvailability
-  composeProject: ComposeProjectStatus
 }
 
 export type ComposeService = {
@@ -260,11 +238,6 @@ export type JunimoUpdateRepairPlan = {
   steps: string[]
   attempts: number
   maxAttempts: number
-}
-
-export type JunimoConfigRepairResult = JunimoUpdateInfo & {
-  repaired: boolean
-  backupId: string
 }
 
 export type JunimoUpdateDryRunPhase =
@@ -696,35 +669,6 @@ export type InstallJobResponse = {
   steamInviteEnabled?: boolean
 }
 
-export type SteamCredentialsResponse = {
-  ok: boolean
-  instanceId: string
-  state: string
-  driverPhase: string
-  steamInviteEnabled: boolean
-  steamInviteAuthState: SteamInviteAuthState
-  steamAuthLoggedIn: boolean
-}
-
-export type PrepareResponse = {
-  instanceId: string
-  state: string
-  stateMessage: string | null
-  driverPhase: string
-}
-
-export type ImageTagOption = {
-  tag: string
-  label: string
-  recommended: boolean
-  warning?: string
-  isLatest?: boolean
-}
-
-export type InstallOptionsResponse = {
-  imageTagOptions: ImageTagOption[]
-}
-
 export type SaveInfo = {
   name: string
   nameWarning?: string
@@ -779,12 +723,6 @@ export type NewGameConfig = {
   eyeColor?: RgbColor
   hairColor?: RgbColor
   pantsColor?: RgbColor
-}
-
-export type PreflightResult = {
-  hasSaves: boolean
-  saves: SaveInfo[]
-  templateAvailable: boolean
 }
 
 export type FarmTypeCatalogCondition = {
@@ -969,14 +907,12 @@ export type InviteCodeResult = {
   inviteCode: string
 }
 
-export type PublicIPResult = {
-  ip: string
-  checkedAt: string
-  source?: string
-  cached: boolean
-  gamePort?: number
-  protocol?: string
+export type DirectConnectConfig = {
+  gamePort: number
+  protocol: string
 }
+
+export type PanelAccessConnection = DirectConnectConfig & { ip: string }
 
 export type LifecycleJobResponse = {
   jobId: string
@@ -985,10 +921,6 @@ export type LifecycleJobResponse = {
 
 export type InstanceVNCConfig = {
   vncPort: string
-}
-
-export type InstanceServerPasswordConfig = {
-  serverPassword: string
 }
 
 export type PlayerAuthMode = 'none' | 'global' | 'role'

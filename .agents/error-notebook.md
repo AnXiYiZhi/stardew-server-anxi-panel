@@ -1,6 +1,36 @@
 # 项目执行错题本
 
+## 2026-09-18：项目减负审计的统计与环境边界
+
+- 2026-09-19 v0.7.2 发布预检补充（Windows / PowerShell 7）：开场把完整 status 与带换行警告的 diff stat 合并输出导致截断；改为短统计、按主题精确差异和任务日志。随后端口来源检索误用未确认存在的 public_ip.go，rg 退出 2；改为只在已确认的 stardew_junimo 目录检索真实函数，再单独读取命中路径。两次均未据缺失输出下结论；继续执行 AGENTS.md 已有真实路径、fail-fast 与总输出预算规则。
+
+- 2026-09-19 公开资料检索补充（Windows / functions.exec）：原样输出文档搜索命中和多个 Web 长结果，累计超过工具预算而截断；工具成功不代表已读完全部结果。根因是 MCP 文本包含重复高亮、完整 JSON 和无关长正文。后续完整响应先保留在编排 store，搜索只投影 URL、标题、短摘要，GitHub 元数据先解析再投影所需字段；长文按精确章节读取，不再批量回显完整对象。沿用 AGENTS.md 已有总输出预算与截断补读规则，适用于所有只读 MCP/Web 检索。最近复发（宣传策划）：并行读取多个技能和长期文档时再次超过编排总预算；改为单主题短段、有限源码差异和已确认截图路径，仅以实际读到的文本与像素形成策划依据。
+
+- 2026-09-19 API 冒烟夹具补充：用户列表的 before 快照误放在注销/重新登录之前，而列表包含 lastLoginAt，导致重启后的全对象比较失败。读取 users_handlers.go 的真实响应契约后，把快照移到最后一次登录之后、重启之前；保留完整相等断言，重新创建同归属的空测试卷复验 24 项通过，原失败输出已保留。没有修改产品行为。
+- 2026-09-19 续验：WSL/Docker 已恢复，三个原有容器的镜像、脱敏挂载投影及创建时间核对后全部 running/healthy，两个 Panel health/database 正常。第一次比较误把基线中主动隐藏的 volume Source 当作实际路径差异，并把审计日期零点当作开始时间；改为同形投影与 before/hashes.json 的实际 UTC 建立时间，保护断言此前未启动任何容器。
+- 2026-09-19 证据工具补充：恢复副本还包含嵌入二进制，不能把 before/source 全部当 UTF-8 文本；首轮归档遇 UnicodeDecodeError 后未删除原文件，改为原始字节归档并验证全部 CRC/SHA-256，再清理副本。Docker buildx 的 `--format json` 输出是逐行 JSON，即使文件名为 .json 也须按记录解析，不能直接 ConvertFrom-Json -Raw。恢复归档可供差异检查直接读取，不再需要解压完整副本。最近补充：npm 锁文件 packages 包含合法的空字符串键，PowerShell 解析须用 ConvertFrom-Json -AsHashtable，普通对象模式会拒绝；Git 差异检查的换行提示写入任务 stderr 日志，避免掩盖结构化校验结果。最终换行校正按与基线相等的行恢复原始字节，新增行采用原文件主导换行，并比较 ignore-space-at-eol 差异确保语义不变。
+- 2026-09-19 检索/联网补充：一次凭记忆查询不存在的 router.go，随后未排除测试的全目录检索超出预算；改从实际命中 handler.go 精确读取，生产路由检索排除 *_test.go 并限制总命中。沿用 AGENTS.md 已有真实路径和全局输出预算硬规则。Python urllib 默认代理在 Windows 重启后连接被拒绝；用 task-local direct 探针确认公网可达后仅在本次只读链接检查禁用代理，没有修改系统设置或 TLS 校验。SMAPI 首页 HEAD 返回 405，GET 返回 200，不能据此判作失效链接。
+- WSL 恢复终态补充：`WslService` 长时间停在 `START_PENDING`，仅注册 docker-desktop 且 `hcsdiag list` 为空；重启空闲 vmcompute 后仍未就绪。已取消等待命令，不继续扩大到其它 Windows 服务。后续 Win32_Process 的 CIM 查询也挂起，取消后改用轻量服务状态读取，不反复调用已挂起的查询。原有三台容器尚未恢复；需要用户保存其它应用工作并重启 Windows，再从已保存的容器身份和恢复脚本续做。Docker 重启授权不能扩展为整机重启授权。
+- Docker 恢复补充：普通 restart 超时；force stop 和 WSL 停止也卡住。经用户明确授权并保存原有三台运行容器名单后，仅终止已核对路径的 Docker 进程与 docker-desktop distro。父进程退出使子 PID/Path 随后失效，改为预先快照 Id/Path、核对存活与有界 WaitForExit；预防规则已提升到 AGENTS.md。WSL stdout 是 UTF-16LE，不能以默认编码显示的乱码判断业务结果。启动日志定位到不可访问的零字节 AF_UNIX 类 IPC 端点；单个 reparse 文件查询/改名失败，核对父目录仅含已知零字节端点后以精确绝对路径移动整个目录并保留 ACL/备份，让 Docker 重建运行目录，未读取或删除凭据。之后的 WSL engine 启动阻塞须独立处理，不能将 UI 进程启动当作引擎就绪。
+- AST 清理补充：手抄正则块时多加一行空注释导致 apply_patch 校验失败；AGENTS.md 尾行手抄还出现同形字差异，均零修改。改为从真实完整段生成补丁，文档追加使用短而唯一的章节锚点。删除旧 Hub 辅助链后 fmt 导入失去引用，编译报告后同步删除；没有降低测试断言。
+- Windows Python 3.12 的 `os.scandir().stat()` 在本环境给出零文件身份，导致硬链接去重统计严重偏小；改为 `Path.stat(follow_symlinks=False)`，重建独立 `verified-before` 元数据，保留首次原始证据但不采用其去重数字。stdout 显式 UTF-8。源码备份只在 `before/source` 创建，不能把后续元数据快照名称当作备份路径；读取前先 Test-Path。
+- 文档标题、进程和 QA 检索批量输出再次超预算；完整结果应先落任务 JSON/日志，再投影少量字段和短段。沿用 AGENTS.md 的总字符/行数限制，不据截断内容作删除结论。
+- 当前 Windows npm.ps1 下 `npm --prefix frontend install --package-lock-only --ignore-scripts --offline` 报仓库根 package.json ENOENT；改为独立 cell 的精确 frontend workdir 后执行安装命令，成功后逐项比较锁文件全部 version/resolved/integrity。构建/状态脚本的 `npm --prefix frontend run ...` 正常。没有删除 node_modules 或升级包。
+- 后续宿主 Node 启动/编译在约几十 MiB 时发生 native allocation / semi-space OOM（134、-2147483645），属于环境资源失败；记录原始日志，停止重复整套测试，仅在资源恢复后续验失败项。Docker 随后报告 containerd metadata 所在文件系统只读；不能用重复 build 或删共享 cache 处理，也不能未获授权重启承载现有游戏的 Docker Desktop。前后正式构建在该故障前均已成功。
+- dotnet.exe 存在但宿主未安装 SDK；版本探针明确失败后不继续宿主 C# 编译。本次未更改 Control 源码、DLL、manifest 或 NuGet 版本，不把该环境下的 C# 构建标为通过。
+
 ## 2026-09-18：官网版本验收须定位页底
+
+- 服务器/玩家布局补充（2026-09-18，CUA / Vite）：修改 QA 入口后 HMR 切回真实路由登录页，直接对不存在的 `.sd-server-page` 取 computed style 导致 TypeError，未修改页面。读取 fresh DOM 确认为登录页后重新导航完整 QA 入口并等待目标页面，尺寸验收恢复。沿用 AGENTS.md 的 HMR 后路由/DOM 校验规则；QA 中的 createRoot 重复日志按热更新时间区分，不当作正式页面异常或忽略新的应用错误。移动端恢复桌面时一次 CDP Page.navigate 等待超时；没有重复导航，先核对标签 URL、Vite 精确监听/HTTP 200 和 fresh DOM，确认目标已加载后继续。
+- 全局纸色统一补充（2026-09-18，PowerShell 7 / CUA）：新一轮工具会话已重置，直接复用上一轮 `overviewBrowser` 导致 `ReferenceError`，零页面操作；改从文档规定的浏览器入口初始化，再按当前标签列表取得引用。旧预览进程也已结束，浏览器仍能显示缓存内容；精确 `Get-NetTCPConnection -LocalPort` 在无监听时抛错。改为允许空结果的监听枚举并筛选端口，核对排除范围后以可等待 cell 恢复 Vite，再导航到隔离夹具检查实际计算色值。预防：新工具会话首次调用必须是文档入口，跨轮预览先核对监听，不以页面仍可见推断 HMR 服务存活。
+- 总览样式落地补充（2026-09-18，PowerShell 7 / Chrome / Playwright）：合并 CSS 检索与技能正文再次略超输出预算，改为精确短段补读；临时 QA 把停止确认的实际 `alertdialog` 当成 `dialog`，并把移动壳 `.sd-mshell` 猜作 `.sd-mobile-shell`，均导致 30 秒定位超时。核对 `OverviewPage.tsx`、`ModalPortal.tsx` 和 `StardewMobileShell.tsx` 的实际契约后修正，仅续跑失败与剩余场景，最终 10 组通过。沿用 AGENTS.md 的实际 DOM/ARIA 和全局输出预算规则；临时 QA 定位符必须先从源码或 fresh DOM 取得，不以相邻组件命名推断。
+- 总览样式评审补充（2026-09-18，Windows / PowerShell 7）：宽匹配多个长期文档、随后按每个文件限制片段但合并输出仍超预算，两次退出 0 且内容截断。根因是没有在编排层限制所有片段的总量；改为单主题读取，合计不超过 80 行并缩减长行，缺失段单独补读。沿用 AGENTS.md 已提升的总行数/字符预算规则；评审未依据截断内容修改产品。最近复发：服务器/玩家布局排查把源码和三份接手文档合并读取，随后错题本宽模式检索再次挤占输出预算；已改为单文件短段和精确锚点，AGENTS.md 补充长期文档禁止与源码混读及检索命中上限。
+- 全局减负扫描补充（2026-09-18，Windows / PowerShell 7）：开场宽匹配错题本导致输出截断，改为有界标题与精确短段；资产/CSS 完整分析落系统临时任务目录，只投影候选统计。补丁期间文件顶部被另一项进行中的工作新增记录，旧邻域匹配失败且零修改，重读当前内容后使用稳定章节锚点；共享工作区补丁必须保留并发更新。继续执行既有输出预算与精确补丁规则。最近复发（深度清理提示词编写）：按 58 行错题本、32 行 AGENTS.md 读取仍因长行超过工具 token 预算而截断，退出码均为 0；改为单文件 8 至 9 行短段及唯一锚点补读。发送前须同时核对实际字符量和工具输出预算，80 行只是上限，不是安全读取批量；本轮只读扫描未执行项目清理。
+- 全局减负执行补充：临时页面检查把正文长度大于 80 当作就绪，紧凑登录文本更短导致超时；改为实际按钮/根节点内容与加载状态。临时断言分析用全文 `from` 正则改导入，误改了断言内正则，改为 TypeScript AST 精确导入节点。两次附带只读检索猜测了不存在的前端路径，后续仅用已确认目录及文件清单，继续执行既有单目录检索规则；未据这些工具失败修改业务行为。
+- 全局减负图像 QA 补充：宿主 Python 版本探针通过但没有 Pillow，改用 `load_workspace_dependencies` 返回的精确 bundled Python；其默认 GBK 读取 UTF-8 中文 JSON 又报 UnicodeDecodeError，改为所有 `read_text(encoding='utf8')` 并设置 `PYTHONIOENCODING=utf-8`。预防：解释器版本、依赖可用性和文本编码分别确认；UTF-8 文件 I/O 要显式编码，不能仅固定 stdout。已补入 AGENTS.md。
+- 注册全屏验收补充：CUA 的只读 evaluate 不提供完整浏览器全局，访问 screen.width 报 TypeError；改用 document.documentElement.clientWidth/clientHeight 核对实际视口。新建隐藏标签初始为 1280×720，未继承此前 1920×1080 覆盖，首次截图对照因此尺寸不一致；显式重设并读取两页尺寸后才比较几何与样式。预防：只使用已确认的 DOM 能力，新标签逐页核对实际尺寸；viewport reset 后也读取实际页面状态，不凭调用成功推断显示尺寸。
+- 登录卡片验收补充：首轮 Playwright 把卡片标题当作文档 title，断言期待 Stardew Anxi Panel；当前 App 未登录分支实际设置 Anxi Game Panel。核对 App title effect 后改用实际页面标题，并分别检查卡片 heading，重新验证通过。另有技能合并读取、源代码 diff 与失败断言输出超过预算；后续对精确片段补读，回归完整日志落系统临时文件后只投影终态，不把截断部分作为已读证据。
+- 全屏与紧凑布局验收补充（2026-09-18，Windows/Chrome/Playwright）：首次截图比较只等字体，React 挂载后背景图片可能尚未解码，像素断言不稳定；改为等待实际背景 URL 的 image.decode 后比较。另一次 getByLabel('密码', { exact: true }) 超时，因为同一 label 内还含“显示/隐藏”按钮文案；核对真实组件后用已有 input[name="password"]，复验通过。预防：截图须同时满足 DOM、字体与可见资源就绪；复合 label 的 accessible name 必须来自真实结构。续接时宽匹配多个长期文档再次超出输出预算，后续只取当前顶部章节与有界匹配，继续执行既有总行数/字符限制。
 
 - 上次只断言整页包含 v0.7.1，漏掉 CURRENT RELEASE 仍硬编码 v0.7.0；本次改为复用 frontmatter.release，并在桌面/手机真实浏览器精确断言 .home-note strong、点击更新链接及检查对应修复正文。多处版本展示不能以整页包含一次新版本作为充分证据。
 - 临时 Playwright 首次在 VitePress 首页等待 main 超时；核对实际主题后确认首页没有 main，文档页才有。首页正文改读 body，页底保持精确 .home-note 定位，文档页继续按实际 main 检查，复验通过。首次宽泛文档检索的长行合并输出略超预算，截断内容未作补丁依据；后续只读玩家占位章节的精确短段。预防规则继续采用页面实际 DOM 和总字符预算，不能套用相邻页面结构。
@@ -17,6 +47,8 @@
 - 多文档/长 ShellCheck 输出合并再次超出预算；后续完整输出落 output/v071-preflight-20260917，再读取精确主题、终态或短尾段；截断内容不作为已读证据。ShellCheck 对在子 shell 内改写共享变量报 SC2030/SC2031，改为外层函数先声明局部变量、内层子 shell 仅执行夹具及清理，未禁用对应检查。
 
 ## 2026-09-17：游戏库只读诊断检索路径
+
+- 最近复发（2026-09-18，Windows/PowerShell 7，直连修复）：标题检索和多文件合并读取再次超过工具输出预算，退出 0 但内容被截断。根因为未把长行与所有合并片段计入同一总预算；截断范围未作为代码修改依据，改为精确主题和短邻域补读。继续执行 AGENTS.md 已提升的 80 行/12000 字符及先收集后限量规则，单次 max_output_tokens 也须覆盖总字符预算；不以每文件 `-m` 代替全局限制。Docker 就绪探针未通过，未启动容器门禁，本轮采用不涉及 Unix 权限断言的 Windows 连接定向回归；正式 Docker 验收未标记通过。
 
 - Go 格式终验补充：对已恢复原 CRLF 的文件用 `gofmt -l` 判定无输出，会把纯换行差异误报为格式失败。已按精确文件清单运行 gofmt，再恢复原换行，终验比较 formatter 输出与规范化 LF 后的源文本；新增集成测试有一处 gofmt 排版调整，其余均仅换行差异。不能为满足 gofmt 的 LF 输出而重编码既有 CRLF 文件。
 
@@ -41,7 +73,7 @@
 
 - API 取消参数补充：同一 `apply_patch` 中按业务组列出函数 hunk，顺序与文件中函数顺序不同，后置 hunk 回指前面的 `getComposePs` 导致匹配失败、零修改。独立读取真实函数与差异后，改为逐函数补丁。生成多 hunk 时必须按源码顺序或拆分执行，不将工具确认的零修改当部分成功。
 
-- 总览批准入口补充（Windows / PowerShell 7）：宽泛标题检索、多份文档合并读取，以及包含既有未提交大改的完整 `git diff` 超过输出预算；命令退出 0 但内容被截断。改为按唯一目标短段读取，差异先收集并检查退出码后仅投影本次审批标记；截断部分不作为已读依据。继续执行已提升至 AGENTS.md 的 80 行/12000 字符和精确范围规则，编排合并输出也须核对总预算，预先考虑既有差异规模。Browser 插件未提供，按前端验证技能使用已安装 Playwright/Chrome；临时脚本与截图位于系统临时目录，隔离夹具未操作真实认证数据。
+- 总览批准入口补充（Windows / PowerShell 7）：宽泛标题检索、多份文档合并读取，以及包含既有未提交大改的完整 `git diff` 超过输出预算；命令退出 0 但内容被截断。改为按唯一目标短段读取，差异先收集并检查退出码后仅投影本次审批标记；截断部分不作为已读依据。继续执行已提升至 AGENTS.md 的 80 行/12000 字符和精确范围规则，编排合并输出也须核对总预算，预先考虑既有差异规模。Browser 插件未提供，按前端验证技能使用已安装 Playwright/Chrome；临时脚本与截图位于系统临时目录，隔离夹具未操作真实认证数据。最近复发 2026-09-18：总览响应式细化时再次以常见退出码模式检索整本，并把长行邻域与源码混合输出，出现截断；改为按已知精确行单条补读。错题本检索必须预先限制命中数和总字符，不能只依赖读取行数或工具输出截断。
 
 - VNC 只读排查补充（Windows / PowerShell 7 / Docker Desktop）：首次 `docker top <container> -eo args` 返回 `Couldn't find PID field in ps output` / 退出 1，因为 Docker top 解析输出需要 PID 列；改为 `docker top <container> -eo pid,args` 成功，再仅投影认证类型和是否配置密码文件。后续自定义 ps 列必须保留 PID，环境变量只输出密码是否配置，不输出秘密值。首轮对大错题本宽匹配标题和常见词再次导致截断；改为唯一主题 `rg -m` 和精确短段补读，继续执行 AGENTS.md 已有双重输出上限。
 
@@ -2412,6 +2444,8 @@
 
 ## 2026-07-28：PowerShell `foreach` 语句直接接管道
 
+- 最近复发/补充：2026-09-18 登录卡片编码预检把语句式 `foreach` 后接 `Out-Null`，解析阶段退出 1，整条命令零执行。改为路径数组接 `ForEach-Object` 后投影 JSON；后续写入循环不接管道。继续执行 AGENTS.md 已提升的管道规则，发送前检查语句式循环结尾。
+
 - 最近复发/补充：2026-09-05 排查 3000 两世界状态时，把多个端口版本探针的语句式 `foreach` 直接接 `Out-String`，解析阶段退出 1，首个探针尚未执行。改为端口数组配合 `ForEach-Object` 后成功；继续执行 AGENTS.md 的单行批处理规则。
 - 最近复发/补充：2026-09-04 收口游戏卡选中框后做换行审计时，再次把语句式 `foreach (...) { ... }` 直接接到 `Format-Table`；PowerShell 在读取文件前报 `An empty pipe element is not allowed`，工作区零修改。纠正为先用 `$rows = @(foreach (...) { ... })` 收集，再单独执行 `$rows | Format-Table`；本任务余下审计发送前继续机械检查 `} |`。
 - 最近复发/补充：2026-09-04 排查多实例 Compose 身份时，再次把生成白名单 `.env` 字段的语句式 `foreach (...) { ... }` 直接接到 `ConvertTo-Json`；PowerShell 在读取任何 `.env` 前报 `An empty pipe element is not allowed`，实例、容器和源码零修改。改为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json`，并继续只投影非秘密字段。2026-09-02 统计前端文档与技能文件行数时，也曾把生成 `[pscustomobject]` 的语句式 `foreach (...) { ... }` 直接接到 `ConvertTo-Json`；PowerShell 在读取文件内容前报同一错误，工作区零修改。后续 PowerShell 批量投影继续先收集数组，发送前机械检查 `} |`。
@@ -4234,7 +4268,7 @@
 - 最近复发/补充：2026-08-27 v0.6.0 Auth session 安全清理复核时，再次把 `backend/internal/docker/tty_run*` 作为 Windows `rg` 的路径参数；PowerShell 不展开该通配路径，`rg` 返回 `os error 123`，其余明确文件虽有命中但该次只读探针整体失败，源码未变化。修正为对已确认目录使用 `-g 'tty_run*'` 或直接列出 `rg --files backend/internal/docker` 返回的精确文件；本任务余下 Windows 检索不得再传 `path/*`。
 - 最近复发/补充：2026-08-20 诊断生产导入后的原主机角色时，把 `backend/internal/games/stardew_junimo/*.go` 直接作为 Windows `rg` 路径参数，并附带未经文件清单确认、实际不存在的 `paths.go`，得到 `os error 123/2`；命令只读，本地源码和生产均未变化。随后改为对已确认目录使用 `rg -g '*.go' ... backend/internal/games/stardew_junimo`。本轮余下定位只能使用真实命中路径，Windows 跨文件搜索一律用目录加 `-g`，不得传未展开的通配路径。
 - 最近复发/补充：2026-08-20 为确认 `PANEL_DATA_DIR` 配置键，检索已存在的 `backend` 与长期文档时又附加了凭常见 Go 布局猜出的仓库根 `cmd`，有效命中输出后仍报告 `cmd: 系统找不到指定的文件 (os error 2)`；命令只读，未改本地或生产。随后只沿用真实命中的 `backend/internal/config/config.go` 并从经过脱敏投影的容器 inspect 核对配置。跨根检索的每个位置参数都必须先来自 `rg --files`/当前目录列表，不能把惯例目录混入已确认路径。
-- 最近复发/补充：2026-08-20 检索旧支持包 `panel-logs.txt` 时，把五条可能合法无命中的 `rg -F` 直接串行执行且没有逐条分类退出码；全部无命中，末条以 `1` 结束，组合调用只呈现空输出，未改变文件。支持包关键词探针允许空集合时必须改用 `Select-String -SimpleMatch`，或逐条保存 `rg` 的 `0/1/>1`，不得让“无相关日志”伪装成不明命令失败。
+- 最近复发/补充：2026-08-20 检索旧支持包 `panel-logs.txt` 时，把五条可能合法无命中的 `rg -F` 直接串行执行且没有逐条分类退出码；全部无命中，末条以 `1` 结束，组合调用只呈现空输出，未改变文件。支持包关键词探针允许空集合时必须改用 `Select-String -SimpleMatch`，或逐条保存 `rg` 的 `0/1/>1`，不得让“无相关日志”伪装成不明命令失败。最近复发 2026-09-18（Windows / PowerShell 7）：总览布局检索正确允许 `rg` 无命中，但末尾遗漏 `exit 0`，仍将最后的 `$LASTEXITCODE=1` 泄漏给包装器；命令只读，工作树未变化。后续候选检索显式保存并分类状态，在全部查询结束后明确 `exit 0`，已有 AGENTS.md 防漏规则继续适用。
 - 最近复发/补充：2026-08-20 诊断 `v0.5.7` 存档恢复入口时，虽然 `rg` 已返回真实文件 `instance_handlers.go` 与 `lifecycle_handlers.go`，同一轮后续检索仍凭职责猜测不存在的 `backend/internal/web/instance_actions.go`，并把不会由 Windows 展开的 `backend/internal/web/*handlers.go` 作为路径传给 `rg`，分别得到 `os error 2/123`；命令只读，工作区产品代码未变化。后续只沿用首轮真实命中路径，跨文件范围使用 `rg -g '*handlers.go' <pattern> backend/internal/web`，不得再从概念名猜文件或把通配路径直接传给 Windows `rg`。
 - 最近复发/补充：2026-08-20 修复候选连续游戏日备份门禁时，先凭职责猜测不存在的 `backend/internal/games/stardew_junimo/control-mod`，随后两次把 `embedded/smapi-mod-src/*.cs`、`stardew_junimo/*_test.go` 作为 Windows `rg` 路径参数，分别得到 `os error 2/123`；三次均为只读失败，源码未变化。已改为先从 `rg --files backend` 取得真实目录 `embedded/smapi-mod-src`，跨文件检索统一使用 `rg -g '*.cs'` / `rg -g '*_test.go'`。本类错误已重复出现，预防规则维持在项目 `AGENTS.md`：不得猜路径或传未展开通配路径；后续命令必须直接复制真实命中路径或使用目录加 `-g`。
 - 最近复发/补充：2026-08-20 查询 `v0.5.7` 官网证据提交的 workflow 时，只掌握 `c8a4eaa` 短 SHA 却手工补写了一个错误的 40 位值，再用它过滤 `gh run list`，因此得到误导性的空列表；该命令只读，未触发或修改 workflow。随后直接以 `git rev-parse HEAD` 取得真实 `c8a4eaa1cc9d28a7cf7f4518a0e2c268a612bf83`，再把该值原样传给 `gh run list --commit`，正确锁定 Pages 与 Compatibility。Git 对象 ID 不得根据前缀补齐或凭显示猜测；任何精确筛选必须使用 `git rev-parse`、API 或前一步真实输出。

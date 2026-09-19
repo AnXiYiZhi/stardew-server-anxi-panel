@@ -36,11 +36,11 @@ export function LanDirectConnectCard({ dashboardData, className }: LanDirectConn
         {address ? (
           <span className="sd-players-invite-code sd-players-public-ip-code">{address}</span>
         ) : dashboardData.publicIPRefreshing ? (
-          <span className="sd-players-invite-loading">检测中…</span>
+          <span className="sd-players-invite-loading">读取中…</span>
         ) : dashboardData.publicIPError ? (
-          <span className="sd-players-invite-error">检测失败</span>
+          <span className="sd-players-invite-error">读取失败</span>
         ) : (
-          <span className="sd-players-invite-empty">未检测</span>
+          <span className="sd-players-invite-empty">未读取</span>
         )}
         <div className="sd-players-invite-actions">
           {address ? (
@@ -54,7 +54,7 @@ export function LanDirectConnectCard({ dashboardData, className }: LanDirectConn
           ) : null}
           <button
             className="sd-btn-tan sd-players-refresh-btn"
-            onClick={() => { void dashboardData.refreshPublicIP(true) }}
+            onClick={() => { void dashboardData.refreshPublicIP() }}
             disabled={dashboardData.publicIPRefreshing}
             title="同步当前局域网/IP 直连地址"
           >

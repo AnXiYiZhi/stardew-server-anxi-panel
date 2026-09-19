@@ -28,10 +28,10 @@
   --sd-brown-light:  #6f4a2d;
 
   /* 背景/面板 */
-  --sd-parchment:    #ffd995;
   --sd-parchment-lt: #ffe6b6;
-  --sd-parchment-xl: #fff0c7;
-  --sd-black:        #2a160d;
+  --sd-card-bg: linear-gradient(180deg, #faf1dc, #f5e9ce);
+  --sd-save-card-bg: var(--sd-card-bg);
+  --sd-save-card-bg-strong: var(--sd-card-bg);
 
   /* 绿色系（运行中、主按钮、成功） */
   --sd-green:        #3f8f3d;
@@ -41,12 +41,10 @@
 
   /* 红色系（停止、危险、错误） */
   --sd-red:          #b54837;
-  --sd-red-shadow:   #7f2d24;
   --sd-red-bg:       #ffe0d6;
   --sd-red-text:     #681111;
 
   /* 金/棕色系（重启、次级按钮、警告） */
-  --sd-gold:         #c07820;
   --sd-gold-light:   #fff3d6;
   --sd-gold-border:  #b57a2d;
   --sd-gold-text:    #7a4a10;
@@ -57,9 +55,7 @@
   --sd-blue-text:    #165779;
 
   /* 字体 */
-  --sd-font-ui:      Inter, ui-sans-serif, system-ui, sans-serif;
   --sd-font-mono:    ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
-  --sd-font-pixel:   "Press Start 2P", "Pixel Sans Serif", ui-monospace, monospace;
 }
 
 /* ── 2. 素材路径变量 ─────────────────────────────────────────────────────── */
@@ -67,10 +63,8 @@
 :root {
   /* 背景 */
   --sd-img-bg-parchment: url("/assets/stardew/ui/backgrounds/background_parchment_tile.png");
-  --sd-img-bg-wood-side: url("/assets/stardew/ui/backgrounds/background_sidebar_wood_tile.png");
   --sd-img-bg-wood-strip: url("/assets/stardew/ui/backgrounds/background_frame_wood_strip.png");
   --sd-img-bg-black:     url("/assets/stardew/ui/backgrounds/background_app_black.png");
-  --sd-img-page-frame:   url("/assets/stardew/ui/panels/main_page_frame_empty_image2.png");
   --sd-img-page-frame-center: url("/assets/stardew/ui/panels/main_page_frame_center_tile_image2.png");
   --sd-img-page-frame-corner-top-left: url("/assets/stardew/ui/panels/main_page_frame_corner_top_left_image2.png");
   --sd-img-page-frame-corner-top-right: url("/assets/stardew/ui/panels/main_page_frame_corner_top_right_image2.png");
@@ -80,91 +74,18 @@
   --sd-img-page-frame-edge-bottom: url("/assets/stardew/ui/panels/main_page_frame_edge_bottom_tile_image2.png");
   --sd-img-page-frame-edge-left: url("/assets/stardew/ui/panels/main_page_frame_edge_left_tile_image2.png");
   --sd-img-page-frame-edge-right: url("/assets/stardew/ui/panels/main_page_frame_edge_right_tile_image2.png");
-
-  /* 导航 */
-  --sd-img-nav-default: url("/assets/stardew/ui/navigation/nav_item_default_blank.png");
-  --sd-img-nav-active:  url("/assets/stardew/ui/navigation/nav_item_active_green_blank.png");
-  --sd-img-tab-green:   url("/assets/stardew/ui/navigation/tab_top_green_blank.png");
-
-  /* 按钮 */
-  --sd-img-btn-green:   url("/assets/stardew/ui/buttons/button_server_start_green_blank.png");
-  --sd-img-btn-red:     url("/assets/stardew/ui/buttons/button_server_stop_red_blank.png");
-  --sd-img-btn-tan:     url("/assets/stardew/ui/buttons/button_server_restart_tan_blank.png");
-  --sd-img-btn-gold:    url("/assets/stardew/ui/buttons/button_quick_tool_gold_blank.png");
-  --sd-img-btn-sm-green: url("/assets/stardew/ui/buttons/button_primary_small_green_blank.png");
-  --sd-img-btn-sm-tan:  url("/assets/stardew/ui/buttons/button_secondary_small_tan_blank.png");
-
-  /* 面板底 */
-  --sd-img-panel-parchment: url("/assets/stardew/ui/panels/panel_parchment_section_blank.png");
-  --sd-img-panel-form:      url("/assets/stardew/ui/panels/panel_parchment_form_blank.png");
-  --sd-img-panel-metric:    url("/assets/stardew/ui/panels/panel_metric_card_blank.png");
-  --sd-img-panel-table:     url("/assets/stardew/ui/panels/panel_table_area_blank.png");
-  --sd-img-panel-warning:   url("/assets/stardew/ui/panels/panel_warning_row_blank.png");
-
-  /* 输入框 */
-  --sd-img-field-input:     url("/assets/stardew/ui/fields/field_path_input_blank.png");
-  --sd-img-field-search:    url("/assets/stardew/ui/fields/field_search_compact_blank.png");
-  --sd-img-field-select:    url("/assets/stardew/ui/fields/field_select_dropdown_blank.png");
-  --sd-img-field-invite:    url("/assets/stardew/ui/fields/field_invite_code_input_blank.png");
-}
-
-/* ── 3. 木纹背景 ─────────────────────────────────────────────────────────── */
-
-/* 横向重复平铺的木纹侧栏背景 */
-.sd-bg-wood-side {
-  background-image: var(--sd-img-bg-wood-side);
-  background-repeat: repeat-y;
-  background-size: contain;
-  background-color: #3a2010;
-}
-
-/* 垂直横条木纹（用于顶部装饰条等） */
-.sd-bg-wood-strip {
-  background-image: var(--sd-img-bg-wood-strip);
-  background-repeat: repeat-x;
-  background-size: auto 100%;
-  background-color: #5a3020;
-}
-
-/* 深色黑木背景（全屏舞台背景） */
-.sd-bg-black {
-  background-image: var(--sd-img-bg-black);
-  background-repeat: repeat;
-  background-color: #1a0e08;
 }
 
 /* ── 4. 羊皮纸面板 ───────────────────────────────────────────────────────── */
 
-.sd-bg-parchment {
-  background-image: var(--sd-img-bg-parchment);
-  background-repeat: repeat;
-  background-color: var(--sd-parchment);
-}
-
 .sd-panel {
   border: 3px solid var(--sd-brown-border);
   border-radius: 0;
-  background: var(--sd-parchment-lt);
+  background: var(--sd-card-bg);
   padding: 10px;
 }
 
-.sd-form-panel {
-  border: 2px solid var(--sd-brown-mid);
-  border-radius: 0;
-  background: var(--sd-parchment-xl);
-  padding: 8px;
-}
-
-.sd-metric-card {
-  border: 1px solid var(--sd-brown-mid);
-  border-radius: 0;
-  background: #f8f0d8;
-  padding: 4px 7px;
-  display: grid;
-  gap: 2px;
-}
-
-/* ── 5. 像素风按钮（PNG 底图）────────────────────────────────────────────── */
+/* ── 5. 像素风按钮 ───────────────────────────────────────────────────────── */
 
 /* 按钮尺寸令牌（BTN-UNIFY-1）：全面板只允许三档
    lg = 生命周期启动/停止/重启、页面级主操作
@@ -173,13 +94,10 @@
 :root {
   --sd-btn-h-lg: 48px;
   --sd-btn-font-lg: 15px;
-  --sd-btn-icon-lg: 20px;
   --sd-btn-h-md: 32px;
   --sd-btn-font-md: 13px;
-  --sd-btn-icon-md: 15px;
   --sd-btn-h-sm: 28px;
   --sd-btn-font-sm: 12px;
-  --sd-btn-icon-sm: 12px;
   --sd-button-green-skin: url('/assets/stardew/ui/buttons/button_wood_green.optimized.webp');
   --sd-button-red-skin: url('/assets/stardew/ui/buttons/button_wood_red.optimized.webp');
   --sd-button-honey-skin: url('/assets/stardew/ui/buttons/button_wood_honey.optimized.webp');
@@ -295,12 +213,6 @@
 }
 
 /* 复制小按钮 */
-.sd-btn-copy {
-  width: 48px;
-  height: var(--sd-btn-h-md);
-  font-size: var(--sd-btn-font-sm);
-  color: #fff5d6;
-}
 
 /* 生命周期大按钮（lg 档，仅用于启动/停止/重启本体） */
 .sd-btn-start {
@@ -397,25 +309,6 @@ button:disabled .sd-lifecycle-icon { filter: none; }
 }
 
 /* 按钮内联小图标：尺寸随档位，不要在 JSX 里写内联宽高 */
-.sd-btn-img {
-  image-rendering: pixelated;
-  flex-shrink: 0;
-  width: var(--sd-btn-icon-md);
-  height: var(--sd-btn-icon-md);
-}
-
-.sd-btn--lg .sd-btn-img,
-.sd-btn-start .sd-btn-img,
-.sd-btn-stop .sd-btn-img,
-.sd-btn-restart .sd-btn-img {
-  width: var(--sd-btn-icon-lg);
-  height: var(--sd-btn-icon-lg);
-}
-
-.sd-btn--sm .sd-btn-img {
-  width: var(--sd-btn-icon-sm);
-  height: var(--sd-btn-icon-sm);
-}
 
 .sd-btn-start.sd-btn-loading:disabled,
 .sd-btn-stop.sd-btn-loading:disabled,
@@ -509,19 +402,6 @@ button:disabled .sd-lifecycle-icon { filter: none; }
     font-size: 16px;
     min-height: 32px;
   }
-}
-
-.sd-input-invite {
-  font-size: 1.2rem;
-  letter-spacing: 3px;
-  font-family: var(--sd-font-mono);
-  text-align: center;
-  height: auto;
-  padding: 4px 8px;
-  background-image: var(--sd-img-field-invite);
-  background-size: 100% 100%;
-  background-color: transparent;
-  border: none;
 }
 
 /* ── 7. 左侧导航项 ───────────────────────────────────────────────────────── */
@@ -639,38 +519,10 @@ button:disabled .sd-lifecycle-icon { filter: none; }
 /* ── 9. 紧凑数据行 / 表格 ────────────────────────────────────────────────── */
 
 /* 数据行容器 */
-.sd-data-list {
-  display: grid;
-  gap: 6px;
-}
 
 /* 单行数据卡 */
-.sd-data-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 3px 5px;
-  border-bottom: 1px solid #dcc898;
-  background: transparent;
-  font-size: var(--sd-font-size-body);
-  color: #2c1a0a;
-}
-
-.sd-data-row:hover {
-  background: var(--sd-parchment-lt);
-}
-
-.sd-data-row.active {
-  border-color: var(--sd-green);
-  background: var(--sd-green-bg);
-}
 
 /* 表头行 */
-.sd-data-row-head {
-  background: var(--sd-parchment);
-  font-weight: 800;
-  border-color: var(--sd-brown-border);
-}
 
 /* 关键字/徽章 */
 .sd-tag {
@@ -693,63 +545,18 @@ button:disabled .sd-lifecycle-icon { filter: none; }
 
 /* ── 10. 指标卡摘要区 ────────────────────────────────────────────────────── */
 
-.sd-metrics-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.sd-metric {
-  display: grid;
-  gap: 2px;
-  padding: 4px 7px;
-  border: 1px solid #dcc898;
-  border-radius: 0;
-  background: #f8f0d8;
-}
-
-.sd-metric-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--sd-brown-light);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.sd-metric-value {
-  font-size: 1.3rem;
-  font-weight: 900;
-  color: var(--sd-brown-dark);
-  line-height: 1.1;
-}
-
-.sd-metric-hint {
-  font-size: 0.72rem;
-  color: var(--sd-brown-light);
-}
-
 /* ── 11. 字号变量 ─────────────────────────────────────────────────────────── */
 
-:root {
-  --sd-font-size-meta:           11px;  /* 时间戳、序号、最小徽章 */
-  --sd-font-size-small:          12px;  /* 次级说明、日志正文、meta 文字 */
+:root {  /* 时间戳、序号、最小徽章 */  /* 次级说明、日志正文、meta 文字 */
   --sd-font-size-body:           13px;  /* 正文、描述、提示信息 */
   --sd-font-size-control:        13px;  /* 输入框、按钮、选择框 */
   --sd-font-size-section-title:  14px;  /* 区块标题 */
-  --sd-font-size-page-title:     18px;  /* 页面标题 */
-  --sd-font-size-metric:         18px;  /* 指标大数字 */
-  --sd-font-size-log:            12px;  /* 日志正文 */
+  --sd-font-size-page-title:     18px;  /* 页面标题 */  /* 指标大数字 */  /* 日志正文 */
 }
 
 /* ── 12. 间距变量 ─────────────────────────────────────────────────────────── */
 
-:root {
-  --sd-space-1:        4px;
-  --sd-space-2:        8px;
-  --sd-space-3:        12px;
-  --sd-space-4:        16px;
-  --sd-space-5:        20px;
-  --sd-card-padding:   10px 14px;  /* 状态卡片、内容卡片通用内边距 */
+:root {  /* 状态卡片、内容卡片通用内边距 */
   --sd-section-gap:    14px;       /* 页面区块间距 */
   --sd-page-padding:   clamp(28px, 2.4vw, 42px); /* 页面整体外边距 */
 }
@@ -800,16 +607,6 @@ button:disabled .sd-lifecycle-icon { filter: none; }
 }
 
 /* 空状态 / 待接入区通用占位 */
-.sd-empty-state {
-  padding: 18px 14px;
-  text-align: center;
-  border: 1px dashed rgba(200, 168, 100, 0.5);
-  background: rgba(200, 168, 100, 0.06);
-  color: #8a7060;
-  font-size: var(--sd-font-size-body);
-  font-style: italic;
-  line-height: 1.6;
-}
 
 /* Shared by server controls and player authorization dialogs. */
 .sd-ov-error {
@@ -822,17 +619,3 @@ button:disabled .sd-lifecycle-icon { filter: none; }
 }
 
 /* 待接入统一小徽章（与 sd-srv-badge-pending / sd-mods-pending-badge 语义对齐） */
-.sd-tag--pending {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 5px;
-  font-size: var(--sd-font-size-meta);
-  font-weight: 700;
-  color: #7a5c30;
-  background: rgba(200, 160, 40, 0.18);
-  border: 1px solid #c8a028;
-  border-radius: 2px;
-  white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
