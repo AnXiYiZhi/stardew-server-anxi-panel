@@ -2,6 +2,10 @@
 
 ## 2026-10-27 Panel 0.7.3 → 0.8.0 正式发布准备
 
+- 恢复入口修复已完成：driver新增 `DetectRuntimeUpdateRepairPlanWithInspection`，原入口共用同一journal优先catalog；Web传入该实例已核验inspection而不再按up_to_date丢弃计划。4个测试父项/21场景Linux Go1.25.14通过，含实际schema3恢复材料、140无关建议抑制、401/403/200、只读/脱敏及传入诊断不可忽略；既有16项测试事件亦通过。外部 `repair-api-local-v1/summary.json` 记录v3/v4全通过JSONL及SHA。首轮依赖EOF与两项fixture前置假设失败日志保留，分别修正环境/夹具后仅续未执行、受影响和新增测试；生产逻辑未为测试降级。正式候选、源码与证据身份必须随此次修复重新生成。
+- 第二轮 main=`df5827854bd8a408fdcd0982bc18aa6d529340e0`：独立兼容 `40456402552` 全部成功（7分36秒）。candidate `40456402505` 首次在远程制品门禁发现旧Auth ACR标签缺失；原index `99420ab…` 本仓仍可读，GHCR/Hub原tag/index相同。经用户明确授权一次HTTPS推送及临时排除Auth master预推送钩子，Auth工具提交 `71ba925144bcf60768ad6892d543bac4c02868a8` 通过55项测试、编码/YAML与Git hooks；恢复workflow `40458794846` 单次PUT201将旧tag由404恢复200，匿名原字节SHA再次相同，正式Auth140/其latest未变，没有重建或新Release。仅原失败candidate job原地续跑attempt2，保持commit和UTC身份，独立兼容不重跑。
+- attempt2代码门禁用时9分22秒通过；镜像于06:17:21Z构建完成，新装、生产资源、重启、fixture预取、DinD、072 Web升级/unhealthy回滚、持久化及自动功能矩阵均通过。06:21:19Z发现真正产品缺陷：`junimo_update_handlers.go` 在运行栈 `up_to_date` 时无条件丢弃仍有效的 `rollback_failed` 修复计划，使既有恢复入口消失。停止候选，未推validation/candidate引用、未产生tag/Release；修复该API与回归后必须形成新输入候选，不提升本次临时镜像。完整失败step645行及安全Auth恢复证明均在外部任务根。
+
 - 用户已明确授权两版正式发布及官网上线。使用现有本地 main 与已有改动，先完成 0.7.3 候选、真实专项、tag、三仓提升、正式冒烟，再准备 0.8.0；前一版未完成时不推进 main。当前阶段尚未生成正式候选，不将下方 V4 工程证明用于提升。
 - 本版变更清单：0.7.3 提供全局更新中心、发行说明与提示确认、正式版本列表分流、073 持久准备记录和后端升级约束；清单 `fullStackUpgrade.activate=false`，保留 .125/Auth anxi.2 配对，Control 为 0.3.9。0.8.0 单独切换 activate=true，目标为 Junimo .140、正式 Auth `1.5.0-preview.140-anxi.1`、固定游戏/SMAPI/Control 载荷及受控世界组迁移。
 - 受影响链路：旧客户端 latest 检测→073 Web 更新→准备记录→新版发行列表→080 提示/精确范围确认→Panel 替换→游戏组更新/恢复；另含存档导入、Mod/备份、邀请码、用户与专用认证会话、部署脚本、更新中心主题与响应式、正式候选/提升流程和公开升级指引。

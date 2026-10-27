@@ -1,5 +1,8 @@
 ## 2026-10-27 两阶段正式发布进度
 
+- [x] 旧Auth必需ACR标签恢复：原99420ab index单次关联，workflow40458794846验证140/latest不变；未重建Auth镜像。
+- [x] 修复正式候选发现的up_to_date抑制有效rollback_failed计划：driver共用journal优先catalog并接收已核验实例inspection，4父项21场景Linux通过，保留原E2E断言。
+- [ ] 从包含恢复入口修复的新main提交重新候选，通过原Docker E2E及073真实专项后再发布。
 - [x] 用户明确授权先073、后080和官网同步发布；保留现有main改动，不建立分支/worktree。
 - [x] 审计发现并修复正式候选的当前升级协议/浏览器覆盖缺口；增加同digest真实Docker专项封存，tag与提升独立复核。
 - [x] 080来源固定073；073即最老支持来源，显式minor候选不填更老版本。

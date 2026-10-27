@@ -1,5 +1,6 @@
 ## 2026-10-27 正式候选门禁准备
 
+- 已修复候选回归发现的旧事务恢复入口问题：`GET /api/instances/{id}/junimo-update` 不再仅因运行栈 `up_to_date` 清空有效 `rollback_failed` 的repairPlan。driver新增 `DetectRuntimeUpdateRepairPlanWithInspection` 共用journal优先catalog；Web传入该实例已核验的inspection，避免已兼容140实例按125全局清单生成无关建议，原检测入口保持兼容。新增driver/Web两测试文件、4个父项21场景在Linux Go1.25.14通过，覆盖有效/坏/活跃/耗尽/已收敛journal、权限、只读、脱敏和传入诊断不能被忽略；正式Docker E2E将由新候选再次验证。
 - 已获授权按073→080发布；073继续activate=false，080在073正式完成后单独启用并显式指定minor版本。两版均从干净同步main生成候选。
 - 发布脚本需覆盖当前策略/提示及范围确认；新增真实Docker专项证明验证器与封存workflow，tag/提升同时绑定candidate和acceptance的run、commit及digest。通用合成夹具与真实140/Auth/存档邀请码专项分别承担各自覆盖。
 - 080矩阵来源固定073；073既为上一版也是最老支持来源，不虚构072直升。接口与数据专项、完整验证及下一步见docs/09-image-build.md顶部；尚未产生正式候选。

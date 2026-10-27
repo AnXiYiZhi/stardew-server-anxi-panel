@@ -605,10 +605,7 @@ func (s *server) handleInstanceJunimoUpdate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	inspection := s.instanceRuntimeInspection(instance)
-	repair := sj.DetectRuntimeUpdateRepairPlan(makeRegistryInstance(instance))
-	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
-		repair = nil
-	}
+	repair := sj.DetectRuntimeUpdateRepairPlanWithInspection(makeRegistryInstance(instance), inspection)
 	writeJSON(w, http.StatusOK, junimoUpdateResponse{
 		RuntimeStackInspection: inspection,
 		ReleaseNotes:           inspection.Recommended.ReleaseNotes,

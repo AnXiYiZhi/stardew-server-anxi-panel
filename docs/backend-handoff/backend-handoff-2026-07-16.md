@@ -1,5 +1,6 @@
 ## 2026-10-27 正式发布接手增量
 
+- 候选40456402505 attempt2通过代码/fresh/072升级回滚后发现旧rollback_failed恢复入口被up_to_date抑制，已以driver共用catalog+已核验inspection修复，Web只替换调用。生产文件为runtime_update_repair.go和junimo_update_handlers.go；新增runtime_update_repair_inspection_test.go/junimo_repair_journal_test.go共21场景Linux通过，含参数被忽略即可失败的诊断用例，GET只读与401/403/200边界。旧Auth ACR标签由workflow40458794846恢复原99420ab，Auth140/latest未变。原E2E保留，下一步新main候选重新验证该修复及两条升级来源，再做精确digest真实游戏专项；尚无Panel tag/Release。
 - 本次已获073→080顺序发布授权，历史未发布说明为原时点记录。当前先修正式候选协议与专项覆盖，尚未产生正式候选/tag。
 - 新增candidate_acceptance验证器与release-acceptance封存；release-after-candidate等待同digest真实专项，release提升独立复核。080最低/最老来源均073，保持072跳级拒绝。
 - 涉及release workflows、candidate/gates及其测试；真实新夹具外部根E:/task-evidence/panel-release-20261027。验证、矩阵和后续回填字段见docs09顶部；不得复用旧tmpfs或工程镜像作正式证据。

@@ -36,6 +36,18 @@ type RuntimeUpdateRepairPlan struct {
 // imply that it is safe to mutate the instance: ActionAvailable is true only
 // for a closed, driver-owned repair path whose inputs can be revalidated.
 func DetectRuntimeUpdateRepairPlan(instance registry.Instance) *RuntimeUpdateRepairPlan {
+	return detectRuntimeUpdateRepairPlan(instance, nil)
+}
+
+// DetectRuntimeUpdateRepairPlanWithInspection preserves the journal-first
+// catalog while using this instance's verified runtime recommendation. A
+// full-stack compatibility receipt can change that recommendation without
+// making an unfinished or unreadable legacy transaction safe to ignore.
+func DetectRuntimeUpdateRepairPlanWithInspection(instance registry.Instance, inspection sjconfig.RuntimeStackInspection) *RuntimeUpdateRepairPlan {
+	return detectRuntimeUpdateRepairPlan(instance, &inspection)
+}
+
+func detectRuntimeUpdateRepairPlan(instance registry.Instance, verified *sjconfig.RuntimeStackInspection) *RuntimeUpdateRepairPlan {
 	status, statusErr := readRuntimeUpdateApplyStatus(instance.DataDir)
 	if statusErr != nil && !errors.Is(statusErr, os.ErrNotExist) {
 		return manualRuntimeUpdateRepairPlan(
@@ -46,7 +58,12 @@ func DetectRuntimeUpdateRepairPlan(instance registry.Instance) *RuntimeUpdateRep
 		)
 	}
 
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	var inspection sjconfig.RuntimeStackInspection
+	if verified == nil {
+		inspection = InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	} else {
+		inspection = *verified
+	}
 	if statusErr == nil && status.Phase == RuntimeUpdateApplyRollbackFailed {
 		if status.RepairAttempts >= runtimeUpdateRepairAttemptLimit {
 			return exhaustedRuntimeUpdateRepairPlan(status.RepairAttempts)

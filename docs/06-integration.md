@@ -1,5 +1,6 @@
 ## 2026-10-27 正式升级联调门禁准备
 
+- `GET /api/instances/{id}/junimo-update` 的 `status=up_to_date` 与 `repairPlan` 是独立状态：有效rollback_failed事务仍提供修复计划；无journal且已兼容140时按该实例已核验inspection生成建议。driver统一保留损坏/归属/材料/活跃/耗尽保护，401/403/200权限、GET不改文件和不暴露私有材料的Linux回归通过。正式候选旧事务E2E发现的无条件抑制已修复，接口字段及原E2E断言不变，须使用新候选继续验收。
 - 用户授权073→080正式顺序发布；新候选必须重新验证旧072 Web API升级073，再从正式073通过提示摘要和世界范围确认升级080。
 - 候选API夹具适配发行body策略、targetVersion与noticeDigest，以及full-stack prepare/confirm；真实游戏专项使用候选精确digest，覆盖回滚、有效邀请码、存档角色/Mod/备份/Auth会话与非目标资源。
 - release-acceptance封存同run/SHA/digest专项安全证明后才允许tag与提升；证明字段不包含私有账号、邀请码、玩家或存档标识。尚未生成正式证明，详情见镜像文档顶部。
