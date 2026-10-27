@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -38,10 +40,17 @@ class ReleasePolicyTests(unittest.TestCase):
 
     def test_notes_follow_exact_release_version(self):
         self.assertEqual(ROOT / "deploy/updates/0.8.0.json", POLICY.policy_path("v0.8.0", root=ROOT))
-        self.assertEqual(ROOT / "deploy/panel-update.json", POLICY.policy_path("0.7.3", root=ROOT))
+        bridge_path = ROOT / "deploy/updates/0.7.3.json"
+        self.assertEqual(bridge_path, POLICY.policy_path("0.7.3", root=ROOT))
+        POLICY.validate(json.loads(bridge_path.read_text(encoding="utf-8")), "0.7.3")
         content = {"schemaVersion": 1, "version": "0.7.3", "title": "Update", "summary": "Summary", "changes": ["Change"]}
         with self.assertRaisesRegex(ValueError, "exact target version"):
             POLICY.validate(content, "0.7.4")
+
+    def test_unarchived_release_uses_current_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(root / "deploy/panel-update.json", POLICY.policy_path("0.7.4", root=root))
 
 
 if __name__ == "__main__":

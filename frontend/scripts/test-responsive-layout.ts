@@ -19,6 +19,29 @@ function readTextFile(url: URL): string {
   return readFileSync(url, 'utf8').replace(/\r\n?/g, '\n')
 }
 
+function workflowStep(source: string, name: string): string {
+  const steps = source.split('\n      - ').filter((step) => step.startsWith(`name: ${name}\n`))
+  assert.equal(steps.length, 1, `workflow must declare exactly one step: ${name}`)
+  return steps[0]
+}
+
+function assertInOrder(source: string, markers: string[], message: string): void {
+  let previous = -1
+  for (const marker of markers) {
+    const current = source.indexOf(marker, previous + 1)
+    assert.ok(current > previous, `${message}: missing or reordered ${marker}`)
+    previous = current
+  }
+}
+
+function assertSuccessfulWorkflowRun(step: string, path: string): void {
+  const predicate = step.match(/jq -e[^\n]*'(\.conclusion == "success"[^']*)'/)?.[1]
+  assert.ok(predicate, `successful workflow run validation is required for ${path}`)
+  for (const condition of ['.conclusion == "success"', '.head_sha == $sha', '.head_branch == "main"', '.head_repository.full_name == $repo', `.path == "${path}"`]) {
+    assert.ok(predicate.includes(condition), `source run must bind ${condition}`)
+  }
+}
+
 const installDownloadIcon = readFileSync(new URL('../public/assets/stardew/ui/install/icon_install_step_download_image2_regen.png', import.meta.url))
 assert.equal(installDownloadIcon.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'download icon must be PNG')
 assert.equal(installDownloadIcon.readUInt32BE(16), 72, 'download icon width')
@@ -187,6 +210,8 @@ assert.match(qaSource, /const lifecycleJobs = qaLibraryLifecycleOperation \? \[\
 const releaseWorkflow = readTextFile(new URL('../../.github/workflows/release.yml', import.meta.url))
 const releaseCandidateWorkflow = readTextFile(new URL('../../.github/workflows/release-candidate.yml', import.meta.url))
 const releaseAfterCandidateWorkflow = readTextFile(new URL('../../.github/workflows/release-after-candidate.yml', import.meta.url))
+const releaseAcceptanceWorkflow = readTextFile(new URL('../../.github/workflows/release-acceptance.yml', import.meta.url))
+const candidateAcceptanceValidator = readTextFile(new URL('../../scripts/candidate_acceptance.py', import.meta.url))
 const releaseGates = readTextFile(new URL('../../scripts/run-release-gates.sh', import.meta.url))
 const releaseCandidateScript = readTextFile(new URL('../../scripts/release-candidate.sh', import.meta.url))
 const releaseUpgradeE2E = readTextFile(new URL('../../scripts/tests/test_release_candidate_upgrade.sh', import.meta.url))
@@ -622,20 +647,64 @@ assert.ok(releaseWorkflow.includes('.oldestTestedVersion // empty'))
 assert.ok(releaseWorkflow.includes('--require-oldest-for-zero-patch'))
 assert.match(releaseWorkflow, /skopeo copy --all --preserve-digests/)
 assert.doesNotMatch(releaseWorkflow, /docker build/)
-for (const workflowSource of [releaseCandidateWorkflow, releaseAfterCandidateWorkflow]) {
-  assert.ok(workflowSource.includes('if [[ "$previous" != "$latest_release" ]]; then'))
+const candidateIdentity = workflowStep(releaseCandidateWorkflow, 'Resolve candidate identity')
+assert.match(candidateIdentity, /if \[\[ "\$previous" != "\$latest_release" \]\]; then[\s\S]*?exit 1/)
+assert.ok(candidateIdentity.includes('candidate-$version-$short_sha'))
+assert.ok(candidateIdentity.includes('validation-$version-$short_sha'))
+assert.match(candidateIdentity, /if \[\[ "\$ref_exists" == true \]\]; then[\s\S]*?exit 1/)
+const candidateDownload = workflowStep(releaseAcceptanceWorkflow, 'Download the exact successful candidate proof')
+assertSuccessfulWorkflowRun(candidateDownload, '.github/workflows/release-candidate.yml')
+assert.ok(candidateDownload.includes('.commit == $sha and .workflowRunId == $run'))
+assert.ok(candidateDownload.includes('[[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]'))
+const sealAcceptance = workflowStep(releaseAcceptanceWorkflow, 'Validate completed specialist checks and identity')
+assert.ok(sealAcceptance.includes('--candidate "$RUNNER_TEMP/candidate-proof/candidate.json"'))
+assert.ok(sealAcceptance.includes('--acceptance-run-id "$GITHUB_RUN_ID"'))
+assert.match(candidateAcceptanceValidator, /hashlib\.sha256\(candidate_raw\)\.hexdigest\(\)/)
+assert.ok(candidateAcceptanceValidator.includes('acceptance["proofSha256"] != proof_sha256'))
+assert.ok(candidateAcceptanceValidator.includes('stamp != acceptance_run_id'))
+const formalCandidate = workflowStep(releaseAcceptanceWorkflow, 'Seal exact tested digest as the formal candidate')
+assert.ok(formalCandidate.includes('"docker://$validation_ref")" == "$digest"'))
+assert.ok(formalCandidate.includes('"docker://$candidate_ref")" == "$digest"'))
+assert.ok(formalCandidate.includes('skopeo copy --all --preserve-digests "docker://$repository@$digest" "docker://$candidate_ref"'))
+assertInOrder(formalCandidate, ['git fetch --no-tags origin main:refs/remotes/origin/main', '[[ "$(git rev-parse origin/main)" == "$commit" ]]', 'skopeo copy --all --preserve-digests'], 'only seal the still-current exact tested digest')
+assertInOrder(releaseAcceptanceWorkflow, ['- name: Validate completed specialist checks and identity', '- name: Seal exact tested digest as the formal candidate', '- name: Upload immutable specialist acceptance proof'], 'specialist proof follows validation and exact digest sealing')
+for (const workflowSource of [releaseCandidateWorkflow, releaseAcceptanceWorkflow]) {
+  assert.ok(workflowSource.includes('actions/upload-artifact@v4'))
+  assert.doesNotMatch(workflowSource, /overwrite:\s*true/)
 }
+assertSuccessfulWorkflowRun(workflowStep(releaseAfterCandidateWorkflow, 'Download candidate proof'), '.github/workflows/release-candidate.yml')
+const requireAcceptance = workflowStep(releaseAfterCandidateWorkflow, 'Require completed real Docker acceptance')
+assert.ok(requireAcceptance.includes('from scripts.candidate_acceptance import requires'))
+assert.match(requireAcceptance, /if \[\[ -z "\$ACCEPTANCE_RUN_ID" \]\]; then[\s\S]*?ready=false[\s\S]*?exit 0/)
+assert.ok(requireAcceptance.includes('--acceptance-run-id "$ACCEPTANCE_RUN_ID"'))
+const tagValidatedCandidate = workflowStep(releaseAfterCandidateWorkflow, 'Verify current main, create tag, and start promotion')
+assert.ok(tagValidatedCandidate.includes("if: steps.acceptance.outputs.ready == 'true'"))
+assert.match(tagValidatedCandidate, /if \[\[ "\$previous" != "\$latest_release" && "\$version" != "\$latest_release" \]\]; then[\s\S]*?exit 1/)
+assert.ok(tagValidatedCandidate.includes('"$commit" != "$CANDIDATE_COMMIT"'))
+assert.ok(tagValidatedCandidate.includes('"$workflow_run_id" != "$CANDIDATE_RUN_ID"'))
+assertInOrder(tagValidatedCandidate, ['git fetch --no-tags origin main:refs/remotes/origin/main', 'if [[ "$(git rev-parse origin/main)" != "$commit" ]]', 'git tag -a', 'git push origin', 'gh workflow run release.yml'], 'tag and promotion require the still-current candidate')
 assert.ok(releaseWorkflow.includes('group: release-panel-promotion'))
 assert.ok(releaseWorkflow.includes('echo "previous=$previous"'))
 assert.ok(releaseWorkflow.includes('if [[ "$previous" != "$latest_release" && "$version" != "$latest_release" ]]; then'))
 assert.ok(releaseAfterCandidateWorkflow.includes('tag_candidate_run_id'))
 assert.ok(releaseAfterCandidateWorkflow.includes('bound to a different or malformed immutable candidate'))
-assert.ok(releaseAfterCandidateWorkflow.includes('git tag -a "$tag" "$commit" -m "$tag validated candidate" -m "Candidate workflow: $CANDIDATE_RUN_ID"'))
-assert.ok(releaseAfterCandidateWorkflow.includes('Digest: $digest'))
+assert.ok(tagValidatedCandidate.includes('tag_candidate_run_count != 1 || tag_candidate_digest_count != 1'))
+assert.ok(tagValidatedCandidate.includes('"$tag_candidate_run_id" != "$CANDIDATE_RUN_ID" || "$tag_candidate_digest" != "$digest"'))
+assert.ok(tagValidatedCandidate.includes('"$tag_acceptance_run_id" != "$ACCEPTANCE_RUN_ID"'))
+assert.ok(tagValidatedCandidate.includes('annotation="Candidate workflow: $CANDIDATE_RUN_ID"'))
+assert.ok(tagValidatedCandidate.includes('"Digest: $digest"'))
+assert.ok(tagValidatedCandidate.includes('"Acceptance workflow: $ACCEPTANCE_RUN_ID"'))
+assert.ok(tagValidatedCandidate.includes('git tag -a "$tag" "$commit" -m "$tag validated candidate" -m "$annotation"'))
+assert.ok(tagValidatedCandidate.includes('if [[ -z "$existing_promotion" ]]; then'))
 assert.ok(releaseWorkflow.includes('echo "tag_candidate_run_id=$tag_candidate_run_id"'))
 assert.ok(releaseWorkflow.includes('echo "tag_candidate_digest=$tag_candidate_digest"'))
 assert.ok(releaseWorkflow.includes('actions/runs/$TAG_CANDIDATE_RUN_ID/artifacts'))
-assert.ok(releaseWorkflow.includes('.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .path == ".github/workflows/release-candidate.yml"'))
+assertSuccessfulWorkflowRun(workflowStep(releaseWorkflow, 'Download successful candidate proof'), '.github/workflows/release-candidate.yml')
+const verifyAcceptance = workflowStep(releaseWorkflow, 'Verify immutable real Docker acceptance')
+assertSuccessfulWorkflowRun(verifyAcceptance, '.github/workflows/release-acceptance.yml')
+assert.ok(verifyAcceptance.includes('--candidate "$RUNNER_TEMP/candidate-proof/candidate.json"'))
+assert.ok(verifyAcceptance.includes('--acceptance-run-id "$ACCEPTANCE_RUN_ID"'))
+assertInOrder(releaseWorkflow, ['- name: Download successful candidate proof', '- name: Verify immutable real Docker acceptance', '- name: Verify candidate digest and OCI identity', '- name: Promote exact version tags'], 'formal promotion requires both proofs and exact OCI identity')
 assert.ok(releaseWorkflow.includes('[.artifacts[] | select(.name == $name and (.expired | not))] | length'))
 assert.ok(releaseWorkflow.includes('if [[ "$artifact_count" != 1 ]]; then'))
 assert.ok(releaseWorkflow.includes('"$digest" != "$TAG_CANDIDATE_DIGEST"'))
