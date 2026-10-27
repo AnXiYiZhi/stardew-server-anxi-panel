@@ -1,5 +1,6 @@
 ## 2026-10-27 正式候选门禁准备
 
+- 发布夹具已区分Panel/helper成功与实例Prepare完成：未知session-holder验收联合等待显式intent、安全Compose和本实例精确拒绝事件，每轮及GET后检查容器/会话/marker/Auth镜像边界；重启后等待持久scope和资源收敛。新增真实函数行为回归22条摘要及三文件ShellCheck本地通过，没有改生产迁移或补写fixture。ee3ad75曾通过072完整链及032升级/回滚、随后即时环境断言失败；下一步新候选完整验证，仍未发布，详见docs09顶部。
 - 资源统计真实Docker回归现自行准备固定alpine:3.20（inspect、最多3次每次60秒pull、再inspect），准备预算独立于原2分钟业务断言；ComposeUp/Down失败保留原exit/timedOut及脱敏输出，不依赖其它包拉镜像的副作用。新增fixture helper/契约和空镜像DinD共7场景通过，统计业务断言未改；两条CI入口覆盖真实测试及3个Fixture父项，9条真实Docker调用均-count=1且有前端轻量门禁防回归。
 - 已修复候选回归发现的旧事务恢复入口问题：`GET /api/instances/{id}/junimo-update` 不再仅因运行栈 `up_to_date` 清空有效 `rollback_failed` 的repairPlan。driver新增 `DetectRuntimeUpdateRepairPlanWithInspection` 共用journal优先catalog；Web传入该实例已核验的inspection，避免已兼容140实例按125全局清单生成无关建议，原检测入口保持兼容。新增driver/Web两测试文件、4个父项21场景在Linux Go1.25.14通过，覆盖有效/坏/活跃/耗尽/已收敛journal、权限、只读、脱敏和传入诊断不能被忽略；正式Docker E2E将由新候选再次验证。
 - 已获授权按073→080发布；073继续activate=false，080在073正式完成后单独启用并显式指定minor版本。两版均从干净同步main生成候选。

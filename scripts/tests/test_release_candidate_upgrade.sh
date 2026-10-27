@@ -156,6 +156,13 @@ legacy_auth_container_id=""
 legacy_auth_image_ref=""
 legacy_auth_image_id=""
 legacy_disabled_session_hash=""
+legacy_pre_upgrade_compose_hash=""
+legacy_disabled_runtime_fingerprint=""
+legacy_server_runtime_fingerprint=""
+unknown_holder_intent_ready=0
+unknown_holder_compose_ready=0
+unknown_holder_rejection_seen=0
+unknown_holder_boundary_reason=""
 unknown_session_holder_id=""
 authorized_session_hash=""
 authorized_auth_container_id=""
@@ -1464,12 +1471,33 @@ docker exec "$game_container" sh -c 'printf "game-sentinel\n" > /game/sentinel.t
 game_id_before="$(docker inspect "$game_container" | jq -r '.[0].Id')"
 game_hash_before="$(docker exec "$game_container" sha256sum /game/sentinel.txt | awk '{print $1}')"
 
+record_update_http_result() {
+  local stage="$1" code="$2" curl_status="$3" id phase id_hash="absent"
+  id=""
+  if ((curl_status == 0)) && [[ "$code" =~ ^[1-5][0-9][0-9]$ ]]; then
+    id="$(jq -r '(.id // .updateId // .operationId // .checkId // "") | if type == "string" then . else "" end' "$response_file" 2>/dev/null || true)"
+  fi
+  phase="$(jq -r '.phase // "absent"' "$response_file" 2>/dev/null || true)"
+  case "$phase" in
+    absent|checking|succeeded|failed|unsupported|preparing|awaiting_confirmation|panel_failed_rolled_back|failed_rolled_back|rollback_failed) ;;
+    *) phase="other" ;;
+  esac
+  jq -nc --arg stage "$stage" --arg http "$code" --argjson curlExit "$curl_status" --arg id "$id" --arg phase "$phase" \
+    '{stage:$stage,httpStatus:$http,curlExit:$curlExit,id:$id,phase:$phase}' >>"$root/update-http-evidence.private.jsonl"
+  chmod 600 "$root/update-http-evidence.private.jsonl"
+  if [[ -n "$id" ]]; then
+    id_hash="$(printf '%s' "$id" | sha256sum | awk '{print $1}')"
+  fi
+  printf 'candidate upgrade E2E: HTTP evidence stage=%s status=%s curlExit=%s idSha256=%s phase=%s\n' "$stage" "$code" "$curl_status" "$id_hash" "$phase"
+}
+
 post_update_check() {
-  local code
-  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/system/update/check")"
-  if [[ "$code" != 200 || "$(jq -r '.latestVersion // empty' "$response_file")" != "v$version" || "$(jq -r '.updateAvailable // false' "$response_file")" != true ]]; then
+  local code curl_status=0
+  : >"$response_file"
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/system/update/check")" || curl_status=$?
+  record_update_http_result check "$code" "$curl_status"
+  if ((curl_status != 0)) || [[ "$code" != 200 || "$(jq -r '.latestVersion // empty' "$response_file")" != "v$version" || "$(jq -r '.updateAvailable // false' "$response_file")" != true ]]; then
     echo "candidate upgrade E2E: update check failed with HTTP $code" >&2
-    cat "$response_file" >&2
     return 1
   fi
   notice_digest="$(jq -r '.noticeDigest // empty' "$response_file")"
@@ -1477,11 +1505,12 @@ post_update_check() {
 }
 
 run_dry_run() {
-  local code phase deadline
-  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "{\"targetVersion\":\"$version\"}" "http://127.0.0.1:$panel_port/api/system/update/dry-run")"
-  if [[ "$code" != 202 ]]; then
+  local code phase deadline curl_status=0
+  : >"$response_file"
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "{\"targetVersion\":\"$version\"}" "http://127.0.0.1:$panel_port/api/system/update/dry-run")" || curl_status=$?
+  record_update_http_result dry-run "$code" "$curl_status"
+  if ((curl_status != 0)) || [[ "$code" != 202 ]]; then
     echo "candidate upgrade E2E: dry-run start failed with HTTP $code" >&2
-    cat "$response_file" >&2
     return 1
   fi
   dry_run_id="$(jq -r '.id // empty' "$response_file")"
@@ -1492,18 +1521,20 @@ run_dry_run() {
   cp "$response_file" "$root/dry-run-accepted.json"
   deadline=$((SECONDS + 180))
   while ((SECONDS < deadline)); do
-    if curl --silent --show-error --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/dry-run" >"$response_file" 2>/dev/null; then
+    if code="$(curl --silent --show-error --max-time 3 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/dry-run" 2>/dev/null)"; then
       phase="$(jq -r '.phase // empty' "$response_file")"
       if [[ "$(jq -r '.id // empty' "$response_file")" != "$dry_run_id" ]]; then
         sleep 1
         continue
       fi
       if [[ "$phase" == succeeded ]]; then
+        cp "$response_file" "$root/dry-run-terminal.private.json"
+        record_update_http_result dry-run-terminal "$code" 0
         return 0
       fi
       if [[ "$phase" == failed || "$phase" == unsupported ]]; then
         echo "candidate upgrade E2E: dry-run ended in $phase" >&2
-        cat "$response_file" >&2
+        record_update_http_result dry-run-terminal "$code" 0
         return 1
       fi
     fi
@@ -1514,15 +1545,17 @@ run_dry_run() {
 }
 
 prepare_and_confirm_scope() {
-  local code phase deadline old_operation_id="" plan_sha payload
+  local code phase deadline old_operation_id="" plan_sha payload curl_status=0
   if curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/full-stack" >"$response_file" 2>/dev/null; then
     old_operation_id="$(jq -r '.operationId // empty' "$response_file")"
   fi
   payload="$(jq -nc --arg target "$version" '{action:"prepare",targetVersion:$target}')"
-  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")"
+  : >"$response_file"
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")" || curl_status=$?
+  record_update_http_result scope-prepare "$code" "$curl_status"
   cp "$response_file" "$root/scope-prepare-accepted.json"
   scope_operation_id="$(jq -r '.operationId // empty' "$response_file")"
-  if [[ "$code" != 202 || ! "$scope_operation_id" =~ ^stack_[a-f0-9]{32}$ || "$scope_operation_id" == "$old_operation_id" ]]; then
+  if ((curl_status != 0)) || [[ "$code" != 202 || ! "$scope_operation_id" =~ ^stack_[a-f0-9]{32}$ || "$scope_operation_id" == "$old_operation_id" ]]; then
     echo "candidate upgrade E2E: full-stack prepare did not return one new accepted operation (HTTP $code)" >&2
     return 1
   fi
@@ -1556,8 +1589,11 @@ prepare_and_confirm_scope() {
     return 1
   fi
   payload="$(jq -nc --arg id "$scope_operation_id" --arg plan "$plan_sha" '{action:"confirm",operationId:$id,planSha256:$plan,confirm:true,noticeDigest:"invalid-notice"}')"
-  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")"
-  if [[ "$code" != 409 || "$(jq -r '.error.code // empty' "$response_file")" != update_precondition_failed ]]; then
+  : >"$response_file"
+  curl_status=0
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")" || curl_status=$?
+  record_update_http_result scope-invalid-notice "$code" "$curl_status"
+  if ((curl_status != 0)) || [[ "$code" != 409 || "$(jq -r '.error.code // empty' "$response_file")" != update_precondition_failed ]]; then
     echo "candidate upgrade E2E: a mismatched notice was not rejected before authorization" >&2
     return 1
   fi
@@ -1568,9 +1604,12 @@ prepare_and_confirm_scope() {
     return 1
   fi
   payload="$(jq -nc --arg id "$scope_operation_id" --arg plan "$plan_sha" --arg notice "$notice_digest" '{action:"confirm",operationId:$id,planSha256:$plan,confirm:true,noticeDigest:$notice}')"
-  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")"
+  : >"$response_file"
+  curl_status=0
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")" || curl_status=$?
+  record_update_http_result scope-confirm "$code" "$curl_status"
   cp "$response_file" "$root/scope-confirm-accepted.json"
-  if [[ "$code" != 202 || "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ||
+  if ((curl_status != 0)) || [[ "$code" != 202 || "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ||
     "$(jq -r '.authorizedAt // empty' "$response_file")" == "" ]]; then
     echo "candidate upgrade E2E: exact scope confirmation was not accepted (HTTP $code); inspect this operation before any retry" >&2
     return 1
@@ -1613,20 +1652,24 @@ start_apply() {
     prepare_and_confirm_scope
     return
   fi
+  : >"$response_file"
   set +e
   code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"confirmFullStack":true}' "http://127.0.0.1:$panel_port/api/system/update/apply")"
   local curl_status=$?
   set -e
+  record_update_http_result apply "$code" "$curl_status"
   if ((curl_status == 0)) && [[ "$code" == 202 ]]; then
     accepted_update_id="$(jq -r '.updateId // empty' "$response_file")"
     cp "$response_file" "$root/apply-accepted.json"
     return 0
   fi
   if ((curl_status == 0)) && [[ "$code" == 400 ]]; then
+    : >"$response_file"
     set +e
     code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/system/update/apply")"
     curl_status=$?
     set -e
+    record_update_http_result apply-legacy-body "$code" "$curl_status"
     if ((curl_status == 0)) && [[ "$code" == 202 ]]; then
       accepted_update_id="$(jq -r '.updateId // empty' "$response_file")"
       cp "$response_file" "$root/apply-accepted.json"
@@ -1638,17 +1681,17 @@ start_apply() {
     return 0
   fi
   echo "candidate upgrade E2E: apply start failed with HTTP $code" >&2
-  cat "$response_file" >&2
   return 1
 }
 
 wait_apply_phase() {
   local expected_phase="$1"
   local timeout_seconds="$2"
-  local phase deadline
+  local phase deadline code="000" last_curl_status=0
   deadline=$((SECONDS + timeout_seconds))
   while ((SECONDS < deadline)); do
-    if curl --silent --show-error --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/apply" >"$response_file" 2>/dev/null; then
+    if code="$(curl --silent --show-error --max-time 3 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/apply" 2>/dev/null)"; then
+      last_curl_status=0
       local observed_update_id
       observed_update_id="$(jq -r '.updateId // empty' "$response_file")"
       if [[ -z "$observed_update_id" || "$observed_update_id" == "$previous_update_id" ||
@@ -1663,25 +1706,27 @@ wait_apply_phase() {
       fi
       phase="$(jq -r '.phase // empty' "$response_file")"
       if [[ "$phase" == "$expected_phase" ]]; then
+        cp "$response_file" "$root/apply-terminal.private.json"
+        record_update_http_result apply-terminal "$code" 0
         return 0
       fi
       if [[ "$phase" == rollback_failed ]]; then
         echo "candidate upgrade E2E: apply reached rollback_failed" >&2
-        cat "$response_file" >&2
+        record_update_http_result apply-terminal "$code" 0
         return 1
       fi
       if [[ "$expected_phase" == succeeded && "$phase" == failed_rolled_back ]]; then
         echo "candidate upgrade E2E: healthy candidate was rolled back" >&2
-        cat "$response_file" >&2
+        record_update_http_result apply-terminal "$code" 0
         return 1
       fi
+    else
+      last_curl_status=$?
     fi
     sleep 1
   done
   echo "candidate upgrade E2E: timed out waiting for apply phase $expected_phase" >&2
-  if [[ -s "$response_file" ]]; then
-    cat "$response_file" >&2
-  fi
+  record_update_http_result apply-observation-timeout "$code" "$last_curl_status"
   return 1
 }
 
@@ -1753,10 +1798,6 @@ assert_candidate_auth_images_unchanged() {
   snapshot_candidate_auth_images "$current_snapshot"
   if [[ "$(sha256sum "$current_snapshot" | awk '{print $1}')" != "$(sha256sum "$legacy_auth_image_snapshot_before" | awk '{print $1}')" ]]; then
     echo "candidate upgrade E2E: disabled migration pulled, removed, or retagged an optional Auth candidate image" >&2
-    echo "before:" >&2
-    cat "$legacy_auth_image_snapshot_before" >&2
-    echo "after:" >&2
-    cat "$current_snapshot" >&2
     return 1
   fi
   if [[ "$(docker image inspect "$legacy_auth_image_ref" | jq -r '.[0].Id')" != "$legacy_auth_image_id" ]]; then
@@ -1934,6 +1975,8 @@ prepare_legacy_disabled_runtime_fixture() {
     return 1
   fi
   legacy_server_started_at="$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')"
+  legacy_disabled_runtime_fingerprint="$(read_legacy_runtime_fingerprint "$legacy_server_container_id" "$legacy_dependency_container_id" "$legacy_auth_container_id" "$unknown_session_holder_id")"
+  legacy_server_runtime_fingerprint="$(read_legacy_runtime_fingerprint "$legacy_server_container_id" "$legacy_dependency_container_id")"
 
   docker tag "$previous_fixture_ref" "$previous_ref"
   sed -i "s|^PANEL_IMAGE=.*$|PANEL_IMAGE=$previous_ref|" "$env_file"
@@ -1972,7 +2015,135 @@ prepare_legacy_disabled_runtime_fixture() {
     echo "candidate upgrade E2E: previous release changed the disabled legacy session sentinel" >&2
     return 1
   fi
+  if [[ "$(read_legacy_runtime_fingerprint "$legacy_server_container_id" "$legacy_dependency_container_id" "$legacy_auth_container_id" "$unknown_session_holder_id")" != "$legacy_disabled_runtime_fingerprint" ]]; then
+    echo "candidate upgrade E2E: previous release changed a legacy holder runtime boundary" >&2
+    return 1
+  fi
+  legacy_pre_upgrade_compose_hash="$(sha256sum "$instance_compose" | awk '{print $1}')"
   echo "candidate upgrade E2E: previous release preserved the expected fail-closed server, Auth, session, and Compose boundary" >&2
+}
+
+read_legacy_runtime_fingerprint() {
+  docker inspect "$@" 2>/dev/null |
+    jq -ceS '[.[] | {id:.Id,image:.Image,startedAt:.State.StartedAt,running:.State.Running}] | if length > 0 and all(.running == true) then . else error("runtime boundary unavailable") end' 2>/dev/null |
+    sha256sum | awk '{print $1}'
+}
+
+observe_unknown_holder_bootstrap_rejection() {
+  local log_file="$root/bootstrap-observation.private.log"
+  unknown_holder_rejection_seen=0
+  if ! docker logs "$panel_container" >"$log_file" 2>&1; then
+    chmod 600 "$log_file"
+    return 0
+  fi
+  chmod 600 "$log_file"
+  if jq -Rne '[inputs | fromjson? | select(.instance == "stardew" and .msg == "skip required runtime coordinator because instance prepare failed" and ((.error // "") | type == "string" and test("^converge optional Steam Auth runtime scope: remove legacy optional Auth container: Steam invite session volume has an unknown container holder at holder [1-9][0-9]*$")))] | length > 0' "$log_file" >/dev/null; then
+    unknown_holder_rejection_seen=1
+  fi
+}
+
+report_legacy_bootstrap_diagnostics() {
+  local message count
+  local log_file="$root/bootstrap-diagnostics.private.log"
+  printf 'candidate upgrade E2E: bootstrap observation reason=%s intentReady=%s composeReady=%s holderRejected=%s\n' \
+    "$unknown_holder_boundary_reason" "$unknown_holder_intent_ready" "$unknown_holder_compose_ready" "$unknown_holder_rejection_seen" >&2
+  # Only counts of fixed message templates leave the private fixture directory.
+  docker logs "$panel_container" >"$log_file" 2>&1 || true
+  chmod 600 "$log_file"
+  for message in \
+    'waiting for Panel upgrade health acceptance before automatic runtime bootstrap' \
+    'skip automatic runtime bootstrap because Panel upgrade status is unreadable' \
+    'skip automatic runtime bootstrap because Panel upgrade did not accept this process' \
+    'upgrade preparation required before runtime bootstrap' \
+    'skip automatic runtime bootstrap because instances cannot be reloaded' \
+    'skip instance prepare and required runtime coordinator while a recovery transaction remains active' \
+    'skip required runtime coordinator because instance prepare failed' \
+    'removed legacy server dependency on optional Steam Auth' \
+    'migrated explicit Steam invite intent'; do
+    count="$(grep -cF "$message" "$log_file" || true)"
+    printf 'candidate upgrade E2E: bootstrap event=%s count=%s\n' "$message" "$count" >&2
+  done
+}
+
+assert_unknown_session_holder_boundary() {
+  local instance_env="$data_dir/instances/stardew/.env"
+  local instance_compose="$data_dir/instances/stardew/docker-compose.yml"
+  local intent_count false_count compose_hash fingerprint session_hash
+  unknown_holder_intent_ready=0
+  unknown_holder_compose_ready=0
+  unknown_holder_boundary_reason="checking"
+  if [[ ! -f "$instance_env" || ! -f "$instance_compose" ]]; then
+    unknown_holder_boundary_reason="runtime_file_missing"
+    return 1
+  fi
+  if grep -q '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=' "$instance_env"; then
+    unknown_holder_boundary_reason="runtime_marker_present"
+    return 1
+  fi
+  intent_count="$(grep -c '^STEAM_INVITE_ENABLED=' "$instance_env" || true)"
+  false_count="$(grep -c '^STEAM_INVITE_ENABLED=false$' "$instance_env" || true)"
+  if [[ "$intent_count" == 1 && "$false_count" == 1 ]]; then
+    unknown_holder_intent_ready=1
+  elif [[ "$intent_count" != 0 ]]; then
+    unknown_holder_boundary_reason="intent_invalid"
+    return 1
+  fi
+  compose_hash="$(sha256sum "$instance_compose" | awk '{print $1}')"
+  if [[ "$compose_hash" == "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+    unknown_holder_compose_ready=1
+  elif [[ "$compose_hash" != "$legacy_pre_upgrade_compose_hash" ]]; then
+    unknown_holder_boundary_reason="compose_changed_outside_safe_migration"
+    return 1
+  fi
+  if [[ "$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')" != "$legacy_server_container_id" ||
+    "$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')" != "$legacy_dependency_container_id" ]] ||
+    ! fingerprint="$(read_legacy_runtime_fingerprint "$legacy_server_container_id" "$legacy_dependency_container_id" "$legacy_auth_container_id" "$unknown_session_holder_id")" ||
+    [[ "$fingerprint" != "$legacy_disabled_runtime_fingerprint" ]]; then
+    unknown_holder_boundary_reason="container_identity_or_runtime_changed"
+    return 1
+  fi
+  if ! docker volume inspect "$steam_session_volume" >/dev/null 2>&1 ||
+    ! session_hash="$(docker exec "$unknown_session_holder_id" sha256sum /untrusted-session/authorized-session.txt 2>/dev/null | awk '{print $1}')" ||
+    [[ "$session_hash" != "$legacy_disabled_session_hash" ]]; then
+    unknown_holder_boundary_reason="session_changed"
+    return 1
+  fi
+  if ! assert_candidate_auth_images_unchanged; then
+    unknown_holder_boundary_reason="auth_images_changed"
+    return 1
+  fi
+}
+
+wait_unknown_session_holder_convergence() {
+  local timeout_seconds="${1:-60}" deadline intent_seen=0 compose_seen=0
+  deadline=$((SECONDS + timeout_seconds))
+  while ((SECONDS < deadline)); do
+    if ! assert_unknown_session_holder_boundary; then
+      report_legacy_bootstrap_diagnostics
+      return 1
+    fi
+    if ((intent_seen > unknown_holder_intent_ready || compose_seen > unknown_holder_compose_ready)); then
+      unknown_holder_boundary_reason="convergence_regressed"
+      report_legacy_bootstrap_diagnostics
+      return 1
+    fi
+    intent_seen=$unknown_holder_intent_ready
+    compose_seen=$unknown_holder_compose_ready
+    observe_unknown_holder_bootstrap_rejection
+    if ((unknown_holder_intent_ready == 1 && unknown_holder_compose_ready == 1 && unknown_holder_rejection_seen == 1)); then
+      # Observe the immutable boundary again after reading the receipt/log.
+      if assert_unknown_session_holder_boundary && ((unknown_holder_intent_ready == 1 && unknown_holder_compose_ready == 1)); then
+        return 0
+      fi
+      unknown_holder_boundary_reason="post_receipt_boundary_changed"
+      report_legacy_bootstrap_diagnostics
+      return 1
+    fi
+    sleep 1
+  done
+  unknown_holder_boundary_reason="convergence_deadline"
+  report_legacy_bootstrap_diagnostics
+  return 1
 }
 
 assert_unknown_session_holder_fail_closed() {
@@ -1981,6 +2152,10 @@ assert_unknown_session_holder_fail_closed() {
   local instance_compose="$instance_dir/docker-compose.yml"
   local current_server_id=""
   local current_dependency_id=""
+
+  # Helper success precedes the asynchronous, one-second bootstrap observer.
+  # The 0.3.2 source has neither intent nor dependency migration yet.
+  wait_unknown_session_holder_convergence 60 || return 1
 
   if [[ "$(grep -c '^STEAM_INVITE_ENABLED=false$' "$instance_env")" != 1 ]] ||
     grep -q '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=' "$instance_env"; then
@@ -2006,25 +2181,32 @@ assert_unknown_session_holder_fail_closed() {
   fi
   if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" != "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
     echo "candidate upgrade E2E: unknown-holder Prepare changed Compose beyond the safe dependency migration" >&2
-    diff -u "$legacy_expected_migrated_compose" "$instance_compose" >&2 || true
     return 1
   fi
-  assert_candidate_auth_images_unchanged
+  assert_candidate_auth_images_unchanged || return 1
 
-  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/state" >"$response_file"
+  curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/state" >"$response_file" || return 1
   if [[ "$(jq -r '.steamInviteEnabled' "$response_file")" != false ||
     "$(jq -r '.steamInviteAuthState' "$response_file")" != disabled ||
     "$(jq -r '.steamAuthLoggedIn' "$response_file")" != false ]]; then
     echo "candidate upgrade E2E: unknown-holder migration did not expose the explicit disabled state" >&2
-    cat "$response_file" >&2
     return 1
   fi
-  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/invite-code" >"$response_file"
+  if ! assert_unknown_session_holder_boundary || ((unknown_holder_intent_ready != 1 || unknown_holder_compose_ready != 1)); then
+    unknown_holder_boundary_reason="post_state_get_boundary_changed"
+    report_legacy_bootstrap_diagnostics
+    return 1
+  fi
+  curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/invite-code" >"$response_file" || return 1
   if [[ "$(jq -r '.status' "$response_file")" != disabled || "$(jq -r '.steamInviteEnabled' "$response_file")" != false ]] ||
     ! docker inspect "$legacy_auth_container_id" "$unknown_session_holder_id" >/dev/null 2>&1 ||
     [[ "$(read_steam_session_sentinel_hash)" != "$legacy_disabled_session_hash" ]]; then
     echo "candidate upgrade E2E: disabled invite GET changed the fail-closed holder/session evidence" >&2
-    cat "$response_file" >&2
+    return 1
+  fi
+  if ! assert_unknown_session_holder_boundary || ((unknown_holder_intent_ready != 1 || unknown_holder_compose_ready != 1)); then
+    unknown_holder_boundary_reason="post_invite_get_boundary_changed"
+    report_legacy_bootstrap_diagnostics
     return 1
   fi
   echo "candidate upgrade E2E: unknown same-volume holder kept all holders, session data, and runtime marker fail closed"
@@ -2077,6 +2259,27 @@ assert_authorized_legacy_runtime_preserved() {
   assert_candidate_auth_images_unchanged
 }
 
+legacy_steam_invite_persistence_ready() {
+  local expected="$1" expected_session_hash="$2"
+  local instance_env="$data_dir/instances/stardew/.env"
+  local instance_compose="$data_dir/instances/stardew/docker-compose.yml"
+  [[ "$(grep -c "^STEAM_INVITE_ENABLED=$expected$" "$instance_env" || true)" == 1 &&
+    "$(grep -c '^STEAM_INVITE_ENABLED=' "$instance_env" || true)" == 1 &&
+    "$(grep -c '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=1$' "$instance_env" || true)" == 1 &&
+    "$(grep -c '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=' "$instance_env" || true)" == 1 &&
+    "$(sha256sum "$instance_compose" | awk '{print $1}')" == "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]] || return 1
+  if [[ "$expected" == false ]]; then
+    [[ -z "$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --quiet)" ]] || return 1
+    if docker volume inspect "$steam_session_volume" >/dev/null 2>&1; then
+      return 1
+    fi
+    return 0
+  fi
+  [[ -n "$authorized_auth_container_id" && -n "$expected_session_hash" ]] || return 1
+  docker inspect "$authorized_auth_container_id" 2>/dev/null | jq -e 'length == 1 and .[0].State.Running == true' >/dev/null || return 1
+  [[ "$(docker exec "$authorized_auth_container_id" sha256sum /session/authorized-session.txt 2>/dev/null | awk '{print $1}')" == "$expected_session_hash" ]]
+}
+
 assert_legacy_steam_invite_migration() {
   local expected="$1"
   local expected_session_hash="${2:-}"
@@ -2085,21 +2288,30 @@ assert_legacy_steam_invite_migration() {
   local api_auth_state=""
   local api_logged_in=""
   local invite_status=""
+  local deadline=$((SECONDS + 60)) persisted=0
 
-  for _ in $(seq 1 60); do
-    if curl --silent --show-error --max-time 10 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/state" >"$response_file" 2>/dev/null; then
+  while ((SECONDS < deadline)); do
+    if [[ "$(read_legacy_runtime_fingerprint "$legacy_server_container_id" "$legacy_dependency_container_id")" != "$legacy_server_runtime_fingerprint" ]] ||
+      ! assert_candidate_auth_images_unchanged; then
+      unknown_holder_boundary_reason="post_restart_runtime_boundary_changed"
+      report_legacy_bootstrap_diagnostics
+      return 1
+    fi
+    if curl --silent --show-error --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/state" >"$response_file" 2>/dev/null; then
       api_enabled="$(jq -r '.steamInviteEnabled' "$response_file")"
       api_auth_state="$(jq -r '.steamInviteAuthState // empty' "$response_file")"
       api_logged_in="$(jq -r '.steamAuthLoggedIn' "$response_file")"
-      if [[ "$api_enabled" == "$expected" ]]; then
+      if [[ "$api_enabled" == "$expected" ]] && legacy_steam_invite_persistence_ready "$expected" "$expected_session_hash"; then
+        persisted=1
         break
       fi
     fi
     sleep 1
   done
-  if [[ "$api_enabled" != "$expected" ]]; then
-    echo "candidate upgrade E2E: legacy Steam invite intent migrated to $api_enabled, want $expected" >&2
-    cat "$response_file" >&2
+  if ((persisted != 1)); then
+    echo "candidate upgrade E2E: legacy Steam invite persisted scope did not converge before its observation deadline" >&2
+    unknown_holder_boundary_reason="post_restart_convergence_deadline"
+    report_legacy_bootstrap_diagnostics
     return 1
   fi
   if [[ "$(grep -c "^STEAM_INVITE_ENABLED=$expected$" "$instance_env")" != 1 ]]; then

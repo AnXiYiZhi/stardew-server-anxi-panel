@@ -2,6 +2,8 @@
 
 ## 2026-10-27 正式发布工具记录
 
+- Bash行为回归的动态作用域（本地Alpine）：新holder等待测试首轮exit1且公共日志为空；observer的local session_hash与mock全局session_hash同名，mock Docker在赋值右侧解析到尚未初始化的local，set -u触发后错误被私有重定向隐藏。修复测试状态为fixture_session_hash，生产observer不变；失败钩子仅输出用例/轮次/安全reason，保留首轮空日志，不盲目重跑。预防：source真实函数的Bash mock状态统一使用fixture_前缀，避免与被测函数局部变量动态绑定；失败时要有不含原始私有对象的定位摘要。v2行为测试通过后ShellCheck指出SC2251：裸`! grep`不会因set-e自动中止，不能作为隐私断言；改为显式if/exit，并覆盖有禁止文本时确实拒绝，未用禁用lint掩盖。
+- 异步Prepare等待契约（GitHub/Linux）：candidate40468438454的032 Web升级/回滚均通过，helper succeeded和073版本可见后立即grep未知holder的STEAM_INVITE_ENABLED=false失败，候选artifact为0。生产Prepare在helper健康接受后异步执行，032未预写新intent；版本可见不能充当迁移完成证明。原日志无env分支/阶段，保留“竞态或更早Prepare失败尚待区分”，不补造根因。正确方式为有界只读等待显式false与唯一安全Compose状态，每轮持续校验容器/会话/marker/Auth镜像；保存HTTP状态/原操作ID安全摘要和白名单阶段诊断，禁止重放apply或补写false。该类异步误判已有前例，预防规则已提升AGENTS。
 - 真实Docker测试前置与结果缓存（GitHub/Linux）：`go test -tags=integration ./internal/docker` 被缓存为(cached)，随后资源夹具首ComposeUp退出1；旧测试仅t.Fatal(err)，丢弃CommandResult，日志不能证明旧runner具体底层原因。夹具固定alpine:3.20/pull_policy:never却未自行准备是独立可复现的前置缺陷。已给9条真实Docker调用-count=1、夹具有界inspect/pull/再inspect、保留原exit/timedOut/脱敏输出；空镜像DinD证实初始无镜像、pulled=true后业务断言及7场景通过。轻量门禁防缓存/空集合/漏选4父项，AGENTS提升外部状态不得缓存及夹具自备前置。未删业务断言，未把未知错误编造成registry故障。
 - 同类路径限制的多代理传播补充：Web回归子代理组合检索尾项误猜 `stardew_junimo/smapi.go`，rg退出2；独立库存确认真实 `smapi_mod.go` 后只用清单路径并先Test-Path。此前主链已发生路径错误，但该已生效限制没有显式传递到新子任务；已提升AGENTS，后续委派必须携带已确认检索根、先rg --files以及不得猜文件名的状态，主代理把同类新错误同步给仍检索的代理。
 - 跨仓库/路径复发（pwsh7）：将Panel的 `scripts/compatibility_matrix.py` 与Auth的AGENTS检索放在Auth workdir，首项rg退出2；官网审计另猜不存在的 `frontend/src/games/stardew/useStardewInstallation.ts`，同样退出2。两次均在写操作前停止，独立rg --files核对目录清单、Test-Path后只读真实路径继续。后续相对路径命令只涉及单一仓库，跨仓库使用独立exec_command，严格核对workdir；沿用AGENTS已有库存与单目录位置参数硬规则，不靠有效前项掩盖后项错误。

@@ -1,7 +1,10 @@
 ## 2026-10-27 两阶段正式发布进度
 
 - [x] 独立Docker资源fixture补齐镜像准备/失败诊断，9条真实Docker调用禁Go结果缓存、两入口覆盖全部4个资源父项；原业务断言不变，空镜像DinD7场景通过并清理资源。
-- [ ] 新main候选验证资源fixture、完整Docker链和073实际世界升级。
+- [x] ee3ad75新main的独立compat40468438455验证资源fixture及未缓存的完整Docker链；candidate代码/新装/072完整链通过。
+- [x] 修复032升级后异步Prepare观察契约，保留安全边界并要求实际unknown-holder拒绝receipt；本地22条行为摘要及三文件ShellCheck通过。
+- [ ] 新候选完整验证072/032两条Web链及修复后的异步观察；旧候选032升级/回滚已通过但后续断言失败，未生成proof或发布。
+- [ ] 073精确候选digest的实际世界升级、功能维护、Panel重启与界面专项。
 - [x] 旧Auth必需ACR标签恢复：原99420ab index单次关联，workflow40458794846验证140/latest不变；未重建Auth镜像。
 - [x] 修复正式候选发现的up_to_date抑制有效rollback_failed计划：driver共用journal优先catalog并接收已核验实例inspection，4父项21场景Linux通过，保留原E2E断言。
 - [ ] 从包含恢复入口修复的新main提交重新候选，通过原Docker E2E及073真实专项后再发布。
