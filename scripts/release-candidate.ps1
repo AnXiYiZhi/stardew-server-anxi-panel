@@ -10,7 +10,8 @@ param(
     [string]$BuildDate = '',
     [string]$Image = '',
     [string]$MetadataOutput = '',
-    [switch]$AllowDirty
+    [switch]$AllowDirty,
+    [switch]$ReuseImage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -113,6 +114,9 @@ $semverPattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 if ($Version -notmatch $semverPattern -or $PreviousVersion -notmatch $semverPattern) {
     throw 'Version and PreviousVersion must be exact stable semantic versions'
 }
+if ($ReuseImage -and ([string]::IsNullOrWhiteSpace($Image) -or [string]::IsNullOrWhiteSpace($BuildDate))) {
+    throw 'ReuseImage requires an explicit Image and frozen BuildDate'
+}
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 Push-Location -LiteralPath $repoRoot
@@ -178,6 +182,8 @@ try {
     $freshContainer = "$owner-fresh"
     $freshVolume = "$owner-data"
     $dindContainer = "$owner-dind"
+    $dindVolume = "${owner}-docker-data"
+    $dindVolumeCreated = $false
     $agentsRoot = Join-Path $repoRoot '.agents'
     $taskRoot = Join-Path $agentsRoot $owner
     $candidateTar = Join-Path $taskRoot 'candidate.tar'
@@ -189,9 +195,13 @@ try {
         New-Item -ItemType Directory -Path $taskRoot | Out-Null
         $taskRootCreated = $true
 
-        Write-Output "release candidate: building $Image"
-        & docker build --provenance=false --sbom=false --file Dockerfile --tag $Image --build-arg "VERSION=$Version" --build-arg "COMMIT=$Commit" --build-arg "BUILD_DATE=$BuildDate" .
-        Assert-NativeSuccess 'candidate image build'
+        if (-not $ReuseImage) {
+            Write-Output "release candidate: building $Image"
+            & docker build --provenance=false --sbom=false --file Dockerfile --tag $Image --build-arg "VERSION=$Version" --build-arg "COMMIT=$Commit" --build-arg "BUILD_DATE=$BuildDate" .
+            Assert-NativeSuccess 'candidate image build'
+        } else {
+            Write-Output 'release candidate: reusing the existing frozen image; build and fresh smoke are already complete'
+        }
 
         $imageInspectRaw = & docker image inspect $Image
         Assert-NativeSuccess 'candidate image inspect'
@@ -200,6 +210,7 @@ try {
         $labels = $imageInspect[0].Config.Labels
         $normalizedCreated = ConvertTo-UtcIsoString -Value $labels.'org.opencontainers.image.created'
         if (
+            $imageId -notmatch '^sha256:[0-9a-f]{64}$' -or
             $labels.'org.opencontainers.image.version' -ne $Version -or
             $labels.'org.opencontainers.image.revision' -ne $Commit -or
             $normalizedCreated -ne $BuildDate
@@ -207,6 +218,7 @@ try {
             throw 'candidate OCI metadata does not match the frozen identity'
         }
 
+        if (-not $ReuseImage) {
         Write-Output 'release candidate: fresh install and restart smoke'
         & docker volume create --label "com.anxi-panel.test-owner=$owner" $freshVolume | Out-Null
         Assert-NativeSuccess 'candidate data volume create'
@@ -229,6 +241,8 @@ try {
         & docker volume rm $freshVolume | Out-Null
         Assert-NativeSuccess 'fresh data cleanup'
 
+        }
+
         Write-Output 'release candidate: exporting exact image for isolated Web-upgrade E2E'
         & docker save -o $candidateTar $Image
         Assert-NativeSuccess 'candidate image export'
@@ -238,11 +252,21 @@ try {
         & docker save -o $fixturesTar $previousRef registry:2 nginx:alpine alpine:3.20
         Assert-NativeSuccess 'candidate fixture export'
 
+        $existingDindVolume = @(& docker volume ls --filter "name=^${dindVolume}$" --format '{{.Name}}')
+        Assert-NativeSuccess 'isolated Docker data volume collision check'
+        if ($existingDindVolume.Count -ne 0) {
+            throw 'isolated Docker data volume already exists'
+        }
+        & docker volume create --label "com.anxi-panel.test-owner=${owner}" $dindVolume | Out-Null
+        Assert-NativeSuccess 'isolated Docker data volume create'
+        $dindVolumeCreated = $true
+
         $dindArgs = @(
             'run', '-d', '--privileged',
             '--name', $dindContainer,
             '--label', "com.anxi-panel.test-owner=$owner",
             '--env', 'DOCKER_TLS_CERTDIR=',
+            '--mount', "type=volume,src=${dindVolume},dst=/var/lib/docker",
             '--mount', "type=bind,src=$repoRoot,dst=/workspace,readonly",
             '--mount', "type=bind,src=$taskRoot,dst=/candidate,readonly",
             'docker:29-dind'
@@ -279,7 +303,11 @@ try {
         if (-not $dindToolsReady) {
             throw 'isolated candidate tools could not be installed after 3 attempts'
         }
-        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion
+        $upgradeModeArgs = @()
+        if ($ReuseImage) {
+            $upgradeModeArgs += '--upgrade-only'
+        }
+        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion @upgradeModeArgs
         Assert-NativeSuccess 'candidate Web-upgrade E2E'
         & docker rm -f $dindContainer | Out-Null
         Assert-NativeSuccess 'isolated Docker daemon cleanup'
@@ -302,6 +330,16 @@ try {
         Write-Output "release candidate: all gates passed; metadata written to $MetadataOutput"
     } finally {
         & docker rm -f $freshContainer $dindContainer *> $null
+        if ($dindVolumeCreated) {
+            $dindVolumeRaw = & docker volume inspect $dindVolume
+            Assert-NativeSuccess 'isolated Docker data volume ownership check'
+            $dindVolumeMetadata = $dindVolumeRaw | ConvertFrom-Json
+            if ($dindVolumeMetadata[0].Labels.'com.anxi-panel.test-owner' -ne $owner) {
+                throw 'isolated Docker data volume ownership mismatch; retained for inspection'
+            }
+            & docker volume rm $dindVolume | Out-Null
+            Assert-NativeSuccess 'isolated Docker data volume cleanup'
+        }
         & docker volume inspect $freshVolume *> $null
         if ($LASTEXITCODE -eq 0) {
             & docker volume rm $freshVolume *> $null

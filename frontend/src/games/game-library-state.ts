@@ -34,6 +34,26 @@ export type StardewInstanceDestination = 'install' | 'saves' | 'panel'
 
 export type GameLibraryBackground = 'day' | 'night'
 
+export type GameLibraryBackgroundSelection = { background: GameLibraryBackground; manualUntil: number | null }
+export const GAME_LIBRARY_BACKGROUND_STORAGE_KEY = 'anxi.game-library-background.v1'
+export const GAME_LIBRARY_BACKGROUND_MANUAL_UNTIL_STORAGE_KEY = 'anxi.game-library-background-manual-until.v1'
+
+export function storedGameLibraryBackground(): GameLibraryBackgroundSelection {
+  const now = new Date()
+  const automaticBackground = gameLibraryBackgroundForDate(now)
+  if (typeof window === 'undefined') return { background: automaticBackground, manualUntil: null }
+  try {
+    const manual = gameLibraryManualBackgroundPreference(
+      window.localStorage.getItem(GAME_LIBRARY_BACKGROUND_STORAGE_KEY),
+      window.localStorage.getItem(GAME_LIBRARY_BACKGROUND_MANUAL_UNTIL_STORAGE_KEY),
+      now.getTime(),
+    )
+    return manual ? { background: manual.background, manualUntil: manual.expiresAt } : { background: automaticBackground, manualUntil: null }
+  } catch {
+    return { background: automaticBackground, manualUntil: null }
+  }
+}
+
 export type GameCardNavigationIntent = 'previous' | 'next' | 'first' | 'last'
 
 export type StardewWorldLifecycleIntent = 'start' | 'stop' | null

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
@@ -144,11 +145,23 @@ func (s *server) handleInstanceJunimoUpdateApply(w http.ResponseWriter, r *http.
 		}
 		writeJSON(w, http.StatusOK, status)
 	case http.MethodPost:
-		if !acceptStrictApplyConfirmation(r.Body) {
-			writeError(w, http.StatusBadRequest, "apply_confirmation_required", "请求体必须严格为 {\"confirm\":true}，且不得包含目标或命令参数")
+		scope, confirmed := acceptStrictJunimoScopeConfirmation(r.Body)
+		if !confirmed {
+			writeError(w, http.StatusBadRequest, "apply_confirmation_required", "请求体必须包含 confirm:true，只允许附加 sharedGroupSha256 范围确认，不得包含目标或命令参数")
 			return
 		}
-		status, err := applier.StartRuntimeUpdateApply(r.Context(), makeRegistryInstance(instance), actor.User.ID)
+		var status sj.RuntimeUpdateApplyStatus
+		var err error
+		if scoped, ok := driver.(interface {
+			StartRuntimeUpdateApplyWithScope(context.Context, registry.Instance, int64, string) (sj.RuntimeUpdateApplyStatus, error)
+		}); ok {
+			status, err = scoped.StartRuntimeUpdateApplyWithScope(r.Context(), makeRegistryInstance(instance), actor.User.ID, scope)
+		} else if scope == "" {
+			status, err = applier.StartRuntimeUpdateApply(r.Context(), makeRegistryInstance(instance), actor.User.ID)
+		} else {
+			writeError(w, http.StatusConflict, "unsupported/shared_group_confirmation", "实例 driver 不支持共享范围确认")
+			return
+		}
 		if err != nil {
 			if writeStardewMutationGuardConflict(w, err) {
 				return
@@ -161,7 +174,7 @@ func (s *server) handleInstanceJunimoUpdateApply(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusInternalServerError, "apply_start_failed", "启动成对升级失败")
 			return
 		}
-		s.auditLog(r, &actor, "junimo_runtime_update_apply_started", "instance", instance.ID, auditMetadata("applyId", status.ApplyID, "targetStackVersion", status.Target.StackVersion))
+		s.auditLog(r, &actor, "junimo_runtime_update_apply_started", "instance", instance.ID, auditMetadata("applyId", status.ApplyID, "targetStackVersion", status.Target.StackVersion, "sharedGroupSha256", scope))
 		writeJSON(w, http.StatusAccepted, status)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -224,6 +237,56 @@ func acceptStrictApplyConfirmation(body io.ReadCloser) bool {
 	}
 	var extra json.RawMessage
 	return decoder.Decode(&extra) == io.EOF
+}
+
+// Decode exact keys once: duplicate/case-alias keys, paths, image overrides and
+// commands cannot hide inside a confirmation intended for an immutable scope.
+func acceptStrictJunimoScopeConfirmation(body io.ReadCloser) (string, bool) {
+	if body == nil {
+		return "", false
+	}
+	defer body.Close()
+	raw, err := io.ReadAll(io.LimitReader(body, 4097))
+	if err != nil || len(raw) > 4096 {
+		return "", false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	first, err := decoder.Token()
+	if err != nil || first != json.Delim('{') {
+		return "", false
+	}
+	seen := map[string]bool{}
+	confirm := false
+	scope := ""
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return "", false
+		}
+		key, ok := token.(string)
+		if !ok || seen[key] {
+			return "", false
+		}
+		seen[key] = true
+		switch key {
+		case "confirm":
+			if err := decoder.Decode(&confirm); err != nil || !confirm {
+				return "", false
+			}
+		case "sharedGroupSha256":
+			if err := decoder.Decode(&scope); err != nil || len(scope) != 64 || strings.IndexFunc(scope, func(r rune) bool { return !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') }) >= 0 {
+				return "", false
+			}
+		default:
+			return "", false
+		}
+	}
+	last, err := decoder.Token()
+	if err != nil || last != json.Delim('}') || !confirm {
+		return "", false
+	}
+	var extra json.RawMessage
+	return scope, decoder.Decode(&extra) == io.EOF
 }
 
 func (s *server) handleInstanceJunimoUpdateDryRun(w http.ResponseWriter, r *http.Request, instanceID string) {
@@ -531,7 +594,8 @@ func (s *server) handleInstanceRuntimeComponentsPreflight(w http.ResponseWriter,
 }
 
 // handleInstanceJunimoUpdate is intentionally read-only. It does not accept a
-// request body or invoke pull, env update, stop, compose up, or container APIs.
+// request body or invoke pull, env update, stop or compose up. A journal-backed
+// instance exception may inspect cached image identities without changing them.
 func (s *server) handleInstanceJunimoUpdate(w http.ResponseWriter, r *http.Request, instanceID string) {
 	if _, ok := s.requireAdmin(w, r); !ok {
 		return
@@ -540,12 +604,16 @@ func (s *server) handleInstanceJunimoUpdate(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	inspection := sj.InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := s.instanceRuntimeInspection(instance)
+	repair := sj.DetectRuntimeUpdateRepairPlan(makeRegistryInstance(instance))
+	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
+		repair = nil
+	}
 	writeJSON(w, http.StatusOK, junimoUpdateResponse{
 		RuntimeStackInspection: inspection,
 		ReleaseNotes:           inspection.Recommended.ReleaseNotes,
 		ServerRunning:          instance.State == storage.InstanceStateRunning,
 		SteamAuthLoggedIn:      sjconfig.SteamAuthLoggedIn(instance.DataDir),
-		RepairPlan:             sj.DetectRuntimeUpdateRepairPlan(makeRegistryInstance(instance)),
+		RepairPlan:             repair,
 	})
 }

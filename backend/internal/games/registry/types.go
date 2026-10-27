@@ -279,9 +279,11 @@ type UploadPreviewResult struct {
 
 // InviteCodeResult is returned by GET .../invite-code.
 type InviteCodeResult struct {
-	SteamInviteEnabled bool   `json:"steamInviteEnabled"`
-	Status             string `json:"status"`
-	InviteCode         string `json:"inviteCode"`
+	SteamInviteEnabled   bool   `json:"steamInviteEnabled"`
+	Status               string `json:"status"`
+	InviteCode           string `json:"inviteCode"`
+	ConnectionStatusCode string `json:"connectionStatusCode,omitempty"`
+	AuthReadiness        string `json:"authReadiness,omitempty"`
 }
 
 // SavesListResult is returned by GET .../saves.

@@ -40,6 +40,7 @@ type RuntimeStackManifest struct {
 	RuntimeUpdatePolicy string                          `json:"runtimeUpdatePolicy"`
 	Server              RuntimeStackManifestComponent   `json:"server"`
 	SteamAuth           RuntimeStackManifestComponent   `json:"steamAuth"`
+	FullStackUpgrade    *RuntimeStackUpgradeTarget      `json:"fullStackUpgrade,omitempty"`
 	Game                RuntimeContentManifestComponent `json:"game"`
 	SDK                 RuntimeContentManifestComponent `json:"sdk"`
 	SMAPI               SMAPIManifestComponent          `json:"smapi"`
@@ -188,7 +189,8 @@ var trustedRuntimeRepositories = map[string]map[string]struct{}{
 }
 
 var supportedSteamAuthHealthContractTags = map[string]struct{}{
-	"1.5.0-anxi.2": {},
+	"1.5.0-anxi.2":        {},
+	Junimo140SteamAuthTag: {},
 }
 
 func BuiltInRuntimeStackManifest() (RuntimeStackManifest, error) {
@@ -237,6 +239,9 @@ func ValidateRuntimeStackManifest(manifest RuntimeStackManifest) error {
 	if err := validateManifestComponent("steamAuth", manifest.SteamAuth); err != nil {
 		return err
 	}
+	if err := validateFullStackUpgradeTarget(manifest.FullStackUpgrade); err != nil {
+		return err
+	}
 	if !strings.HasPrefix(manifest.SteamAuth.UpstreamRef, "refs/tags/") || strings.TrimSpace(strings.TrimPrefix(manifest.SteamAuth.UpstreamRef, "refs/tags/")) == "" {
 		return errors.New("steamAuth upstreamRef must be an exact tag ref")
 	}
@@ -264,6 +269,10 @@ func ValidateRuntimeStackManifest(manifest RuntimeStackManifest) error {
 func normalizeRuntimeStackManifest(manifest *RuntimeStackManifest) {
 	manifest.Server.normalize()
 	manifest.SteamAuth.normalize()
+	if manifest.FullStackUpgrade != nil {
+		manifest.FullStackUpgrade.Server.normalize()
+		manifest.FullStackUpgrade.SteamAuth.normalize()
+	}
 	if len(manifest.SMAPI.URLs) > 0 {
 		manifest.SMAPI.DownloadURL = strings.TrimSpace(manifest.SMAPI.URLs[len(manifest.SMAPI.URLs)-1])
 	}
@@ -529,6 +538,13 @@ func inspectRuntimeStack(dataDir string, installed, includeSteamAuth bool) Runti
 	if err != nil {
 		return invalidRuntimeStack(result, "invalid_config/manifest", "内置运行组件清单无效。")
 	}
+	return InspectRuntimeStackWithManifest(dataDir, installed, includeSteamAuth, manifest)
+}
+
+// The driver may supply a journal-backed, instance-scoped compatibility
+// manifest. The process-wide embedded recommendation is never modified.
+func InspectRuntimeStackWithManifest(dataDir string, installed, includeSteamAuth bool, manifest RuntimeStackManifest) RuntimeStackInspection {
+	result := RuntimeStackInspection{Recommended: recommendationFromManifest(manifest)}
 	if manifest.Status == RuntimeMatrixStatusWithdrawn {
 		result.Status = RuntimeStackStatusWithdrawn
 		result.Code = "matrix_withdrawn"

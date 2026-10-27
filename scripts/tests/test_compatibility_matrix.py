@@ -52,6 +52,41 @@ class CompatibilityMatrixTests(unittest.TestCase):
             with self.assertRaisesRegex(MATRIX.MatrixError, "runtimeUpdatePolicy"):
                 MATRIX.validate(value)
 
+    def test_explicit_upgrade_has_pinned_server_and_compatible_auth(self):
+        value = copy.deepcopy(self.base)
+        self.assertIn("fullStackUpgrade", value)
+        MATRIX.validate(value)
+        value["fullStackUpgrade"]["steamAuth"]["tag"] = "1.5.0-anxi.2"
+        with self.assertRaises(MATRIX.MatrixError):
+            MATRIX.validate(value)
+        value = copy.deepcopy(self.base)
+        auth = value["fullStackUpgrade"]["steamAuth"]
+        auth["digests"] = {image: "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518" for image in auth["images"]}
+        with self.assertRaisesRegex(MATRIX.MatrixError, "relabeled"):
+            MATRIX.validate(value)
+        value = copy.deepcopy(self.base)
+        server = value["fullStackUpgrade"]["server"]
+        server["digests"] = {image: "sha256:" + "f" * 64 for image in server["images"]}
+        with self.assertRaisesRegex(MATRIX.MatrixError, "server content"):
+            MATRIX.validate(value)
+
+    def test_bridge_without_explicit_upgrade_still_validates(self):
+        value = copy.deepcopy(self.base)
+        value.pop("fullStackUpgrade")
+        MATRIX.validate(value)
+
+    def test_bridge_and_active_release_versions_are_distinct(self):
+        value = copy.deepcopy(self.base)
+        value["fullStackUpgrade"]["activate"] = False
+        MATRIX.validate_panel_version(value, "0.7.3")
+        with self.assertRaisesRegex(MATRIX.MatrixError, "Bridge package"):
+            MATRIX.validate_panel_version(value, "0.8.0")
+        value["fullStackUpgrade"]["activate"] = True
+        with self.assertRaisesRegex(MATRIX.MatrixError, "intended minor version"):
+            MATRIX.validate_panel_version(value, "0.7.3")
+        MATRIX.validate_panel_version(value, "0.8.0")
+        MATRIX.validate_panel_version(value, "0.8.1")
+
     def test_exact_component_digests_are_required(self):
         value = copy.deepcopy(self.base)
         value["server"]["digests"] = {}

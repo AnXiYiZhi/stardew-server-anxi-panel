@@ -87,6 +87,7 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.SaveCreating += OnSaveCreating;
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         helper.Events.GameLoop.DayStarted += OnDayStarted;
+        helper.Events.GameLoop.DayEnding += (_, _) => hostSleepSafetyPatch?.NotifyDayEnding();
         helper.Events.GameLoop.Saved += OnSaved;
         helper.Events.GameLoop.UpdateTicking += OnUpdateTicking;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
@@ -347,7 +348,8 @@ public sealed class ModEntry : Mod
             connectionCountKnown: server is not null,
             connectionCount: server?.connectionsCount ?? 0,
             isFestivalDay: Utility.isFestivalDay(Game1.dayOfMonth, Game1.season),
-            timeOfDay: Game1.timeOfDay
+            timeOfDay: Game1.timeOfDay,
+            hostActivityManaged: hostAutomationBridge?.HostActivityManaged == true
         );
 
         if (decision.ShouldForcePause)
@@ -1582,6 +1584,14 @@ public sealed class ModEntry : Mod
 		if (!decision.CanApply)
 			return NewOutcome(command, CommandStatuses.Failed, decision.ErrorCode, decision.Message);
 
+		var farmhandIds = Game1.netWorldState!.Value.farmhandData.Pairs
+			.Where(pair => pair.Value is not null).Select(pair => pair.Value.UniqueMultiplayerID).ToArray();
+		var ownership = CreateFarmhandOwnershipBridge().ReleaseAndVerify(
+			farmhandIds, Path.Combine(Constants.SavesPath, saveName!));
+		if (!ownership.Persisted)
+			return NewOutcome(command, CommandStatuses.Failed, ownership.ErrorCode,
+				"Junimo farmhand ownership could not be released and verified on disk; role bindings were retained.");
+
 		var cleared = 0;
 		foreach (var pair in Game1.netWorldState!.Value.farmhandData.Pairs)
 		{
@@ -1601,7 +1611,13 @@ public sealed class ModEntry : Mod
 		return null;
 	}
 
-	private static FarmhandBindingSummary? ReadFarmhandBindingSummary()
+	private FarmhandOwnershipBridge CreateFarmhandOwnershipBridge()
+	{
+		var version = Helper.ModRegistry.Get("JunimoHost.Server")?.Manifest.Version.ToString();
+		return FarmhandOwnershipBridge.ForLoadedJunimo(version == "1.5.0-preview.140");
+	}
+
+	private FarmhandBindingSummary? ReadFarmhandBindingSummary()
 	{
 		var farmhandData = Game1.netWorldState?.Value?.farmhandData;
 		if (farmhandData is null)
@@ -1610,18 +1626,24 @@ public sealed class ModEntry : Mod
 		var total = 0;
 		var customized = 0;
 		var bound = 0;
+		var farmhandIds = new List<long>();
 		foreach (var pair in farmhandData.Pairs)
 		{
 			var farmhand = pair.Value;
 			if (farmhand is null)
 				continue;
 			total++;
+			farmhandIds.Add(farmhand.UniqueMultiplayerID);
 			if (farmhand.isCustomized?.Value == true)
 				customized++;
 			if (!string.IsNullOrEmpty(farmhand.userID?.Value))
 				bound++;
 		}
-		return new FarmhandBindingSummary(total, customized, bound);
+		var saveName = Constants.SaveFolderName;
+		var ownership = CreateFarmhandOwnershipBridge().ReadProof(
+			farmhandIds, string.IsNullOrWhiteSpace(saveName) ? "" : Path.Combine(Constants.SavesPath, saveName));
+		return new FarmhandBindingSummary(total, customized, bound,
+			ownership.Required, ownership.ReleasedFarmhands, ownership.Persisted);
 	}
 
     private static CommandOutcome NewOutcome(PanelCommand command, string status, string errorCode, string message)

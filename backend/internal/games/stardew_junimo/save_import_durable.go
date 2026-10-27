@@ -272,7 +272,12 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if outcome.CommandID != j.DurableSaveCommandID || outcome.Status != CommandStatusSucceeded {
 		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorResultUnconfirmed, "save-now returned an unrelated or non-success result", "", nil)
 	}
-	controlBindings, bindingsErr := importFarmhandUnbindSummaryFromOutcome(outcome, j.SaveName)
+	consoleContract, contractErr := readConsoleRuntimeContract(instance.DataDir)
+	if contractErr != nil {
+		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "runtime identity is unavailable for farmhand ownership verification", "", contractErr)
+	}
+	requiresOwnership := consoleContract.fifo == junimo140InputFIFO || outcome.Details["farmhandOwnershipRequired"] == "true"
+	controlBindings, bindingsErr := importFarmhandUnbindSummaryFromOutcome(outcome, j.SaveName, requiresOwnership)
 	if bindingsErr != nil {
 		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "save-now did not prove that every farmhand role was unbound", "", bindingsErr)
 	}
@@ -343,6 +348,11 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if j.DurableSaveBefore == nil || !importSaveDiskChanged(*j.DurableSaveBefore, after) {
 		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "GameLoop.Saved did not produce a verifiable target save file change", "", nil)
 	}
+	if requiresOwnership {
+		if err := verifyImportFarmhandOwnershipStore(instance.DataDir, j.SaveName, controlBindings.TotalFarmhands); err != nil {
+			return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "durable farmhand ownership release disagrees with the saved roles", "", err)
+		}
+	}
 	j.DurableSaveAfter = &after
 	j.Stage = ImportStageSaveVerified
 	j.LastErrorCode, j.LastError = "", ""
@@ -368,7 +378,7 @@ func writeImportDurableSaveCommand(dataDir, commandID, saveName string) error {
 	})
 }
 
-func importFarmhandUnbindSummaryFromOutcome(outcome CommandOutcome, saveName string) (JunimoFarmhandBindingSummary, error) {
+func importFarmhandUnbindSummaryFromOutcome(outcome CommandOutcome, saveName string, requireOwnership ...bool) (JunimoFarmhandBindingSummary, error) {
 	if outcome.Details == nil ||
 		outcome.Details["preSaveAction"] != importFarmhandUnbindAction ||
 		outcome.Details["preSaveActionSaveId"] != saveName ||
@@ -400,6 +410,12 @@ func importFarmhandUnbindSummaryFromOutcome(outcome CommandOutcome, saveName str
 	}
 	if total <= 0 || customized > total || bound != 0 {
 		return JunimoFarmhandBindingSummary{}, errors.New("farmhand unbind result did not confirm every role as unbound")
+	}
+	if outcome.Details["farmhandOwnershipRequired"] == "true" || (len(requireOwnership) > 0 && requireOwnership[0]) {
+		released, err := readCount("releasedFarmhandCount")
+		if err != nil || released != total || outcome.Details["farmhandOwnershipRequired"] != "true" || outcome.Details["farmhandOwnershipPersisted"] != "true" {
+			return JunimoFarmhandBindingSummary{}, errors.New("farmhand unbind result did not prove durable ownership release")
+		}
 	}
 	return JunimoFarmhandBindingSummary{TotalFarmhands: total, CustomizedFarmhands: customized, BoundFarmhands: bound}, nil
 }
@@ -589,7 +605,7 @@ func readJunimoWaitStatus(ctx context.Context, exec commandExecutor, dataDir str
 	if state.DayTransitionComplete == nil {
 		return state, false, false, &ImportEvidenceError{Code: "status_field_missing", Message: "Junimo wait status response is missing dayTransitionComplete"}
 	}
-	return state, *state.DayTransitionComplete, false, nil
+	return state, *state.DayTransitionComplete && *state.Version > since, false, nil
 }
 
 func waitForJunimoDayTransitionComplete(ctx context.Context, exec commandExecutor, dataDir string, since int64, timeout, pollInterval time.Duration) error {
@@ -609,11 +625,19 @@ func waitForJunimoDayTransitionComplete(ctx context.Context, exec commandExecuto
 			if unsupported {
 				useWait = false
 			} else {
-				if state.Version != nil {
+				advanced := state.Version != nil && *state.Version > cursor
+				if advanced {
 					cursor = *state.Version
 				}
 				if matched {
 					return nil
+				}
+				if !advanced {
+					select {
+					case <-waitCtx.Done():
+						return waitCtx.Err()
+					case <-time.After(pollInterval):
+					}
 				}
 				continue
 			}
@@ -625,7 +649,10 @@ func waitForJunimoDayTransitionComplete(ctx context.Context, exec commandExecuto
 		if state.DayTransitionComplete == nil {
 			return &ImportEvidenceError{Code: "status_field_missing", Message: "Junimo status response is missing dayTransitionComplete"}
 		}
-		if *state.DayTransitionComplete {
+		if state.Version == nil {
+			return &ImportEvidenceError{Code: "wait_status_version_missing", Message: "Junimo status response is missing its snapshot cursor"}
+		}
+		if *state.DayTransitionComplete && *state.Version > since {
 			return nil
 		}
 		select {

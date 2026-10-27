@@ -190,7 +190,7 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "staging and preimport backup are incomplete", nil)
 	}
 	if err := validateImportStaticCapability(dataDir); err != nil {
-		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorUnsupported, "Junimo .125 static capability check failed", err)
+		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorUnsupported, "Junimo static import capability check failed", err)
 	}
 	pointerBefore, pointerErr := readActivePointerStrict(dataDir)
 	if pointerErr != nil || journal.OriginalActiveSave == "" || pointerBefore != journal.OriginalActiveSave {
@@ -380,7 +380,7 @@ func waitForImportSavesCommand(ctx context.Context, lifecycle LifecycleDockerSer
 	var lastErr error
 	command := "saves info " + saveName
 	for {
-		if err := rejectConnectedFarmhands(ctx, lifecycle, dataDir); err != nil {
+		if err := waitForImportPlayerCount(ctx, lifecycle, dataDir, interval); err != nil {
 			return err
 		}
 		output, exitCode, _, err := sendServerCommand(ctx, lifecycle, dataDir, command)
@@ -443,7 +443,7 @@ func waitForImportRuntimeProbes(ctx context.Context, lifecycle LifecycleDockerSe
 }
 
 func probeImportRuntime(ctx context.Context, lifecycle LifecycleDockerService, dataDir string) error {
-	if result, err := lifecycle.ComposeExecPipe(ctx, dataDir, "server", "", "test", "-p", serverInputFIFO); err != nil || result.ExitCode != 0 {
+	if _, _, err := probeServerInputFIFO(ctx, lifecycle, dataDir); err != nil {
 		return &ImportTransactionError{Code: ImportErrorMaintenanceFIFO, Message: "SMAPI input FIFO is unavailable", Cause: err}
 	}
 	if result, err := lifecycle.ComposeExecPipe(ctx, dataDir, "server", "", "test", "-r", serverOutputLog); err != nil || result.ExitCode != 0 {
@@ -472,6 +472,11 @@ func probeImportRuntime(ctx context.Context, lifecycle LifecycleDockerService, d
 }
 
 func verifyRunningJunimoVersion(ctx context.Context, lifecycle LifecycleDockerService, dataDir string) error {
+	values, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	expectedVersion := strings.TrimSpace(values["IMAGE_VERSION"])
+	if err != nil || !supportsTransactionalImportVersion(expectedVersion) {
+		return &ImportTransactionError{Code: ImportErrorMaintenanceMod, Message: "configured Junimo import version is unavailable or unsupported", Cause: err}
+	}
 	result, err := lifecycle.ComposeExecPipe(ctx, dataDir, "server", "", "cat", "/data/Mods/JunimoServer/manifest.json")
 	if err != nil || result.ExitCode != 0 {
 		return &ImportTransactionError{Code: ImportErrorMaintenanceMod, Message: "running Junimo manifest is unavailable", Cause: err}
@@ -482,10 +487,26 @@ func verifyRunningJunimoVersion(ctx context.Context, lifecycle LifecycleDockerSe
 	if err := json.Unmarshal([]byte(result.Stdout), &manifest); err != nil {
 		return &ImportTransactionError{Code: ImportErrorMaintenanceMod, Message: "running Junimo manifest is invalid", Cause: err}
 	}
-	if strings.TrimSpace(manifest.Version) != TestedImageTag {
+	if strings.TrimSpace(manifest.Version) != expectedVersion {
 		return &ImportTransactionError{Code: ImportErrorMaintenanceMod, Message: "running Junimo version mismatch"}
 	}
 	return nil
+}
+
+var errImportPlayerCountPending = errors.New("Junimo player count snapshot is not ready")
+
+// Readiness may wait for the first complete status snapshot. A missing count
+// never authorizes even the read-only saves probe, and a real player aborts.
+func waitForImportPlayerCount(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, interval time.Duration) error {
+	for {
+		err := rejectConnectedFarmhands(ctx, lifecycle, dataDir)
+		if err == nil || !errors.Is(err, errImportPlayerCountPending) {
+			return err
+		}
+		if waitErr := waitImportPoll(ctx, interval); waitErr != nil {
+			return &ImportTransactionError{Code: ImportErrorMaintenanceReady, Message: "Junimo player count did not become observable during maintenance startup", Cause: errors.Join(err, waitErr)}
+		}
+	}
 }
 
 func rejectConnectedFarmhands(ctx context.Context, lifecycle LifecycleDockerService, dataDir string) error {
@@ -496,8 +517,14 @@ func rejectConnectedFarmhands(ctx context.Context, lifecycle LifecycleDockerServ
 	var status struct {
 		PlayerCount *int `json:"playerCount"`
 	}
-	if err := json.Unmarshal(raw, &status); err != nil || status.PlayerCount == nil {
+	if err := json.Unmarshal(raw, &status); err != nil {
 		return &ImportTransactionError{Code: ImportErrorMaintenanceReady, Message: "Junimo status is missing playerCount", Cause: err}
+	}
+	if status.PlayerCount == nil {
+		return &ImportTransactionError{Code: ImportErrorMaintenanceReady, Message: "Junimo status is missing playerCount", Cause: errImportPlayerCountPending}
+	}
+	if *status.PlayerCount < 0 {
+		return &ImportTransactionError{Code: ImportErrorMaintenanceReady, Message: "Junimo status has an invalid playerCount"}
 	}
 	if *status.PlayerCount > 0 {
 		return &ImportTransactionError{Code: ImportErrorPlayersConnected, Message: "farmhands connected during save import maintenance; no players were kicked"}
@@ -505,7 +532,7 @@ func rejectConnectedFarmhands(ctx context.Context, lifecycle LifecycleDockerServ
 	return nil
 }
 
-func strictServerLogSize(ctx context.Context, lifecycle LifecycleDockerService, dataDir string) (int64, error) {
+func strictServerLogSize(ctx context.Context, lifecycle commandExecutor, dataDir string) (int64, error) {
 	result, err := lifecycle.ComposeExecPipe(ctx, dataDir, "server", "", "wc", "-c", serverOutputLog)
 	if err != nil || result.ExitCode != 0 {
 		return 0, errors.New("SMAPI output log is not readable")
@@ -522,7 +549,12 @@ func strictServerLogSize(ctx context.Context, lifecycle LifecycleDockerService, 
 }
 
 func isSaveInfoOutput(output, saveName string) bool {
-	return strings.Contains(output, "Save: "+saveName)
+	for _, line := range strings.Split(output, "\n") {
+		if _, value, ok := strings.Cut(line, "Save: "); ok && strings.TrimSpace(value) == saveName {
+			return true
+		}
+	}
+	return false
 }
 
 func waitImportPoll(ctx context.Context, interval time.Duration) error {

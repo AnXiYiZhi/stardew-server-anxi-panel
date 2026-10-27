@@ -1,3 +1,440 @@
+# Junimo 更新替换交接 2026年10月15日
+
+## 2026-10-27 Panel 0.7.3 → 0.8.0 正式发布准备
+
+- 用户已明确授权两版正式发布及官网上线。使用现有本地 main 与已有改动，先完成 0.7.3 候选、真实专项、tag、三仓提升、正式冒烟，再准备 0.8.0；前一版未完成时不推进 main。当前阶段尚未生成正式候选，不将下方 V4 工程证明用于提升。
+- 本版变更清单：0.7.3 提供全局更新中心、发行说明与提示确认、正式版本列表分流、073 持久准备记录和后端升级约束；清单 `fullStackUpgrade.activate=false`，保留 .125/Auth anxi.2 配对，Control 为 0.3.9。0.8.0 单独切换 activate=true，目标为 Junimo .140、正式 Auth `1.5.0-preview.140-anxi.1`、固定游戏/SMAPI/Control 载荷及受控世界组迁移。
+- 受影响链路：旧客户端 latest 检测→073 Web 更新→准备记录→新版发行列表→080 提示/精确范围确认→Panel 替换→游戏组更新/恢复；另含存档导入、Mod/备份、邀请码、用户与专用认证会话、部署脚本、更新中心主题与响应式、正式候选/提升流程和公开升级指引。
+
+| 版本专项 | 正常路径和关键边界 | 权限、恢复与数据/清理 |
+| --- | --- | --- |
+| 0.7.3 | 正式072检查/dry-run/管理员确认/断线重连；旧版只见073；更新中心入口和073记录在重启后保留 | 普通用户、目标/提示变更、重复/已授权恢复由自动回归覆盖；同候选 unhealthy 回滚；SQLite/用户/存档角色/Mod/Auth会话/非目标资源保持；升级后功能抽验与任务资源清理 |
+| 0.8.0 | 从正式073经真实Web提示及范围确认，迁移 .140/正式Auth并取得非空有效邀请码；全新安装及缺073记录启动拒绝 | 精确组范围与提示摘要、过期/重复确认、恢复由回归覆盖；同候选 unhealthy 回滚073；存档/角色、Mod启停/导出、备份恢复/导出、专用会话、非目标资源、Panel重启与清理 |
+
+- 不可变候选继续由 `release-candidate.yml` 在干净且同步的 main 构建，固定版本、完整 SHA 与 workflow 创建时刻作为 UTC build date；同 run 重试不改变 build date。代码门禁新增三条 Playwright 浏览器夹具，CI 使用固定 Playwright 1.62.1/Chromium；现有样例预览只用于界面验证。
+- 0.7.3 起基础门禁成功后先推唯一 `validation-<version>-<sha12>` 测试镜像，基础证明同时声明该 validationRef 与待封存的 candidateRef；自动 tag 流程记录等待真实专项。操作者从精确 digest 重建隔离夹具，完成专项后通过 `release-acceptance.yml` 校验安全摘要及本地证据 manifest SHA256。验证器要求 run/SHA/version/build date/digest 完全一致、必测布尔全部为 true，拒绝未知字段；随后 Skopeo 以 preserve-digests 将同一制品封存到 `candidate-<version>-<sha12>`，不重建镜像。全部测试完成后才生成正式候选引用、封存专项 artifact 并允许 annotated tag；tag 绑定候选与专项 workflow，正式提升再次独立校验两个成功 run 的不可变 artifact。
+- 080 显式 dispatch `version=0.8.0, previous_version=0.7.3`。073 是该版本最老支持来源，也已是上一正式版，因此 oldest_version 留空并由专属矩阵强制；072 直接080仍由产品及负向专项拒绝。GitHub latest Release 固定073，073及以后从正式列表选择可达版本；Docker latest 按三仓同digest提升规则处理。
+- 073 因 Control/运行同步及长期迁移逻辑变化，按清单 `minimumPanelVersion=0.3.2` 增加 `0.3.2 → 0.7.3` 真实Web代表链；自动候选填入 oldest_version=0.3.2，专属矩阵同时强制上一正式072和最老032。两条链使用同一候选imageId，不重复构建候选内容。
+- 本地独立 `考公/` 仅加入 `.git/info/exclude`，不加入Panel提交；`.dockerignore` 排除该目录和私有临时 `tmp/`。不读取、移动或删除其中用户数据。正式真实专项使用新任务身份和新DinD，原tmpfs夹具不复用。
+- 待填发布证据：两版完整 commit、candidate/acceptance/promotion/官网 workflow、精确 digest/OCI、选择与跳过矩阵、真实Web/回滚/邀请码/数据结果、耗时和精确资源清理结果。任一必测失败即停止tag/提升；补充证明只在真实验收完成后提交。
+
+## 2026-10-27 展示收尾输入（本地未发布）
+
+- V4后续输入为顶栏像素图标、更新中心样式/底栏动作拆分、080说明精简及与原昼夜偏好联动的两套主题；不改运行栈版本、认证制品或后端迁移协议。最终前端资源index-VNsdymw9，14条入口浏览器、9条全栈生命周期、游戏库主题/状态/响应式及关联回归、production build通过，发行策略5项与080策略校验通过。原App样例API的1440/390/360双主题、刷新保持、固定底栏、单主操作、提示/范围与对比度均通过，切换主题无API写请求。
+- 此次源码/发行内容与V4不可变工程快照不同；下方910文件一致记录仅对应V4实测时点。正式发布仍须在干净同步main按073、080分别构建和验收正式候选，禁止直接提升V4。本轮未提交/推送/发布Panel。
+- 当前本地预览由仓库main.tsx/App/GameLibrary实际渲染，`serve-original-preview.mjs` 仅提供隔离样例API，地址 `http://127.0.0.1:19172/games/stardew`；保留唯一专属Node服务，不连接生产数据。最终UI证据在外部任务根的 `update-center-layout-qa.json`、`pixel-actions-qa.json` 与 `update-center-current-*.png`；旧独立组件预览已停止。
+
+## 2026-10-27 073更新体系工程矩阵通过（10月26日开始，禁止发布Panel）
+
+- 本地预览后续状态：用户再次打开时Docker原已关闭，启动后原DinD为exited/255，其tmpfs运行数据不再存在。未重放旧升级/初始化动作，原V4验收记录保持原样。当前原App样例API预览见顶部展示收尾记录；073/080正式发布状态未改变。
+- 本版变更：全局升级中心与发行内容/重要提示；旧版强制073引导与新版本列表选择；dry-run/apply/范围确认门禁；持久073准备记录；正式140 Auth目标和三仓别名。工作清单为073 activate=false；080工程副本须显式activate=true并提供最低073与停服提醒。所有构建均为本地未发布工程身份，不能冒充正式候选证明。
+- 正常路径：旧正式072仅发现073，真实Web检查/演练/确认/断线恢复到073，重启后记录仍在；073才发现080并直接展示更新与停服提示，下载预检和精确世界范围确认后升级080/.140/正式Auth，取得非空有效邀请码。
+- 边界/权限：普通用户只读；伪造目标/跳过073、过期检查、提示摘要改变或未勾选、暂缓版本、未知目标、重复请求与既有授权恢复；080缺少准备记录必须在数据库打开前拒绝，真正新装另测。
+- 数据/恢复：同一080制品注入unhealthy目标，保留旧Panel/SQLite/初始化与用户，游戏组/非目标容器卷不变；两段升级后抽验存档语义、Mod配置和启停、备份创建恢复、Auth会话与Panel重启。用户明确以取得邀请码为在线验收标准，不要求独立玩家入服。
+- 代码门禁已通过：V4后端Linux2299项（8项默认条件跳过）、vet/build；另行启用3条updater Docker integration及SMAPI真实下载（41,889,142字节/102.77秒）；前端30组、最终12场景浏览器及production build；发行策略5项/兼容矩阵23项；5组部署脚本和ShellCheck。3条更新workflow与JSON解析通过。新UI在升级后的真实080上1473/768/390/360验收通过。
+- 发布流程：073以后GitHub make_latest=false以固定旧客户端引导，正式候选的上一版本改为从published stable列表按语义版本选择；Docker正式latest仍按既有同digest门禁提升，Web升级使用精确版本tag。`deploy/panel-update.json` 经脚本校验并嵌入Release body，080若未声明最低073会在门禁中拒绝。
+- 实际串行结果：正式072通过原Web页面只发现073（同一feed列表已有080），一次apply升级073并完成旧组件收尾；073总入口看到080用户说明与停服/Mod提示，勾选后下载预检并确认1组1个运行世界。先对同一080引用注入unhealthy变体，实际得到failed_rolled_back/health_check_failed和panel_failed_rolled_back，073与原游戏恢复/保持；再对健康目标重新准备精确计划，一次confirm完成080/.140/Control0.3.9/正式Auth140迁移并取得有效邀请码。所有续接只观察原ID/plan，未重放已接受升级。
+- 数据/功能结果：两次升级与回滚后均验证1存档/3角色进度、用户全表身份、Mod原文件/配置/载入、自定义payload、专用Auth账号会话及非目标容器/哨兵；后续备份创建/列出/逐文件字节恢复、存档/Mod ZIP、Mod关闭/启用、游戏与Panel重启均通过。080缺073记录的真实Docker负向测试在数据库打开前退出1且DB字节不变；全新073/080的health/version/未初始化/重启和bridge/fresh记录分别通过。CLI真实072显式080被拒绝，080更新与强制更新交接Web且env/容器身份不变。
+- 最终V4工程身份：UTC build `2026-10-26T11:25:43Z`，声明基础commit `94d0265d51682cf78181acb5e6437727f58f5e81`，dirty源码另有910文件不可变清单并与当前代码逐文件哈希一致。073本地imageId `sha256:ed2f122ccae7a75b73a9c31087095f2c924779c0a02f7f2e78a44801c6f1417e`、证明SHA f4c2b2e414d1040022d2b0a9441ab645f42f6d729cec3b89ac79cb0eaeaf6f4d；080 imageId `sha256:8c02b35c3d47d4a9034c9ee84157f99ab6c9bf99f2679709a57fd87c22869a74`、证明SHA b1da7a0fa1d5787146f3c0b1c31e590474068f52f1ca26443346031d77ec50b0。此为本地工程验收，不是正式候选；未产生Panel workflow/tag/Release/公开push。
+- 证据与资源：全部本轮脚本、冻结源码、日志、截图及安全摘要在 `E:/task-evidence/panel-upgrade-center-20261026`，私有材料由ACL限制。旧观察器因邀请码新状态connection_ready未匹配ready而超时，按原操作只读续接成功；该情况未影响服务端已成功事务。全新安装、bypass、CLI、Docker集成及工具门禁临时容器/卷已清理；专属DinD与最终080测试服保留供本地评审，环回端口19171/19172，后续只按任务归属清理。C盘保持10GiB以上余量，未清理无关数据或重启Docker Desktop。前序V1–V3仅工程调试身份，正式发布必须重新从干净同步main执行正式候选流程，不能直接提升V4镜像。
+
+## 2026-10-26 Auth .140 独立正式发布；Panel仍未发布
+
+- 用户本轮仅授权Auth仓库/镜像发布，Panel的073/080继续不发布。Auth正式命名 `1.5.0-preview.140-anxi.1`，annotated tag `sdvd-server-v1.5.0-preview.140-anxi.1` 固定提交 `db3f7d53b8e7705b01bbf5a87633e07dabdd34a4`，真实包含上游140的 `f318717ac06a780b6b21080b0263c16278d8e6e1`。
+- 阿里云 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn`、GHCR `ghcr.io/anxiyizhi/junimo-steam-service-cn`、Docker Hub `anxiyizhi/junimo-steam-service-cn` 的上述固定版本均为 `sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6`。原UTC构建时间 `2026-10-26T06:49:43Z`，源码归档SHA `684df9cf6b405bb73daa419d9cb48957c81025ec7da11b7dd80f240205e0a207`；GitHub Release于北京时间2026-10-26 15:12创建。
+- 首次构建run `40282085847` 的9项.NET/21项工作流回归及来源门禁通过，ACR拒收OCI empty-config证明附件；原平台镜像已成功保存于Docker Hub。第一次恢复 `40283725929` 的镜像身份/HTTP通过，但Buildx复制时仍带referrer。成功恢复 `40284240063` 使用runner预装Skopeo 1.13.3，以 `--preserve-digests` 复制原平台manifest，三仓核对通过再创建Release；未重建应用镜像、未移动Git tag。后续Auth发布禁用可选attestation/SBOM导出，保留必需OCI来源元数据；26项恢复/发布回归、4个YAML/7段Bash及ShellCheck通过。
+- 阿里云精确digest已在本机回拉，实际health200、空会话ready503、validate-status200，探针容器/两空卷清理。不可变证据artifact为 `auth-publication-1.5.0-preview.140-anxi.1`，本地材料在 `tmp/auth140-publish-20261026/`。该正式Auth与旧工程名 `1.5.0-anxi.3`/digest f9a363a9…分开记录，旧Panel full-v6证明不能覆盖新的命名/前置版本规则。
+- 发布收尾：2个已成功退出的专属.NET测试容器按精确ID/label快照后移除，任务临时volume为0，保留正式回拉镜像及证据，C盘约余21.7GiB。Auth源码和发布后证据已同步其origin/master，原annotated tag对象/提交未变化；Panel仍为本地main未提交状态。最终结果见 `tmp/auth140-publish-20261026/final-result.json`。
+- 最新待办已变更：用户要求强制先073再080，并希望073升级体系面向普通用户。当前只完成Auth发布；Panel源码仍保留上一轮可直升的工程实现，强制分流/后端拦截尚待实现。下一步必须对接此正式Auth版本/digest，优化全局升级中心、更新说明/风险提醒、成功态收尾，再从旧072经073到080完整验收；此前的直升工程矩阵保留为历史证据。
+
+## 2026-10-26 .140 升级闭环本地验收完成（未发布）
+
+- 最终工程输入full-v6为898文件，清单SHA256 `0cd34c8d7854b6080dd6ca4593b255afd1e59e6f641bfb3fe27be843f3663d0c`；Panel `0.8.0`、基础main `94d0265d51682cf78181acb5e6437727f58f5e81`、UTC build date `2026-10-25T17:25:08Z`，镜像ID `sha256:61c736ab463099af7ec6f6d655434efd4cf5f000924d9f18a67c40b0bade1865`。脏工作区本地增量后端构建，除 `driver.go` 与新增 `installed_files_user_test.go` 外与full-v5输入一致，复用224种逐项核对的真实前端HTTP identity/gzip制品；updater/部署资产未变。工程构建不替代正式干净main候选；只送入隔离环回registry，没有外部发布。
+- 最后发现的实际回归：140镜像没有/etc/passwd，原运行文件校验以命名root启动会在迁移后日常start退出125。改为数字UID0，保留缺文件42语义，新增无passwd镜像的完整/缺文件回归；修正后2281项Linux测试通过、0失败、8条件skip，vet/build及fresh health/version/未初始化/前端/Panel重启通过并清理。full-v5已完成integration编译及updater3项真实Docker集成，其实现输入未变；full-v4真实SMAPI下载亦未变化。前端30脚本、6入口浏览器场景/production build、兼容23、Auth17/YAML/4段Bash均保留独立通过证明。
+- 最终真实Web路径：正式072页面检查→新的dry-run→一次管理员确认→apply→080重连，出现 `manual_action/legacy_full_stack_confirmation_required`；在新Panel明确预检/确认实例范围后，同一operation/hash迁移125→140、Auth2→固定Auth3，终态succeeded、Auth ready且有效邀请码非空。证据为 `old-to-full-v6-healthy-legacy-direct-*`、`major-full-v6-success-*`；不是手工Compose替代升级。用户明确以取得邀请码为本轮联机标准，未执行独立玩家入服。
+- 升级后维护实际API通过：停服、备份创建/列出/恢复（全部存档文件逐字节一致）、存档与Mod ZIP导出校验、测试Mod关闭/启用、重新启动与再次取码；`maintenance-full-v6/post-upgrade-maintenance-success.json`通过。随后只重启Panel，初始化、原cookie用户、升级终态及邀请码保持，游戏/Auth/非目标容器ID与StartedAt全部不变；`full-v6-panel-restart-success.json`通过。最终1档/3角色的世界、背包、关系及任务进度，1用户、自有Mod DLL/config/配置内容、1会话和非目标sentinel完整；只排除已诊断的_questTitle显示缓存，未忽略任务进度。
+- 故障矩阵精确归属：bridge-v5旧072 Web unhealthy→072且游戏/Auth/非目标容器及存档/Mod/env字节不变；bridge-v6（镜像2e2247ea…）健康072→073自动取得邀请码；full-v5（镜像d8156c5c…）的073→080 scoped unhealthy回到073且原组未变，同profile healthy Panel后注入新Auth3停止，按生产10分钟预算整组回滚125/Auth2并恢复取码、数据完整。full-v5直达旧Web及范围迁移也成功；full-v6的UID0修正只重跑受影响的旧Web健康升级/迁移/维护/启动与持久性，未机械重放未变化故障链。原始失败、镜像别名409诊断及首次Galaxy连接失败均保留，不覆盖为成功。
+- 14个发布相关Shell入口的bash语法与ShellCheck、6组脚本契约通过：run update/swap、飞牛迁移、Junimo修复、候选精确归属清理、release matrix。日志及不可变输入在 `tmp/junimo140-closeout-20261025/`。正式发布时仍须从最终清洁同步main和最终Auth发布身份重新形成候选，按上一正式版差异选择全量门禁及受影响最老版本；当前工程证明不能直接提升为正式制品。
+- 测试起点复位仅为准备：保留原数据和专用session，归档已结束的新格式元数据，恢复125镜像游戏数据、原正式Compose模板、原env及Control3.8，再由旧Panel运行并确认取码；复位不计入升级证据。首次遗漏Compose恢复导致旧125的/root权限故障，守卫/日志保留；修复夹具后原start成功，之后才开始最终Web升级。
+- 发布决定：仍不提交/推送main、不创建tag/Release、不更新latest或正式镜像。过渡073可先以activate=false提供升级入口/提示，080承担显式实例范围迁移；直升路径也已兼容。最终Auth必须从清洁已审阅提交产生正式digest，再更新Panel清单并跑正式候选。该步骤等待另行发布授权。
+- 资源已清理：完成后的数据库、存档/Mod/备份、游戏卷、专用Auth会话及安装配置归档969175040字节，4046个文件/链接逐项及归档SHA核对通过，私有归档限制当前用户/System/管理员访问；随后移除28个任务容器（含专属DinD及其全部tmpfs内层资源）、停止登录代理，19171/19172/19173监听均消失，C盘最终约余13.6GiB。精确结果见 `final-fixture-archive.json`、`final-resource-cleanup.json` 和最终 `checkpoint.json`。保留本地工程镜像/输入/失败证据及诊断归档。`C:\Users\anxi\go\pkg\mod` 指向 `E:\developer-caches\go-modules-anxi-20261025` 的已逐文件验证junction是持久缓存，不能随临时材料删除。未执行全局prune或Docker Desktop重启。
+
+## 2026-10-25 .140 升级闭环实施过程（历史阶段记录）
+
+- 最新验收口径：用户明确“拿到邀请码就视为已成功”；本轮按Auth就绪与成功取得非空有效码验收。
+- 最新进展：full-v4全包2267项、vet/build、integration编译及真实SMAPI下载通过；bridge-v5的unhealthy经真实旧072页面回到072，原游戏/Auth/非目标容器和存档/Mod/env字节均未变。健康升级Panel/Control成功，旧125出现Galaxy CONNECTION_FAILURE，首次取码观察保留为失败；一次明确的新restart请求后取码恢复，存档/Mod/用户/会话/非目标状态完整。
+- 真实大版本预检成功后，确认409定位到可信镜像别名漂移（sdvd与dockerproxy，内容ID/digest相同），不是原世界变化。新 `sameFullStackImageContent` 限定双方清单授权的同一固定内容，新增10个边界场景及全栈定向回归通过。full-v5/bridge-v6为897输入，镜像d8156c5c…/2e2247ea…，只用本地增量后端工程构建以控制C盘开销：除已审阅Go修正/测试外与上一输入相同，逐项核对复用224种前端HTTP identity/gzip表示，updater/部署资产不变。此构建不替代正式干净main候选门禁。旧072夹具以原125配置及正式Control0.3.8复位，schema与原正式版备份一致，数据库/专用会话/存档和Mod保留；复位不是升级证据。
+
+- 本轮目标：补齐新版自有 Auth 的不可变制品身份与旧 session 迁移，修正 Panel 更新、游戏范围确认和完成提示，再从真实旧正式版 Web 点击路径验收。用户已授权使用现有专用测试会话；凭据仅在隔离副本内使用，不进入源码、日志或 Git。
+- 发布边界：本轮只构建本地工程制品和隔离测试 registry，不创建正式 tag、Release、正式镜像或 latest，不向会自动发布的 main 推送。是否需要中间补丁，依据旧版到目标版的真实验收决定；任何中间版本也须单独满足正式门禁后另行发布。
+- 受影响链路：升级检查与提示、Panel-only / 全栈更新入口、精确目标和共享范围授权、Auth 镜像及 session、邀请码与连接恢复、游戏组备份/迁移/回滚、存档与 Mod 维护。
+- 本轮专项矩阵：旧正式版直接升级、可选中间补丁到 .140；开启/关闭邀请码及多世界共享组；既有session、Auth就绪/邀请码取得、令牌失效及可恢复错误；存档/角色/自有Mod/备份前后完整性；Panel不健康回滚、Auth目标失败整组回滚、游戏目标失败自动回归、断线/重启续接、用户/SQLite/非目标资源保持。失败保留原始证据，只重跑受影响步骤。
+- 代码进展：`fullStackUpgrade`独立声明固定140/Auth anxi.3，panelVersion=0.8.0、activate区分当前激活与过渡前瞻，默认安装仍125/Auth2。`/api/version.runtimeUpgrade.targetPanelVersion`与后端prepare目标校验一致：过渡包只为精确已知0.8.0协调范围，普通补丁/未知未来目标先普通Panel，当前激活包可继续实例迁移。激活包候选版本不得低于声明版本，防止自动递增补丁误发大更新。禁用邀请码迁移后写兼容Auth候选但保持关闭，后续启用核验实际digest；已提交迁移支持合法开关，回滚/未触碰范围仍严格。
+- 固定 Auth 工程输入：`auth-candidate-v1.json` 记录17项源码及 tree SHA256 `a0046eae829c671fbfcfec9bbac14b2a6aecddc0a9a6a7cccba1bf95c0721c30`，版本 `1.5.0-anxi.3`、OCI revision `7905c209b2d14011cffd54f9a4d8658acebcc8e5`、上游 `f318717ac06a780b6b21080b0263c16278d8e6e1`。本地镜像及隔离环回 registry digest 为 `sha256:f9a363a9fde9e786d5d43bdafe7a7e41c048fd35665172b8b378795d049b9f79`；来源为未提交工程快照，不能当正式来源提交。Auth正式工作流已补齐版本、commit、来源树、上游和构建时间参数，但没有执行。
+- 本轮已验证：70项定向 Go（Windows工程检查）、22项兼容脚本、30项声明前端测试与 production build、Auth工作流17项及补丁静态契约、Auth镜像构建；同一Auth镜像在已有隔离daemon中以256MiB上限和空会话实际返回 `/health` 200、`/steam/ready` 503、`/game/validate-status` 200，探针及两空卷清理完成。日志在 `tmp/junimo140-closeout-20261025/`；旧证据不能替代本轮 Linux 全量和真实升级。
+- 旧正式072源环境已完成专用Steam/Guard，真实Auth2 ready、1保存会话、邀请码ready、1存档/3角色/1用户，测试Mod通过旧UI上传并实际加载。登录代理 `http://127.0.0.1:19173/` 不记录密码。用户授权后只清理两项确定可重建缓存和默认Go编译缓存，释放约0.91GiB，C盘约17GiB；没有全局prune/用户数据清理/Docker重启。
+- 工程制品：target-aware bridge-v4（0.7.3）与full-v3（0.8.0）均894输入，各2258项Linux回归通过，full-v3 vet/build及两包fresh/health/version/uninitialized/restart通过，fresh资源已精确清理。镜像分别c6bbe4ba…、ccd45182…，只在本机及隔离环回registry，非正式候选。6种入口浏览器、23项兼容脚本和更新production build通过；Auth工作流YAML/4段Bash通过。
+- 首次真实072 Web unhealthy：检查→新dry-run→一次管理员确认→apply→断线→failed_rolled_back/health_check_failed→重连072通过。发现健康等待时自动Control更新已重启游戏，不能用该结果证明游戏完全未动。`cmd/panel/runtime_panel_upgrade.go`新增helper成功后才启动Prepare/必需组件协调，失败候选、坏/未知状态、回滚失败不启动，取消退出，成功reload实例；9项定向启动测试通过。重新冻结full-v4/bridge-v5（896输入）继续本版受影响门禁，旧已过的独立前端/兼容链不机械重跑。
+- 原始回滚静止核验：用户/1档3角色进度/自有Mod字节与配置/1专用会话/非目标容器和sentinel完整。首次严断言同时捕获尚未结束的自动job和把settings.json误数为session；按真实username+refreshToken会话契约、静止终态复核。存档仅1个Quest的_questTitle显示缓存被游戏Saved刷新，精确原始归档hash核对后比较所有其它任务字段不变；未忽略任务进度差异。保留原失败材料。
+- 下一步与边界：先复验同引用unhealthy时原游戏/Auth容器、存档与Mod字节不动，再真实072→过渡补丁→.140及Auth/游戏失败整组恢复、平台联机/重连、存档/Mod/备份维护。专属DinD图层/数据在tmpfs，禁止停止外层。暂不发布/推送main；本地工程数字与digest均不能当正式证明。
+
+## 2026-10-16 P2 与统一全栈本地工程验收完成
+
+本节覆盖本轮增量；下方 865 文件/98ffd640 的完成结论属于此前输入，不能证明新增的全栈协调器。
+
+- 当前不可变工程快照为 `tmp/junimo-p2-20261016/panel-full-stack-v4`，889文件清单 `panel-full-stack-v4-inputs.json` SHA256 `0e36d5c30fdf1677969e1197b52d466e0dab8b88679506786915233995893588`。本地镜像 `junimo-p2-20261016-panel:full-stack-v4` ID `sha256:91e593400e361b756827a97d38d80ea41a4711eae7a3ac24325dd6b5e958de37`，工程版本0.7.3/base HEAD `94d0265d51682cf78181acb5e6437727f58f5e81`，UTC `2026-10-16T08:42:17Z`；Control仍为0.3.9/DLL `980c08d7e0cf5eb389fafa232a09120998a4ea46241221d6f5f2f345e8dc20f8`。初始954个文件路径均保留。脏工作区快照用于本地验证，不是正式候选证明，没有任何提交/推送/tag/Release/远端镜像或 latest 变更。
+- 本轮变更：逐成员保存完成后立即停止原服务，未完成 peer 的保存/恢复保护；单一邀请码 live 轮询的隐藏、缓存与丢码恢复；持久全栈操作、管理员与精确目标/scope 确认、Panel 内容 ID 固定、游戏组持久续接、维护界面和整组回滚后的限定兼容。全局推荐未改，仍125/Auth anxi.2/原版SMAPI4.5.2。
+- v1 `c58c7a43…` 的真实旧072 Web更新、unhealthy回滚、范围失效拒绝、双击一次确认、三世界提交/原运行选择、Panel重启和非目标状态均通过，已归档并清理（`web-success/proof.json`，实例归档SHA `c95264f926f5c8ffd8a9638189204395e1d2ba9091af2667e8b12d85ed4fa765`）。该次暴露总览仍显示全局125建议，v2改为实例有效inspection，并补齐实际自容器内容ID、ref别名等价、过期与多组未触碰兼容证明；v1不能替代这些增量的最终Docker证据。
+- v2 `dcf34d1d…` 通过2214项自动测试和真实旧072 Web更新/unhealthy回滚、scope与手机维护，但真实游戏迁移失败：命令 `c9992e78…` 在07:06:31.786Z成功，Web历史同步在07:06:31.929Z导入后删除原回执，只留下脱敏details=`{}`，共享事务漏读并在130秒后进入manual_action，A/B原125仍运行、未创建staging或更改游戏。保留完整失败/SQLite/操作/三世界材料及停止后的外层rootfs；`web-v2-success/retired-proof.json`明确passed=false、cleaned=true。另两个仅准备的v2夹具也归档清理。v3在lease期间保护该成员回执，终态解锁后才归档，并修正Saved后已完成的实时日切不应再等待无关游标推进；新增回归先失败后通过（`save-receipts-before/after.jsonl`）。v2不是最终通过输入。
+- v3原构建因proxy.golang.org拒绝连接而中止，首日志保留。任务专属 `Dockerfile-v3-local` 与冻结Dockerfile仅下载一行不同：使用可达代理并追加`go mod verify`；源码、go.mod/go.sum与运行层不变，所有模块校验通过。实际构建文件SHA `2bb8f5622ca8ffcdb59e488b5036af58ecf06f5fc922bc9b8c97c43516426ffb`同时绑定镜像label和image-proof。本地工程构建不替代正式候选门禁。
+- v3正常路径 `web-v3-success/proof.json`通过并清理：旧072真实UI unhealthy回滚/健康升级、三世界同op/hash提交、A/B恢复运行、C保持冷模板、Panel重启/SQLite/非目标与实际角色均通过，703.53s，实例归档SHA `a43998fb0d120806f10329b0fa6cdb72b01da336db9d09a11579e481fd4c74f2`。但双组目标退出暴露冷模板没有容器快照、原源镜像ID为空，导致`remaining_group_unverified/compatibility image identity is incomplete`：第一组已恢复125，第二组未触碰，整次保留维护而不报成功。`web-v3-target-exit/retired-proof.json`明确passed=false/cleaned=true，停止rootfs SHA `b99fa28eba4911ed8b336dddbf2f748e52f43e9096b118efa4f2360a0fccb3be`。v4在预检/确认捕获声明源镜像的缓存ID和固定digest，仍保持无容器/未运行；缺失/错误身份拒绝，40项针对性回归通过。原v3成功不能替代此增量的最终证明。
+- 已完成的增量证据：`updater-pinned-tests.jsonl`、`full-stack-security-v5.jsonl`、`full-stack-last-unit.jsonl`；真实 React/Chrome 邀请生命周期9场景和统一升级生命周期8场景。原 P2 两运行世界保存窗口在真实已提交组 `group-real-6c86a7cc266735eb8f955fe3` 上有 `save-stop-window.json`，parent 首轮因 B fixture/payload/运行选择断言不匹配保留失败；独立 `real-committed-final-audit.jsonl` 验证原世界与精确目标/卷、A+B运行、C空模板、解锁并清理。真实整组失败回滚 `real-rollback-v1.jsonl` 通过436.076s。它们早于统一冻结，最终整体以当前 Web/游戏矩阵为准。
+- 验收环境：专属 DinD、专属 bind/命名卷/环回端口，与宿主 daemon 身份不同。旧正式072、候选与固定125/140镜像由精确归档导入，已核对载入后内容ID/digest；外部 Release/GHCR仅由隔离环境的 TLS mock/loopback registry 替代，写镜像前验证 ghcr.io 仅解析到 loopback。原授权游戏卷只读导出并逐文件核对前后不变（`web-inputs/inputs.json`、`game-source-before.files/after.files`）。旧 UI 的检查、dry-run、确认/apply 及新 UI 的范围确认必须由实际浏览器发送。
+
+| 本轮专项 | 当前状态 / 证据 |
+| --- | --- |
+| 逐成员 save→stop 与未完成 peer、取消、bootstrap、同 SaveID 恢复 | 自动回归及v4真实Web再验通过：Saved1/Stopped1先于Saved2，全员静止后备份；三世界提交、中断恢复和双组失败回滚通过 |
+| 确认 actor/op/hash/过期、目标 OCI、重复 helper、未知字段/角色 | 自动回归通过；拒绝不生成替代授权 |
+| v4全新安装 / health/version / 未初始化 / 重启 | `fresh-v4-smoke-proof.json`通过并清理；历史失败均保留 |
+| 旧072 Web unhealthy→原 Panel/SQLite 恢复 | `web-v4-success/browser-old-unhealthy-terminal.json`通过，failed_rolled_back/health_check_failed；旧Panel与SQLite恢复后才开始健康更新 |
+| 旧072 Web→同v4候选→刷新→实际 scope→三世界迁移 | `web-v4-success/proof.json`通过并清理，Go真实E2E 616.79s；同op `stack_638d280b1c698c6a7fc7f149d9b46389`完成三世界、原运行选择、用户/SQLite/非目标/重启及有效140总览，归档SHA `092f5ea3573c0c34965a71cbd790e98ed5fcc6218ca3dd5b34474aad514efd59` |
+| 真实角色/确认边界与桌面/手机 | v4 protocol实际匿名401、普通用户GET/prepare/confirm/cancel/recover为403、另一管理员确认/错误hash409、任意scope字段400；可变tag导致409且未授权，恢复后同计划继续。桌面/手机维护、跨Panel替换及最终重启用户保留通过 |
+| 两独立共享组：目标B退出→整组125恢复，另一组保持原状 | `web-v4-target-exit/proof.json`通过并清理，Go真实E2E 1570.68s；B目标退出137，生产20分钟健康等待后同op `stack_5cfc0187184c1f6e217a762352cccab5`终态failed_safe，A/B组rolled_back、C组untouched/unchanged且独立兼容，全部lease释放。重启后实际GET三世界均200/无维护，总进度0；用户/SQLite/非目标通过，归档SHA `fd1c724936e00b64834c830f3b8b2c4d8c03422d7627e5359e1251b03e815707` |
+| 新协议工程072：一次确认→固定helper→新Panel同组提交 | `web-v4-protocol/proof.json`通过并清理，574.40s；selectedDigest精确91e593…，同op `stack_1f3b12447f3963e4ebceb509838fa05e`、同plan完成三世界迁移，A/B运行、C冷模板、原lease释放、用户/SQLite/非目标/重启及有效140总览通过；私有实例归档SHA `8840c51d4d0cb5737720383e16ec8cdf7834a96a260aaf6094e2125429cfa8fb` |
+| 新Panel在preparing_game中断→原日志恢复/125兼容 | `web-v4-panel-interruption/proof.json`通过并清理，219.05s；同op `stack_f9ce7ba782a94944d12799b878bf6311`回到failed_safe/rolled_back，原125 A/B保持停止、C冷模板，未补发save；限定兼容/维护释放、用户/SQLite/非目标与再次重启通过，私有实例归档SHA `bcea581a8aa2000c34c757dde262ee5f125e24926a0748e4ef3c680cb5b2a5b6` |
+| Linux全量/test/vet/build、前端全部状态脚本/production build | v4：2229 pass / 0 fail / 8条件skip，vet/build/integration编译/未来required140限定兼容全部退出0；30个前端脚本全部退出0。完整日志 `final-v4-backend-*` / `final-v4-frontend-*` / `final-v4-future-policy-*` |
+| 资源清理 / 无关状态 / SQLite | 四项v4 proof均passed/cleaned；各夹具SQLite integrity=ok、隔离非目标不变。`final-v4-resource-proof.json`通过：任务容器/卷/网络及8个v4监听端口余量0；13个Go容器先留日志后删除、2个精确缓存卷清理，宿主两个长期Panel仍running/healthy。工程镜像/完整日志/失败材料保留 |
+| 启用邀请码 / 真实 Steam、GOG、Guard | Auth .140 尚无正式固定身份，前置拒绝；在线链路按要求暂缓，不计通过 |
+
+旧版兼容边界：正式072只有旧布尔确认协议，无法表达本轮固定制品与共享组的授权；因此安全路径是旧 Web 先更新 Panel、刷新新资产，再展示并确认精确游戏范围。不能宣称旧072经一次布尔确认自动完成全栈。本地 Auth工程镜像 `junimo140-20261015-auth:local-v2` 未分配/发布版本，不混用125 Auth，也不因此提升全局推荐。
+
+支持新协议的来源另用同一v4源码编成工程0.7.2：`junimo-p2-20261016-panel:protocol-source-v4`，ID `sha256:3155f392ad96a50e2aeafeaebeca522e716d399dedbba0ec6499cf4b5450c588`，清单SHA `bf5f26816637c7a8b6e6d60d54f9d590de01232b72acce24eb80978ab4c69f67`。它用于验证新协议的一次确认/固定helper/新Panel续接，不是旧正式072镜像。
+
+环境故障与恢复：v2并行准备时C盘降至约29MiB，Docker出现read-only/I/O错误，停止后续启动并保留原日志。随后只读复查C盘约38GiB、daemon可访问；代理未重启Desktop、未全局prune，只按精确归属恢复任务容器。fresh v2通过并清理；成功组DinD旧pid已在确认无存活containerd后清理，旧072/非目标状态复核不变。v2续接又发现上述真实产品竞争，三个v2外层rootfs及v3目标退出失败材料均先归档核验SHA，再按精确ID/label/命名卷清理。v4四项串行完成并归档清理；13个已退出Go测试/编译容器先保存完整日志再精确删除（`go-containers-cleanup-proof.json`），最后两个任务缓存卷亦精确清理。最终运行资源审计UTC2026-10-16T10:06:55Z通过，镜像与材料保留审阅。
+
+target-exit监控时限修正：实际迁移由Docker内Panel执行，使用生产20分钟server健康等待；外部夹具driver的3分钟只影响准备/独立核验，不能覆盖实际Panel。v3首浏览器900秒与原Go观察器25分钟先后到期，失败日志保留；只读观察器核对同一op/hash/已有退出故障，未重发业务，最终正确发现上述冷模板证明失败，不能把任一原日志写成通过。v4已把此场景的持久Go上下文增为60分钟、CLI90分钟、浏览器40分钟，生产等待不变。容量守卫预留10GiB底线及每夹具10GiB；Docker实测15.54GiB未达到双夹具16GiB预算，因此当前仍串行。
+
+静态保留审计：889个构建输入与冻结v4逐文件SHA相同；相对起点新增24、修改44个源码输入，范围仅backend/frontend（`v4-task-source-delta.json`）。起始954文件路径全部保留，899文件字节未变，剩余变化均在冻结源码或明确11份长期文档范围，未发现范围外变化。main/HEAD保持94d026…，diff-check、新增U+FFFD、文档BOM/混合换行均为0；任务PowerShell29份AST通过，9份仅机械恢复CRLF且规范化文本相同。最终汇总为 `final-v4-evidence-summary.json`，交付要求runtime.complete=true且所有源码/保留审计通过；资源另见 `final-v4-resource-proof.json`。本轮验收止于本地工程输入，正式候选、Auth固定发布身份及线上认证另行处理。
+
+## 2026-10-15 本地实施进度与证据
+
+### 当前有效状态（2026-10-16 本地验收收口）
+
+- 当前统一工程输入已重新冻结865文件：`panel-build-current-v6-inputs.json` SHA`5db5b7aef025bce31b09fa6d0fc0306fff4bb56a9dfea852b6980586c1ec6308`。Linux全量2172 pass/0 fail/8条件skip、vet/build通过（`backend-current-v8-summary.json`）。本地镜像`junimo140-20261015-panel:current-import-v6` ID`sha256:98ffd640c5892f3bb48b9edd18cd19b660a1c0f586bb390d95ca2d43c430eeaf`，0.7.3/base commit94d026…/UTC2026-10-15T17:46:26Z；新装/health/version/未初始化/前端入口/重启通过并清理（`j140-panel-smoke-d344872e3da3`）。同镜像从正式072经真实Web检查/dry-run/admin apply/断线重连、unhealthy回滚、SQLite/长期状态/重启和导入安全边界通过，隔离DinD及命名卷清理（`web-current-v6/j140-web-v6-072-e7db2f7e75fe/proof.json`）。只是脏工作区的本地工程证明，未提交、推送或发布。
+- `current-v6-input-delta.json`核对857→865为6个修改文件及8个新增测试/脚本，前端、Control源码/载荷及运行栈清单均未变；保留对应已通过独立验收。受影响/任务Shell脚本bash语法与ShellCheck通过，固定工具先核验Entrypoint/Cmd再显式调用shellcheck。旧032代表升级的核心输入未变；本轮新增导入版本/启动人数逻辑不改数据库或部署格式，最新072完整Web链已覆盖。
+- 全量的8个条件skip为`TestInstanceProvisionDockerOwnership`、`TestFarmCatalogDependenciesRealInstanceReadOnly`、`TestPlayerSyncPowerShellScriptsParse`、4个`TestDockerIntegration*`和`TestWorldDeleteDockerE2E`，不是业务失败；Docker/updater/真实Web等在独立专属环境验收，Windows解析另有专项。完整用例名和退出码保留于全量summary，不把条件跳过计成通过。
+
+- 2026-10-16生产增量：导入静态准入和运行manifest核对精确接受125/140，按实际镜像验证Mod；仅启动预检对缺playerCount做有界等待，明确0人前不发控制台，畸形JSON/负数/在线玩家仍拒绝。新增静态/运行版本、交叉DLL/FIFO、两版新资产及5项启动等待回归。Linux导入/角色330项及后续当前readiness/maintenance111项、相应vet通过，完整JSON/stderr/tools日志见`backend-import140-{delta,readiness-delta}-*`；已进入865冻结、2172全量及98ffd640工程镜像。
+- 新DLL原生F9/F10、真实IP睡眠恰好一天、正常断开后暂停、重启原角色重连已通过，原档字节一致，临时资源清理（`j140-timing-f0e428378e83/proof.json`）。首次直接停止客户端的25秒观察早于实际网络断开；服务端在peer断开同刻暂停，日志和完整session归档保留，负例1容器/4卷清理。
+- 真实Panel业务已通过：当前QA8 exe SHA`7a21ba564e3bcac5ff27573e346feb76ec143e6bd5dfd6b046d436023c884e6a`，859文件逐项证明仅140/recommended清单及当前导入源码/测试差异，无API钩子。287fae夹具的离线角色删除、备份删除B旧档、multipart预览、as-is稳定加载且无额外Saved（op34cbb4145ace58b6d3e8490828de11f3）、swap释放归属/精确Saved/磁盘（opeb6f7d23678f6958671e41ea70bd72af）、重复同job/op及失败前置导入经Web自动恢复均成功。最终`panel-business-final-audit.jsonl`通过9.82s，严格核对两份成功job/journal、A运行/B停止、共同目标卷与空C后清理，proof committed/cleaned。原最终检查早于Docker退出约两秒（43521）保留；仅对精确B的中断stop按原恢复方法收敛，业务未重放。初期静态/运行版本拒绝、缺启动人数、同名拒绝、cleanup receipt与as-is断言夹具修正均保留原日志。
+- 五项真实作物通过（`j140-timing-def33e2c24b6/agriculture-proof.json`及父proof）：室内季节免疫、耕地覆盖花盆跨扫描、默认防雷击、离线春夏保活/秋冬到期处理；副本清理、源存档哈希与原容器保持。客户端游戏卷已完整备份后对齐固定140 patched（`client-smapi140-alignment-proof.json`，备份SHA17476cb210314de248f957f421810610af9d0a7a33e638950982d38d25f1c4f0），核心游戏DLL不变。
+- 小屋7项通过（`j140-timing-cfd82dde10f2/cabins-proof.json`）：默认数量/空余小屋、Farm外拒绝移动、合法移动意图及重载、reset及重载、staged None重载/abort、断开后提交、operator文件切FarmhouseStack及原owner重连；父proof passed/cleaned且原源哈希保持。
+- 双客户端婚礼通过（`j140-timing-3c3c77cf426a/weddings-proof.json`）：两个独立IP客户端分别与Abigail/Penny按客户端权威订婚，两端各自观看同日两场婚礼，婚姻/次日均正确，host无event/fade/dialog/temp残留并恢复停泊。第二客户端5卷和父夹具4卷均清理，源存档及原容器保持。
+- 节日累计通过：`j140-timing-1f06946ed99e/festivals-progress.json`首例万灵节双端进入/停留/离开独立成功，SHA`76298a980a22051f12f3ad535210c3a3cb81205b675652cfe9a7492e6913d3b1`锁定复用；`j140-timing-da88935b2073/festivals-proof.json`余下5例passed，覆盖空服节日后次日Ice离开复位、Fair菜单延后与释放、Fair评审不提前终止及离开、Luau `!event`恰好一个starfruit、Egg hunt `!event`保持活动。6例累计覆盖上游7项事实，父proof passed/cleaned/source unchanged。后5例使用官方第一年、睡前2500/clock20及finally恢复clock1的入口流程，没有重放首例成功。早期冷启动失败已证实是普通剧情63/DialogueBox未结束时强制warp，已改正常原生对话和稳定无事件等待；其日志/session完整保留。
+
+- 内置 Control0.3.9 已同步真实 v5 DLL：SHA256 `980c08d7e0cf5eb389fafa232a09120998a4ea46241221d6f5f2f345e8dc20f8`，235520 B。三 TPS 实测分别为5/30/60 tick/s、均为1次/s SMAPI每秒事件；各组空服/节日日期暂停、精确 Saved、2500暂停、5秒grace后恰好跨一天均通过，原容器保留且主存档字节不变，临时资源清零（`j140-timing-a9fe3f59f2c5/proof.json`）。下面的 `308119...`/v4 和“尚未嵌入”是过程记录。
+- 共享组三世界在当前DLL的真实失败回滚339.95s、正式Control0.3.8源正常升级497.47s、中断恢复278.60s、真实Panel HTTP范围预检/拒绝/确认升级430.13s均通过并清理。独立前端共享范围确认取消0次/接受1次、状态回归/build和浏览器布局通过；auth UID/GID 1000、1007、root的旧私有文件离线迁移/权限/health通过。对应精确输入、耗时和首次失败事实见下面阶段证据。
+- 最终资源清理通过（`final-resource-audit/proof.json`，UTC2026-10-15T18:52:33Z）：剩余8个任务容器、15个命名卷、2个已证明归属的匿名存档卷、1个网络移除，任务资源余量0；匿名存档先以GNU tar/ACL/xattr/numeric-owner归档。原授权游戏3839文件前后canonical清单SHA`9f79c7018894d0cc04ad0b85f1023e01d32e02d4c90a1ed8f1432c0686a5284d`相同，按初始绝对`/source/`路径、hash-line排序、LF格式归一后仍为`7694b6826a9106e42288cdf2b4b76865261c3c320ef9709b648c45dce8d1e8a9`；6个无关容器身份/挂载/运行状态、32个无关卷身份均保持。本地工程镜像、完整日志和冻结副本保留审阅。
+- 最终源码/环境审计通过（`final-source-proof.json`，UTC2026-10-15T18:58:07Z）：当前865文件库存及逐文件SHA与冻结副本、清单完全相同，镜像仍为98ffd640…；main/HEAD/index保持，邻接auth仓库master/HEAD及18项工作区修改保留。任务资源仍0，Web测试端口13743无监听。136项变更文件的BOM/新增U+FFFD/diff-check、99个Go文件格式、92份任务PowerShell脚本AST/保留变量/集合守卫及5个负例自检通过；编码库存同时覆盖全部未跟踪后端/前端/脚本等构建输入，21个已知CRLF文件归一后语义diff相同。
+- 交付边界：本轮本地实现及除在线账号登录外的验收完成，源码推荐保持`.125/auth anxi.2/原SMAPI4.5.2/Control0.3.9`。按用户要求暂缓Steam Guard/账号登录，Steam/GOG在线链不计通过；推荐`.140`、正式候选及发布继续受上述高风险门禁约束。本轮未commit/push/tag/发布或改变生产环境。本文所有相对证据路径以`tmp/junimo140-20261015/`为根。
+
+### 已归档阶段输入与验证
+
+下列旧hash、资源数量和待验描述保留为实施审计；当前完成状态、有效工程镜像和剩余发布边界以上节为准。
+- 历史输入冻结857文件，`panel-build-current-v5-inputs.json` hash=`f08ced1533b9349466024b7e23b3d13ddcca8d413b7e844c26fce6c1005992a3`。Linux全包单次2152 pass/0 fail/8条件skip、vet/build通过（`backend-current-v7-summary.json`）；Control/运行栈Windows专项120项通过。对应本地工程镜像ID=`sha256:5936d1c27523da904f0e40e162193231c90bbdec45d60505a9105353e5f97f6f`，版本0.7.3、commit94d0265d51682cf78181acb5e6437727f58f5e81、UTC build date2026-10-15T14:27:15Z；只是历史工程输入证明，未发布。初次构建后验证把 DateTime label 与字符串比较误报，统一 UTC 后同一镜像全部元数据通过，没有重建。
+- 新DLL的真实整组失败回滚通过339.95s（`group-real-control-v5-rollback.jsonl`、`group-real-380d95a4991f2cad5dc2dfc5/proof.json`），同时覆盖新制品在125/140实载及保存。0.3.8源正常升级首次在首个目标启动验收超时，已整组恢复旧状态并保留失败；资源按终态/hash/归属安全退役。增加仅测试侧停服前诊断后，正常升级497.47s通过（`group-real-6d9a6955305a0e71a1fbf273/proof.json`）；中断恢复278.60s通过（`group-real-3174e9be3c0e0dcc928afe76/proof.json`）。两组资源均清理，未放宽生产时限。首轮超时根因尚无完整证据。
+- 当前镜像新装/重启冒烟通过（`j140-panel-smoke-0c85d54153a3/proof.json`）。v0.7.2→当前镜像的完整Web升级、unhealthy回滚、持久状态/重启、导入安全边界通过（`web-current-v5/j140-web-v5-072-4e9c8d52d22e/proof.json`）；最老支持v0.3.2同矩阵也通过（`web-current-v5/j140-web-v5-032-25970b4842b5/proof.json`），两套隔离daemon和数据卷均清理。032边界来自当前manifest及历史发布矩阵。真实Panel导入/重绑/删除和其余节日/婚礼/小屋/作物专项仍待完成。源码推荐仍为125/auth anxi.2/原SMAPI/Control0.3.9；Steam登录按用户要求跳过，在线Steam/GOG不计通过。
+- 新增仅integration测试的`junimo140_group_real_http_test.go`：从857文件冻结副本编译真实Panel，只有清单改成固定140目标及recommended策略以避免测试前自动应用；全部源码逐文件hash确认仅清单不同（`panel-http-qa-v5-input-proof.json`）。正常HTTP登录/检查/真实预检、缺失与错误scope拒绝且无apply副作用、确认精确三世界scope后真实升级通过430.13s（`group-real-control-v5-http-source-ref-fixed.jsonl`、`group-real-0ae1186f632dca43780cf702/proof.json`）；committed、冷模板和原运行选择、子进程退出、专属资源清理均通过。先前两个未提交夹具的初始化顺序/缺失缓存tag错误已修正并安全清理，未放宽产品门禁。新DLL原生键盘/IP睡眠重连已启动独立副本，尚未计通过。
+- Web导入Phase A夹具现从复制的Control manifest读取版本，修正新DLL配旧0.3.8状态的错误输入；首轮正确触发版本保护，完整失败日志保留。Linux候选脚本补专属DinD数据卷及归属/挂载核对清理，正常、重复清理、未知归属/挂载、inspect/rm失败和未创建共7组测试通过；三脚本bash语法与ShellCheck通过。该测试脚本修正晚于857文件冻结，工程镜像生产代码未变，不能据此宣称整棵当前工作树已有正式候选证明。
+
+### 过程证据
+
+- 最新真实业务发现（尚待完整复验）：5 TPS 的凌晨 grace sleep 暴露旧 Control 强制暂停与 .140 上游传送冲突；首次仅放行活动后，又发现旧四次睡眠重试在 DayEnding 后重复跨天。现改为检测新版活动暂停契约后保留上游完整 idle/sleep/transition 控制；保留 F9 手动优先级和旧版暂停路径。睡眠保护保留床验证，检测新版请求锁后不重试，且所有版本 DayEnding 后停止重试。新增纯 `HostSleepRetryPolicy` 及契约分支，真实标准 C# build/契约通过；v5 工程 DLL SHA256=`980c08d7e0cf5eb389fafa232a09120998a4ea46241221d6f5f2f345e8dc20f8`（235520 B），尚未替换嵌入制品。`timing-matrix-real-v5.log` 正在跑新输入5/30/60 TPS；旧组 E2E 是旧 DLL 独立证据，最终输入仍需复验。两份负例 `j140-timing-014e351cb3ce`、`j140-timing-f3ecc2e84172` 的完整日志、精确 Saved、快照及停服 XML 已保留，其2容器/8卷已严格清理（`timing-negative-retirement.log`）。HTTP 411 为夹具空 POST 缺 Content-Length，另已修复；不能把请求错误当作操作未执行。
+- 正式旧 Control 源组合失败回滚已完成：`group-real-formal038-rollback.jsonl` 347.35s、`group-real-8bedfd33de149e0b264430fe/proof.json`，旧 DLL/配置/数据、运行选择、空模板状态、解锁及清理通过。该证明先于上列新暂停/睡眠修正。
+- 追加真实恢复证据：`group-real-recovery.jsonl` 265.85s，通过回滚中断、缺失 `.env`、成员锁保持、从 peer 重新恢复、全组原配置/游戏卷/数据恢复、全部停止、冷模板 `save_required` 和专属资源清理（`group-real-a87bd1e0b67dabe26c328c2d/proof.json`）。正式 v0.7.2 固定提交的 Control0.3.8 制品另在三世界源组合升级通过 441.17s（`group-real-formal038-success.jsonl`），补上旧 Control→0.3.9 边界与正常提交的冷模板断言；这是当前 Driver 上的真实组件组合，完整旧 Panel Web 链仍待重建后执行。0.3.8 源失败回滚专项正在运行。
+- 认证卷离线权限实测：固定自有 auth local-v2，三组 UID/GID 1000:1000、1007:1008、0:0，旧 root/0600 session 与 game 文件经真实入口启动后可读写，进程身份正确、0600/0700 保持、health 通过，全部临时资源清零。证据 `j140-auth-permission-b74105b54276-proof.json`；仅使用合成文件和禁网容器，没有登录或长期凭据。
+- 真实共享组三世界 E2E：生产入口处理运行存档 A、停止存档 B、未启动空模板 C，固定 .125→.140 成功 445.71s（`group-real-success.jsonl`；`group-real-7c731e7ad91fe4d614fe9b96/proof.json`）。独立夹具在 B 的目标容器创建注入失败，真实整组回滚通过 317.39s（`group-real-rollback.jsonl`；`group-real-b3b2d0d20bd99f007d2197b6/proof.json`）。校验共同 staging、旧 env/Compose hash、原游戏卷与数据库字段、原运行选择、冷模板无农场、成员解锁、专属资源清零。两侧 Control 均为0.3.9；正式 v0.7.2/Control0.3.8 和登录链路另验。恢复中断后从 peer 重入的真实专项正在独立运行。
+- 冷模板 `save_required` 现通过正常提交/实时回滚/bootstrap 三路径单元验证，真实失败回滚也断言保持；首轮成功 E2E 未包含该断言。`junimo140_group_real_integration_test.go` 默认跳过，显式 `ANXI_REAL_JUNIMO140_GROUP=1` 和 `ANXI_REAL_JUNIMO140_GROUP_CASE=success|rollback|recovery` 才运行；使用只读授权源的新副本、独立 SQLite/jobs/三组资源，失败时保留完整恢复材料，成功才按身份清理。最终冻结输入还需统一复验。
+- 最新回归：`backend-v6-summary.json` 工程合并 2145 pass/0 fail/8 skip，driver/Web 两包复验、vet/build 均通过；初次 62 fail 保留，根因是新 lease 守卫把未准备目录当成异常。新增的保存未确认保留 writer/锁、不重提、菜单忙安全重试与终态 peer 清理运行策略，分别在 `group-save-abort-final.jsonl`、`group-terminal-policy.jsonl` 和 `group-all-final-windows.jsonl` 通过；末尾追加代码与 Linux `backend-group-delta` 结果单列，最终冻结输入全门禁仍待 E2E 后执行。
+
+- 共享组实施已接线并取得上列真实 apply/失败回滚证据：新增严格输入与逐阶段意图 transaction、同组 lease 守卫、全组备份后 staging、逐世界更新和整组恢复；重启恢复早于模板/Auth bootstrap。真实双容器无 `.env` 查询/停止、身份不符全批拒绝和幂等清理通过 44.77s（`group-services-real.jsonl`）；专属 staging/未知归属拒绝、实际 Mod 提取/重复拒绝通过 4.96s（`group-assets-real-fixed.jsonl`）。首次重复提取失败为已修复 Shell AND-list fail-fast 问题，保留 `group-assets-real.jsonl`。
+- 模拟协调器通过部分 root purge 后从 peer 真实恢复入口重入、未知 holder 不恢复/不放锁、旧服健康失败不标成功、bootstrap 不启动游戏、模板离线更新不创建农场，以及所有备份先于 staging 分配。见 `group-coordinator-recovery-final.jsonl` 与 `group-prepare-cold-final.jsonl`。这不代替多世界真实游戏事务 E2E。
+- 前端数量确认与严格 apply hash 已接线；无 hash 的后台入口拒绝共享升级。Chrome/StrictMode 通过取消 0 次与接受 1 次且精确携带原 hash，1473px 无溢出/错误；`group-ui-proof.json`，build/两项状态测试通过。`group-scope-fresh-guards.jsonl` 包含严格确认解析、缺失/错误 hash 在 Docker 前拒绝和新目录 guard 修复。Linux 全包 v6 初次 2063 pass/62 fail/8 skip，失败集中于新 lease 守卫误将未准备目录视为异常，已修复并保留原日志；driver/web 两包受影响全量复验仍在执行，终态看退出码，不把初始失败抹去。
+
+- 恢复/业务原语已由协调器调用：`group-helper-quiescence-real.jsonl` 8.396s、`group-session-real.jsonl` 12.605s，通过完整 helper 身份/未知拒绝/停止移除/幂等及静止 session 不可变 tar、ACL/owner/mode、hash 拒绝和重复恢复。`game-staging-complete-real.jsonl` 96.72s，通过 clone→固定 game/SDK→patched SMAPI→再核验的完整准备步骤与三种损坏拒绝。
+- `.140/Control0.3.9/SERVER_TPS=5` 真实 F9/F10 与 12 组房屋/床位全部通过：`native-host-control-5tps/proof.json`、`house-bed-matrix-v1/proof.json`。渲染 render30 是热键前提，不能当 TPS30；无人手动不暂停、人物影子一致切换、恢复自动化/空服暂停，以及0–3级、三种床、独立 GetPlayerBed、精确 Saved、XML 等级、非床家具保持均验收。高等级错误 Single 保留并补 Double；原错误床总数断言、失败快照/XML 和更正结果留档。完整原存档卷恢复后，主档字节一致且原世界 ready。
+- 后端最新 `backend-v5-summary.json` 合并 2065 pass/0 fail/8 skip，Linux vet/build 通过。原始全包退出 1：裸 Alpine 缺 GNU timeout，一项 DNS 1100行日志夹具未在15s内结束；正确 GNU工具后的相关 FIFO 与原 DNS 断言定点通过（DNS2.43s），未改超时/业务。此记录不是正式候选证明；最终统一固定环境重跑仍需完成。
+- 当前 8 容器/13 命名卷/2 匿名存档卷/1 网络未增加。真实服务器以测试模式 TPS5 继续业务矩阵、IP client 停止，原 .125 fixture 保留。重建后的当前存档归属证据 `anonymous-save-volumes-current.json`（各唯一任务 holder、原始归属及重建链验证）；最后清理使用该文件而非旧 container ID。
+
+**当前为部分实现、未完成目标栈升级。** 本轮在既有脏工作区 `main` 上实施；下方“差异审计”章节保留为实施前依据。源码推荐清单为 `.125 + anxi.2 + 原版 SMAPI 4.5.2 + Control 0.3.9`，正式 v0.7.2 仍为历史 0.3.8。没有提交、推送、tag、Release、正式候选证明、远端镜像或生产部署。用户要求本轮跳过 Steam Guard，已停止账号登录；所有证据均为隔离测试资源。
+
+- 最新固定载荷证明：`game-integrity-real-final.jsonl` 56.73s，已知旧 game build16826371/depot413153/manifest6005910083361727734、SDK build20939719/depot1006/manifest6403079453713498174；228 核心 SHA256、固定 ContentHashes SHA256 与 3,560 内容 MD5 全匹配后，才在 unused owned staging 写两个 .140 JSON 下载标记。正常、SMAPI 安装后幂等、DLL 损坏/内容缺失/Content 符号链接拒绝及失败标记保持全部通过；创建的 staging 与临时 helper 自动清理。原源卷保持只读。仅证明已知载荷完整性，不是本轮 Steam 许可证/签名 depot 认证；未知或裁剪输入会拒绝迁移。
+- 最新 Control 制品：0.3.9，DLL SHA256 `308119e7ebb1722a1a528620f8f229e89c54e80c99d8cc891bf5d1af30208ebb`，232960 bytes。原游戏/原版 SMAPI 标准真实 C# build 与契约测试通过；同一 DLL 在固定 .125/.140 都实际加载、7 桥/普通与解绑精确 Saved 通过，新版 ownership 持久证据、官方 IP client 原角色重连通过。双 manifest、嵌入 DLL 和栈 hash 已同步；`control-payload-consistency.jsonl` 通过。证据 `control-build-v3*`、`control-compat{125,140}-v3/proof.json`、`client-control039-rejoin.json`。初始 .125 VNC 配置和 PowerShell/日志夹具失败如实保留，未计业务失败；只重读既有成功 Saved，不重提命令。
+- 新共享组代码晚于 local-v2，后续需冻结重建 Panel 并重验真实 Web 升级。长期业务夹具保留 8 容器、13 命名卷、2 个既有已证明匿名存档卷及 1 网络；临时整组 E2E 使用独立身份，成功夹具已清理，恢复专项终态另记。最终按当前归属证据清理。
+
+### 已实现的范围
+
+- `console_contract.go` 按实例当前 `.env` 的精确 `.140` tag/digest 选择新 FIFO，旧版和回滚仍走旧路径；探测管道后用 GNU `dd oflag=nonblock conv=nocreat`，容器内 timeout 限制遗留 writer 生命周期，`.140` 以配置 UID/GID 写入。`console.go`、运行栈探针、存档导入共用此契约，读取命令提交后的日志偏移和对应回执，移除 stdin 回显作为成功的兜底。真实 Linux FIFO 的 UID 1000、无 reader、缺失路径测试通过。
+- `junimo140_compose.go` 只处理明确 `.140` 的 Panel 托管格式：原子移除 23 项旧 init 挂载，补 UID/GID、Compose revision 4，将 API 容器端口统一到 8080，宿主映射限制为 loopback；保留游戏数据、Mods/settings/control/saves 挂载。未知 API 映射或自定义结构明确拒绝，不覆盖原文件。邀请码开启时设置 `VALIDATE_ON_BOOT=false` 和 `AUTO_DOWNLOAD_ON_BOOT=false`。
+- Docker SMAPI 读取增加 `buildId`、`imageBuildId` 和四个实际核心文件 SHA256；driver 对 `.140` 的独立原版 SMAPI 更新明确阻止，并区分构建不一致。已识别镜像内 `4.5.2-ec5447482be0` 及安装包 SHA256 `4e52a43b05ad9ac369dd7ed157f30a640c6133bf2c5341cc593929928275e855`。已接入共享组 staging：固定 image ID、未被容器引用且有归属 label 的 staging 卷、非交互限时安装、四 hash 验证后原子/fsync stamp 及回读；独立实际安装与重复执行通过（25.01s，`smapi-image-real-final`），真实整组结果见本节顶部。
+- 相邻自有 auth 仓库已迁移固定 `.140` 协议、session/续期和非 root 入口，保留国内连接等待/重试及纯 health；新增关闭隐式开机下载的参数。源码、Dockerfile 和 9 项协议测试通过，补丁说明在该仓 `ANXI_STEAM_SERVICE_PATCH.md`、`ANXI_UPSTREAM_SYNC_CN.md`。未分配或发布新正式 auth 版本。
+- Windows 工程验证发现并修复候选 DinD 数据卷遗漏：使用唯一命名卷和 owner label，finally 核对归属后删除。Web 升级假运行时补齐真实镜像已有的 GNU coreutils 9.5-r2；原业务和恢复断言保留。
+
+### 后续真实游戏与连接状态续验
+
+- 用户授权在项目下查找测试文件后，发现现有安装测试卷 `install-test-20260905_game-data`，无容器占用；只读克隆 3839 个文件到任务卷，源前后 SHA256 清单一致（`7694b6826a9106e42288cdf2b4b76865261c3c320ef9709b648c45dce8d1e8a9`）。固定 game build `16826371` / SDK `20939719`。任务副本的临时 download marker 只用于夹具启动，不作为生产迁移完成证明。
+- 固定 `.140` patched 游戏目录上按标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 真实编译 Control；官方固定源码 test-client 同样真实编译。隔离 server/client 通过 IP 进入新农场、定制角色、睡眠 day 1→2、重启后选择原角色并重新进入世界。六项 Control bridge 可用；证据 `runtime140-ip-sleep.json`、`runtime140-ownership-rejoin.json`。
+- 新增 `FarmhandOwnershipBridge.cs`，调用 Junimo 的 `MarkReleased/IsReleased/PeekStore`，先拒绝未知 store schema，再验证内存和磁盘；Control 保存回执包含匿名 required/released/persisted 证明。Go 导入还逐个核对真实 XML 中角色与 ownership store，不能用相同数量替代身份。实际只读 store 故障拒绝，恢复权限后同一次新保存经 `GameLoop.Saved` 释放两个实际角色；root Go 原子写入被 UID 1000 Control 真实消费。见 `runtime140-ownership-proof.json`、`control140-real-go-writer.jsonl`、`ownership-real-go.jsonl`。工程 DLL hash `5488510298d3a4d1a4ad188632f7ebd4fb3fc505b15892cce5869e0896fc2483`；嵌入 DLL、双 manifest 与栈版本仍待统一更新。
+- 新 status 解码把 `.140` 的 `sequence` 归一到内部旧游标格式，拒绝冲突/非法游标，wait 与降级轮询均要求新快照；已通过游标专项。生产 API 15 项 key 矩阵通过：status/health 公开，stats/diagnostics 需 Bearer，生产 test route 不可用；`runtime140-production-api.json`。
+- 新增 driver 连接快照适配并接入原 `GET /api/instances/:id/invite-code`：按同一个 `/status` 核对 code/relay/Galaxy/Steam signals，输出 `connectionStatusCode/authReadiness` 和状态枚举；仅接受通用 S-code，不由邀请码推定持久 Steam 登录。未配置 Auth 时真实 `authReadiness=null` 归为 unknown。前端保留 GOG 可用码、提示 Steam 连接中、持续可见轮询 ready/丢码/恢复，复制仅复制码。72 项 driver、19 项 Web、21 项含真实响应专项及前端 install-state/响应式关联测试、production build 通过；桌面 1473×1033 与手机 390×844 隔离 UI 四状态变化、复制、无横向溢出/控制台错误通过，`connectivity-*`。这项 UI 证据使用模拟联机响应，不证明真实 Steam/GOG 已连接。
+- 上述源码变化晚于 `local-v2` Panel 和 802 项冻结输入；该工程镜像的 Web 升级证明保留为历史独立门禁，当前新增源码必须重新构建并复验受影响链路。
+- 共享组基础新增 `junimo140_group_plan/owner/test.go`：按完整实例库发现同卷世界、拒绝跨 driver 根目录重叠和 UID/GID 冲突；私有 plan hash、逐世界独占 lease、fsync journal、持久终态后整组校验释放；恢复通过实例库解析 primary，并允许 old/staging 混合绑定时重新证明相同成员。未知 schema/重复 key/不安全路径/新旧成员变化均拒绝。当前 41 项组/连接专项通过，尚未接入 apply/recovery 入口。
+- Docker 新增 scoped holder 检查、验证归档后四运行 bind 的权限迁移、只创建停止态容器；整实例 GNU tar 保存 ACL/xattrs/numeric owner，备份拒绝覆盖、恢复先验 hash 且保留 journal/lease。`group-docker-real-final` 23 项通过，含真实 ACL/UID/GID/mode/FIFO/幂等恢复（21.55s）、停止态重建不启动游戏/依赖、未知 holder 拒绝且不删除资源（6.29s）；权限迁移保持 `.env` 0:0/0600，Control options 改为 1000:1000/0600，回滚恢复原权限。所有该专项容器/卷/网络已清理；完整共享组事务与 crash 恢复仍待接线验收。
+- 当前输入后续 Linux 导入/持久保存/Junimo140/console 专项 363 pass、0 fail（94.981s，`group-import-linux`），后端 vet/build 通过。真实 Go adapter 对运行中的 `.140` 调用 status 与 wait/status，新 `sequence` 正常归一并前进；未来游标在 8 秒上限后返回 408，未触发错误降级或假匹配（8.77s，`wait-status-real-go`）。组私有 JSON 另补大小写别名重复 key 拒绝，`group-owner-strict-final` 通过。
+- staging 克隆进一步固定到 image ID、保留 ACL/xattrs/numeric owner，用 pipefail 检查 tar 两端并逐文件 SHA256 核对复制结果，再安装 patched SMAPI、验证四核心、发布 stamp；真实 `smapi-pinned-clone-real` 通过（11.36s）。这证明源与克隆一致，不证明源 depot 内容真实性。新写 helper 有确定名称/事务 label，元数据 helper 有卷 label；标签补齐后 Docker 单元及 23 项真实组专项再次通过，`docker-unit-v5`、`group-docker-labelled-real`。
+- 删除人物最终验证已补 `.140` ownership 磁盘记录必须消失，不能只看 XML/成功 HTTP/Saved。读取器有 1 MiB/普通文件/UTF-8/重复字段/schema/规范角色 ID 检查，兼容固定上游缺省 Origin=claim；不写入 owner store。实际生产 DELETE + GameLoop.Saved 的正常移除通过，阻断精确 `.tmp` 路径后真实出现 XML 已删而旧 owner 仍在，Go 正确拒绝成功；完整存档卷备份恢复、释放持久化、原 IP 角色重新进入世界通过。证据 `runtime140-delete-proof-v4/proof.json`、两个 Go proof 和 `client-post-delete-rejoin.log`。修复了删除接口把宿主 API_PORT 用在容器内请求的问题，内部固定 8080 并保留 Bearer，非默认宿主端口回归通过。此批修改晚于前述 363 项/vet/build，需要纳入最终输入门禁。
+- 首个真实游戏夹具发现镜像继承独立存档 VOLUME，父 `/config` 卷不包含实际存档；两份当前匿名存档卷已按任务容器、精确 destination 和唯一 holder 证明归属，记录 `anonymous-save-volumes.json`，最终清理须包含它们。后续 server/client 创建脚本显式命名并标记存档叶子卷且启动后拒绝任何隐式匿名卷。删除夹具三次前置/注入预期修正均保留，未把未触发注入算产品失败，详见错题本。
+
+### 固定输入与本地制品
+
+| 输入 | 实际身份 |
+| --- | --- |
+| 起点 main | `94d0265d51682cf78181acb5e6437727f58f5e81`，源码包含本轮未提交改动，输入文件 SHA256 清单单独保存 |
+| `.140` server | commit `f318717ac06a780b6b21080b0263c16278d8e6e1`；index `sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db`；amd64 `sha256:b17274eae3c84a9331b634ed7397e1fd7d881092b39bb335440d0f5981ffbd37` |
+| 官方 `.140` auth | index `sha256:196a79e9fc36a030023d6fbcb903afad4944a3659ad1fb959205f0ec25e9c032`；amd64 `sha256:0819c651b9b9fde785399f537a8f668a355ed17edc03a0079644fd94b8ff059c` |
+| 自有 auth 工程镜像 | `junimo140-20261015-auth:local-v2`；image ID `sha256:b6186712daf4f2715c1a1cc62ad14294d81d87b1955b49d226810609a900d7b5`，仅本机 |
+| Panel 工程镜像 | `junimo140-20261015-panel:local-v2`；image ID `sha256:6655142212069f11337d3eeabdc1dd52a5319d4f3a77887c4852f6e8d875dbf6`；工程版本 `0.7.3`、build date `2026-10-15T05:11:13Z`，仍内置 `.125` 推荐清单 |
+| Web 升级来源 | 正式 `v0.7.2`，digest `sha256:3ea2c86054c02673874413d00bfe05e13a17017551b6042ed26f87fb7954e655` |
+
+证据根目录为仓库内忽略目录 `tmp/junimo140-20261015/`。`panel-build-inputs-final.json` 固定 802 项工程构建输入；`fixed-image-identities.json` 区分 index/amd64；所有重试记录保留。工程镜像通过 `-AllowDirty` 本地隔离验证，不能替代干净且同步 main 的正式候选。
+
+### 自动回归结果
+
+- 后端全包记录 `backend-final.jsonl` 初次有 1 项旧 fake 回执不匹配；修正为上游实际的 not-found 回执，补精确存档名匹配后，`backend-affected.jsonl` 重跑 301 项全部通过（96.609s），最终 `.140` 五项测试再次通过。按测试身份合并后 1937 pass、0 fail、8 条条件 skip；不是一次无失败的全包执行。`go vet ./...`、`go build ./...` 均通过，完整汇总 `test-summary.json`。
+- 前端所有 27 项声明测试、production build、生产依赖 audit 通过；`frontend-results.json`、`frontend-build.log`。官网 `docs:build` 通过（2.94s），`website-build.log`。本轮未修改前端源码。
+- 兼容清单、五组脚本功能测试、ShellCheck/bash 语法、auth entrypoint 检查通过；后续夹具修改再次通过 `script-last-*`。原推荐 `.125` 栈远程制品检查通过，三个可选镜像代理不可用的警告保留在 `remote-artifacts.log`，未冒充 `.140` 新清单验证。
+- 独立 DinD 中 updater 两项（64.126s）、Docker integration（120.360s）、provision（1.752s）、世界删除（13.038s）、资源隔离（24.406s）、SMAPI 真实下载与 Linux 0600（4.742s）、运行时 auth/rollback 七项（16.311s）通过，见 `integration-*.jsonl/.exit`。updater 两项未传正式镜像参数、Docker real-images opt-in 跳过；provision 在单独开启的专项中通过。
+- 同一冻结 Panel 工程镜像经真实 Panel Web API 完成上一版检查、dry-run、管理员 apply、断线重连、unhealthy 回滚、SQLite/初始化和合成长期状态保持、重启、非目标资源保护、旧运行栈修复、导入无效写入/不可见目标故障恢复。最终 `panel-local-candidate-final.exit=0`，详细日志/元数据同前缀。前两次失败分别是两个假运行时缺 GNU writer 工具；补齐后保留原断言通过。
+
+### 本轮专项矩阵的实际状态
+
+| 场景 | 已完成证据 | 仍需完成 |
+| --- | --- | --- |
+| 新装与重启 | Panel 工程新装；固定 `.140` patched SMAPI/Control 实载、新农场/IP 进服与重启重连 | 完整目标栈 driver 新装与邀请码模式 |
+| 权限迁移 | UID 1000 FIFO；真实 Linux ACL/UID/GID/mode 归档/恢复；四运行 bind 权限迁移和凭据不变；重复恢复 | 多世界整组迁移及中断/失败后的组合恢复 |
+| 升级事务 | 既有事务自动回归与 Web 故障恢复 | `.140` 共享组一致备份、权限 journal、staging、中断恢复 |
+| SMAPI 与游戏完整性 | BUILD_ID/四核心 hash、未使用 staging 上 patched 安装/hash/stamp/重复执行、源只读清单一致 | 共享组安装/回滚与可信固定 game/SDK 完成标记迁移 |
+| SteamAuth | 自有构建/9 测试；官方与自有 health=200、未配置 ready=503；关闭隐式下载 | Guard/真实登录由用户本轮跳过；旧 session、续期与许可/网络故障实测 |
+| 邀请码和玩家 Mod | 新 readiness 映射与四状态桌面/手机 UI；真实官方 IP 客户端进服 | Steam/GOG 实连、玩家 Mod 新比较与实际 relay 故障 |
+| 归属与认证 | 新 release/持久回执、严格 store、实际权限失败/恢复、Go writer/重连；真实 delete 正常/归属写失败核验和备份恢复 | 嵌入制品更新、完整 import/rebind、Panel job/升级后多世界验收 |
+| 存档和备份 | 原有完整证据与导入边界自动/Docker 验证 | `.140` 新持久文件、多个世界、真实游戏保存 |
+| 农舍、床、暂停与日切 | `.140` Control 真编译/运行、六桥可用、实际睡眠 day 1→2 | 各房屋等级与床、5/30/60 TPS、节日/婚礼 |
+| 小屋与作物 | 固定源码对比 | 新版各策略/在线迁移/作物真实专项 |
+| API 与控制台 | phase/生产 API 两套实测 key 矩阵；新 FIFO/allowlist、sequence/wait 新快照与未来游标 408、真实 Go Control writer 回执 | 完整目标升级后业务组合验收 |
+| Panel Web 升级 | `v0.7.2 → 同一工程镜像` 及 unhealthy 回滚通过 | 新目标栈升级后业务专项、受影响最老支持版本代表链 |
+| 资源清理 | 候选 named DinD 卷自动清理通过；本轮 19 容器、14 命名卷、2 已证明归属的旧 DinD 匿名卷、2 网络全部清理，Windows bind 和两个原型镜像清理 | 保留两份最终工程镜像、输入副本及完整证据；不将现有非任务实例算作测试资源 |
+
+下一步把已验证的共享组 plan/lease/journal、ACL 归档/权限/停止态恢复和 patched SMAPI staging 原语接入完整 apply/recovery，再完成可信固定游戏标记、Control 嵌入制品/身份和剩余真实业务矩阵。通过全部目标门禁前不得提高推荐栈、创建正式候选或发布。下方原验收矩阵仍是完整通过标准。
+
+清理证据为 `cleanup-container-snapshot.json`、`cleanup-docker.json`、`orphan-volume-proof.json`、`windows-bind-cleanup.json`。任务 label 的容器/卷/网络清零，loopback 24873 无监听；原有 6 个非任务容器保留，两个原已启动的 Panel 仍 healthy。最终 Web 工程验证日志从 `05:28:52Z` 到 `05:36:45Z`，约 7m53s（含构建/隔离准备）；没有候选 workflow ID、正式 Release workflow ID 或三仓提升证据，因为本轮未发布。
+
+## 结论和接手范围
+
+项目当前固定的 JunimoServer 是 `1.5.0-preview.125`，截至 2026-10-15（Asia/Shanghai）上游最新已发布预览镜像为 `1.5.0-preview.140`。两者相隔 15 个预览编号、186 次 Git 提交，两个完整源码树有 672 个文件发生增删或内容变化，其中也包含上游文档、测试和 CI。下一轮升级目标应固定为 `.140` 的精确 digest，按下文完成 driver、SteamAuth、SMAPI 和 Control 配套适配。
+
+状态为**差异审计与交接说明完成，升级实施和真实验收待做**。本次仅更新文档与检索执行规则，运行栈清单、镜像引用、Control DLL 和用户实例均未替换。这里的“当前版本”指本仓库的发布与代码基线；生产容器实际加载的 Mod、SMAPI 和镜像身份，须在实施前按只读清单另行核对。
+
+所有实现、验证与后续提交继续在本地 `main` 完成并同步 `origin/main`，遵守根目录 AGENTS.md；正式发布仍走本文既有不可变候选门禁。不要把上游一键安装脚本直接用于 Panel 管理的实例，实例迁移继续通过 `stardew_junimo` driver 编排。
+
+## 版本和制品基线
+
+| 项目 | 当前项目基线 | 本轮目标或处理方式 |
+| --- | --- | --- |
+| Panel | 最新正式版 `v0.7.2`；正式提交 `c8ec1db143e451b458c158bc63c7c9f38fffc834` | 实施时重新查询最新正式版，作为真实 Web 升级来源 |
+| 本地与远端 main | 审计起点均为 `94d0265d51682cf78181acb5e6437727f58f5e81` | 这是发布后文档提交，不等同于 v0.7.2 tag |
+| Junimo server | `sdvd/server:1.5.0-preview.125` | `sdvd/server:1.5.0-preview.140` |
+| server 源码 | tag `preview-1.5.0.125`，commit `89abe8e6a07b3aaee1c0b4fad080683b948645d9` | tag `v1.5.0-preview.140`，commit `f318717ac06a780b6b21080b0263c16278d8e6e1`；注意两个 tag 的命名规则不同 |
+| server canonical digest | `sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6` | `sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db` |
+| SteamAuth | 自有 `junimo-steam-service-cn:1.5.0-anxi.2`，digest `sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518` | 先完成上游新版与自有补丁的迁移，再决定自有新版本；当前 `.125 + anxi.2` 的兼容结论不能外推到 `.140` |
+| SteamAuth 源码记录 | `upstreamRef=refs/tags/preview-1.5.0.121`，`sourceRevision=a6cee498f91b318cfcacf035b05b0644bd16829a` | 两个字段分别是上游基线和自有构建来源，升级时分别更新并保留来源证据 |
+| 上游新版 SteamAuth | 不在当前推荐栈中 | `sdvd/steam-service:1.5.0-preview.140`，digest `sha256:196a79e9fc36a030023d6fbcb903afad4944a3659ad1fb959205f0ec25e9c032`，可作为协议和行为对照 |
+| SMAPI | 原版 `4.5.2` installer，SHA256 `dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4` | 上游 `.140` 仍基于 `4.5.2`，但镜像内是带两个源码补丁的构建；必须增加构建身份识别 |
+| Control | `0.3.8`，DLL SHA256 `dda16954bf3188222b4c8cdbf8d95f75dd2550748a40ec227a33706cf274d3cf` | 对新版 Junimo 进行真实编译与运行验证；有修改则更新版本、双份 manifest 和 DLL hash |
+| 游戏与 SDK | Stardew `1.6.15` / build `16826371`；SDK build `20939719` | 初始升级方案保留当前已验证 build；新版自动校验/修复必须遵守这些固定身份 |
+| 完整 stackVersion | `junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.8` | 所有目标组件确定后统一生成新身份，不能只改 server tag |
+
+上表镜像 digest 是本次查询结果，实施时对同一精确引用复核；镜像代理的所有候选引用也必须逐一验证相同 canonical digest。`.140` 的 registry 返回 OCI index，Linux amd64 子 manifest 为 `sha256:b17274eae3c84a9331b634ed7397e1fd7d881092b39bb335440d0f5981ffbd37`。index 与子 manifest 是不同层级，不能混入一组相等断言；`unknown/unknown` 条目是制品附加记录，不能据此宣称 ARM 支持。
+
+`.140` server 的 OCI revision 已核对为 `f318717ac06a780b6b21080b0263c16278d8e6e1`，构建记录为 2026-09-21，`org.opencontainers.image.version` 实际值为 `preview`。不能要求这个 label 必须等于 `1.5.0-preview.140`；还需核验真实 Mod manifest、加载日志和镜像 digest。
+
+### 最新镜像与正式 Release 的区别
+
+- GitHub 当前 latest Release 仍是 `sdvd-server-v1.4.0`（2026-01-17）；另有 `v1.4.1` / `sdvd-server-v1.4.1` tag，不能把“存在 tag”当作“已成为 latest Release”。
+- Docker Hub `server:preview` 本次与 `.140` digest 一致，最后更新时间 `2026-09-21T22:02:02.631335Z`。`server:latest` 则是另一个旧 digest，最后更新时间为 2026-01-07；因此不能用 `latest` 代替本次升级目标。
+- 上游 master 本次为 `4e4e4eb2f13e7251e566fdeb6557dc2218a5bc2f`，比 `.140` 多 3 次工具规则/项目依赖类提交，没有对应更新的已发布预览镜像。此次方案以已发布 `.140` 为边界。
+- GitHub compare 的 `files` 只返回前 300 项，本次 672 项来自两个精确 commit 的完整 recursive tree 按 blob SHA 比较。接手时不要用被截断的 compare 文件列表排除 SteamAuth、Mod 或运行栈变化。
+
+## 与当前版本直接相关的变化
+
+以下内容按对 Panel 的影响归纳；提交链接固定到本次目标包含的改动，不能用当前 master 文档替代目标版本契约。
+
+| 变化 | 上游依据 | 对 Panel 的影响 |
+| --- | --- | --- |
+| 服务端按连接身份维护角色归属 | [#506](https://github.com/stardew-valley-dedicated-server/server/pull/506)：新增 `FarmhandOwnershipService`，默认 `Server.EnforceFarmhandOwnership=true`，在存档目录维护 `farmhand-ownership.json` | 角色解绑、跨 Steam/GOG/IP 连接、导入换主机、删除、备份和恢复均需处理新增持久状态 |
+| 小屋迁移、移动与在线同步 | [#539](https://github.com/stardew-valley-dedicated-server/server/pull/539)、[#615](https://github.com/stardew-valley-dedicated-server/server/pull/615)；新增/完善迁移计划与共享位置检查 | 现有策略设置、布局预览、农场工关联、在线玩家位置和失败恢复需一起验证；未知新字段必须保留 |
+| 非 root 运行与 Debian 13 基座 | [#516](https://github.com/stardew-valley-dedicated-server/server/pull/516)、[#602](https://github.com/stardew-valley-dedicated-server/server/pull/602)、[#648](https://github.com/stardew-valley-dedicated-server/server/pull/648) | 新版默认 UID/GID `1000:1000`，会调整共享卷和 bind 权限；Panel 的旧静态 init 挂载不能原样认定兼容 |
+| Compose 修订检查与安装流程 | [#641](https://github.com/stardew-valley-dedicated-server/server/pull/641)、[#642](https://github.com/stardew-valley-dedicated-server/server/pull/642)、[#659](https://github.com/stardew-valley-dedicated-server/server/pull/659) | `.140` 预期 `SDVD_COMPOSE_REV=4`；空卷会自动准备；VNC 未设置密码时默认关闭外部入口；Panel 必须保留自己的实例目录和事务边界 |
+| 控制台 shell 与 FIFO | [#526](https://github.com/stardew-valley-dedicated-server/server/pull/526)、[#534](https://github.com/stardew-valley-dedicated-server/server/pull/534)、[#660](https://github.com/stardew-valley-dedicated-server/server/pull/660) | attach-cli 改进、zsh 交互及 protected FIFO 修复影响 Panel 的 tee 写入、命令结果和超时诊断 |
+| Steam session 与游戏文件维护 | [#654](https://github.com/stardew-valley-dedicated-server/server/pull/654)、[#666](https://github.com/stardew-valley-dedicated-server/server/pull/666)、[#680](https://github.com/stardew-valley-dedicated-server/server/pull/680) | token 自动续期、session 枚举、开机内容校验/修复均会影响自有 SteamAuth 和共享 game-data；需验证固定 build 不漂移 |
+| 统一邀请码与故障恢复 | [统一邀请码提交](https://github.com/stardew-valley-dedicated-server/server/commit/b3eb6e783c42)、[#664](https://github.com/stardew-valley-dedicated-server/server/pull/664)、[#678](https://github.com/stardew-valley-dedicated-server/server/pull/678) | Steam/GOG 共用代码、Steam 短断恢复、Galaxy 自恢复、Steam 玩家 Mod 上下文发生变化；现有邀请码状态机与玩家 Mod 比较必须适配 |
+| API 鉴权与调度 | [#488](https://github.com/stardew-valley-dedicated-server/server/pull/488)、[#596](https://github.com/stardew-valley-dedicated-server/server/pull/596)、[#598](https://github.com/stardew-valley-dedicated-server/server/pull/598)、[#606](https://github.com/stardew-valley-dedicated-server/server/pull/606) | 新增游戏线程 dispatcher 和 world-disruption lease；公开端点按 attribute 声明；不能把请求已接受等同于存档/世界操作已完成 |
+| 无人暂停、低 TPS、节日与婚礼 | [#485](https://github.com/stardew-valley-dedicated-server/server/pull/485)、[#490](https://github.com/stardew-valley-dedicated-server/server/pull/490)、[#496](https://github.com/stardew-valley-dedicated-server/server/pull/496)、[#550](https://github.com/stardew-valley-dedicated-server/server/pull/550)、[#601](https://github.com/stardew-valley-dedicated-server/server/pull/601)、[#618](https://github.com/stardew-valley-dedicated-server/server/pull/618)、[#679](https://github.com/stardew-valley-dedicated-server/server/pull/679) | 部分行为与现有 Control PausePolicy、手动控制和睡眠保护重叠；须在 5/30/60 TPS 下观察真实游戏时间和日切，不能据名称删除补丁 |
+| 主机缺床修复 | [#684](https://github.com/stardew-valley-dedicated-server/server/pull/684) | `.140` 新增 `EnsureHostPlayerBed()` 等修复，但仍保留主机农舍归零逻辑；现有保留农舍等级补丁仍有作用 |
+| 作物保护 | [#557](https://github.com/stardew-valley-dedicated-server/server/pull/557)、[#558](https://github.com/stardew-valley-dedicated-server/server/pull/558)、[#559](https://github.com/stardew-valley-dedicated-server/server/pull/559)、[#560](https://github.com/stardew-valley-dedicated-server/server/pull/560)、[#561](https://github.com/stardew-valley-dedicated-server/server/pull/561) | 修复室内花盆、冬季保护等；新增默认开启的防雷击行为，需要检查环境变量与升级前后行为 |
+
+可选 HTTPS proxy、Discord 自动部署/聊天面板和上游运维工具属于独立能力。本轮可以延后接入，但不能把相关 compose 服务整体覆盖到 Panel 的实例模板。
+
+## 升级前必须解决的兼容问题
+
+### 非 root 权限和静态 init 挂载
+
+上游 `.140` 的 server 基座为 `jlesage/baseimage-gui:debian-13-v4.13`，server 与 steam-auth 默认都用 `1000:1000`。`50-server-init.sh` 会递归尝试调整 `/data`、`/config` 的属主，随后强制检查 `/config`、`/data/game`、`/data/Mods`；SteamAuth entrypoint 也会调整 game/session 目录再降权。只验证容器状态为 running 不足以证明存档和控制文件可读写。
+
+当前 `compose_template.go` 还挂载 23 个 `/etc/cont-env.d`、`cont-users.d`、`cont-groups.d` 修复文件，`server_env_fix.go` 包含旧基座的 `_apt`、root/group 等固定值。需要对 `.140` 镜像实际 init 契约逐项核对，决定保留、改写或按版本迁移；尤其不能把旧 `_apt` UID 和用户/组定义直接套到 Debian 13。
+
+迁移必须覆盖新装、旧 root-owned 数据、Linux bind/ACL 和 Windows Docker Desktop bind。明确 Panel/游戏容器/SteamAuth 三方的 UID/GID 与写入策略，保存迁移前必要权限元数据；不要用全目录 `chmod 777` 处理失败。确认 chown 不会在多个共享世界或宿主卷间越界，测量大存档/Mods 的启动耗时。回滚不仅恢复镜像，还要恢复受到迁移影响的权限与可写性。
+
+### Compose 修订号和 Panel 自主管理契约
+
+`.140` 的 `startapp.sh` 预期 `SDVD_COMPOSE_REV=4`；不匹配时打印警告，当前实现不会仅因修订号不匹配退出。真正需要迁移的是修订号背后的用户、卷、启动及环境变量契约，不能仅添加数字消除警告。
+
+保留 Panel 的服务名 `server` / `steam-auth`、动态 project、独立实例路径、`GAME_DATA_VOLUME` 共享规则、内部 API 端口 8080、宿主端口映射、Control/Mods/settings/saves bind 和邀请码可关闭的模式。上游 compose 的固定 `container_name`、saves named volume 和对外 API 端口模式不能整段照搬。已安装实例也要走幂等迁移；自定义 compose 无法安全识别时返回可操作错误并保留原文件。
+
+VNC 无密码关闭是新版预期行为；用有效任务专属密码验收面板代理与渲染开关，测试结束清理凭据。不要靠 `ALLOW_INSECURE_SETUP=true` 掩盖缺失 API key 或 VNC 配置。
+
+### 控制台输入 FIFO 路径已经改变
+
+当前 `console.go` 的 `serverInputFIFO` 固定为 `/tmp/smapi-input`，而 `.140` 的 `startapp.sh` 和 `server-command-loop` 使用 `/tmp/junimo/smapi-input`；输出日志仍为 `/tmp/server-output.log`。这是已确认的路径不兼容，会影响通过控制台发送的保存、通告、存档命令和其它 allowlist 操作。
+
+更新 driver 的版本化控制台契约和对应夹具，先验证目标是 FIFO，再写入并取得业务回执。不能把 `tee` 退出 0 当作游戏收到命令，也不能让旧路径被创建为普通文件后误报成功。测试覆盖 `.125/.140` 升级和回滚的各自输入路径、非 root 权限、protected FIFO、无读端/进程退出和取消超时；优先复用可验证的上游通信入口，不开放任意 shell。
+
+### SteamAuth 国内补丁与新协议
+
+当前 `anxi.2` 基于较早的 `preview.121`，只对 `.125` 有既有兼容证据。新版 server 会访问新增的 `/game/validate-status`，SteamAuth 有 `/game/validate`、token 续期和更完整的 session/健康状态。需要从本机/项目记录定位真实自有 SteamAuth 构建源码，对照 `.140` 的 `tools/steam-service` 迁移国内网络、超时/重试、许可判断和现有纯 `/health` 契约。镜像命名空间不代表同名 GitHub 源仓库，不能据猜测的仓库 404 断言源码或镜像不存在。
+
+先在隔离环境使用官方 `.140` server/auth 组合建立上游对照，再用同一夹具验证自有新版组合。至少覆盖密码/Steam Guard、已有 session、token 续期失败与恢复、许可失败、国内网络短断，以及关闭邀请码时完全不依赖 sidecar 的启动。`scripts/compatibility_matrix.py` 目前仅接受已审查的 `1.5.0-anxi.2` health 契约，新版本必须补同等回归后再进入允许集合。
+
+`VALIDATE_ON_BOOT` 与游戏自动修复要纳入固定 build 管理：检查其使用的 appmanifest/depot 身份、被 Panel 修改的 DLL/SMAPI、共享卷锁和断电重试。不能因校验正常而悄悄把 `16826371` / `20939719` 更新为 Steam 最新 build；升级阶段也不能让新旧 server 同时写同一个 game-data。
+
+### SMAPI 同版本号的不同构建
+
+`.125` 源码没有 `patches/smapi`；`.140` 在镜像构建时从 SMAPI `4.5.2` 源码应用两个补丁：按实际 tick rate 产生每秒事件，以及压制 headless 音频初始化的一条错误日志。`/opt/smapi/BUILD_ID` 标识镜像构建，启动时安装到游戏卷，并在 `smapi-internal/.sdvd-smapi-build` 写入 stamp。
+
+当前 Panel 的清单、官方 installer 白名单和 `runtime_smapi.go` 按原版 installer 管理，存在双重写入者：Panel 可能把运行时替换回原版，而上游又在启动时替换为自己的构建。还可能出现 stamp 保留但文件被 Panel 重装，导致上游误判已是目标构建。
+
+实施前确定唯一安装职责。建议沿用 `.140` 镜像提供的 patched runtime，并让 Panel 以版本、上游 commit/patch 身份、BUILD_ID 和核心文件 hash 识别及验收；如需单独分发相同 patched installer，必须固定来源、完整性和许可材料并完善白名单。具体契约须在实现中确定，不能只把原版 archive SHA 改成新值。安装、staging、dry-run、apply、回滚、启动校验和 bundled Mods 同步必须使用同一身份。
+
+### 角色归属文件和现有解绑流程
+
+新版 `farmhand-ownership.json` 位于每个存档目录，维护角色 UID 到 Steam/Galaxy 身份及来源的映射。`EnforceFarmhandOwnership` 默认开启；严格模式下同一个角色的 Steam 与 IP 双身份不能自然互通。即使关闭 enforcement，新版仍会记录归属，之后重新开启会继续使用记录。
+
+当前 Control 的 `unbind-all-farmhands` 保存前动作只清空 `farmhand.userID`，其成功断言也只检查旧绑定计数。该断言在新版里不能证明角色已经可重新认领。应优先复用上游 `farmhand release` / `rebind` 或其 service，按 Panel commandId、实际存档和游戏线程串联操作，等待一致的持久化回执；不能在 API handler 直接删除归属 JSON。
+
+明确旧实例的默认迁移策略，并验证现有“IP 直连 + 角色独立密码”、Steam/GOG 重新连接、同人切换连接方式和管理员解绑。保留既有防越权能力；若为既有跨连接场景显式配置兼容模式，应记录原因和用户可见含义。备份、导入、导出、删除、恢复与 runtime rollback 要把完整存档目录及该文件作为一个一致性单元，不能只备份主 XML。测试不得输出真实平台 ID 或角色 UID。
+
+### Control 补丁与主机农舍
+
+源码静态核对表明，`.140` 仍有 `ResetHostFarmhouseToLevelZero()`、`HandleAutoSleep()`、`HostSleepInBed(FarmHouse)`、`_warpingSleep` 和 `IsAutomating` 等现有反射目标；`PasswordProtectionService.TryAuthenticate(long, string)` 也仍存在。签名存在只证明可以继续评估，不代表调用时序、Harmony 顺序和保存行为兼容。
+
+`HostFarmhousePreservationPatch` 必须继续保护已有农舍等级和室内布局：新版缺床修复没有删除上游归零动作。检查新增 `EnsureHostPlayerBed()` 在加载、换主机导入 finalize 和睡眠前的调用顺序，验证其与 Control `HostBedIntegrity`、睡眠一次性锁和最大尝试次数配合。重点检查升级农舍、双人床/单人床、无床、改图以及导入原主机转农场工后的家具归属。
+
+真实加载验证还包括 `HostAutomationBridge`、`PasswordProtectionBridge`、`RolePasswordPatch`、`LoginChatPrivacyPatch`、`WarpHomeBridge` 和 `PausePolicy`。`!login` 凭据不能转发给其它玩家；现有首次设密、错误次数/超时、管理员放行、隔离和传送必须保持。功能由上游覆盖后，也须先有等价证据和版本化能力声明，再处理本地补丁及启动门禁。
+
+### REST 鉴权和完成回执
+
+`.140` 的生产匿名 GET 为 `/status`、`/health`、`/wait/health`、`/docs`、`/swagger/v1/swagger.json`；设置 API key 后，`/stats` 和 `/diagnostics/state` 需要 Bearer key。当前 `docs/10-junimo-rest-api.md` 的 `.125` 表述与此不同，应在真正实施时按双版本边界修订，保留当前运行版本说明。
+
+`/status` 新增/完善 `SteamRelayReady`、`GalaxyLobbyState`、`SteamSessionState`、`AuthReadiness`、`ConnectionStatusCode`。Panel 应容忍未知/缺失字段并映射状态，不能把“邀请码非空”当作 Steam relay 已就绪，也不能把新匿名 status 当作 Panel 匿名管理权限。检查宿主直出 API 对邀请码等信息的影响，避免因上游公开范围变化扩大实例信息暴露。
+
+World-disruption lease 和 GameThreadDispatcher 会影响 reload/newgame/import 的互斥和等待。保持当前导入成功证据组合：目标 saveId/磁盘 hash、pending、RuntimeSaveID、ProcessIdentity、finalizeCount、failedFields、世界/主机状态及同 Control commandId 的 GameLoop.Saved、dayTransitionComplete。上游诊断端点、日志或 pending 清空仍不能单独证明导入成功；生产实现不使用 `/test/*`。
+
+## 具体文件修改清单
+
+以下是下一位 Codex 的定位入口，路径相对于仓库根；打开后先检查当前内容和引用，按职责修改，避免全仓机械替换版本字符串。
+
+| 范围 | 当前文件 | 需要完成的工作 |
+| --- | --- | --- |
+| 推荐栈与默认值 | `backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json`、`config/env.go`、`config/runtime_stack.go`、`driver.go` | 统一 server/auth/SMAPI/Control 身份、digest、stackVersion、来源和说明；检查 `TestedImageTag`、精确支持版本与最低 Panel 版本 |
+| Compose 与兼容迁移 | `backend/internal/games/stardew_junimo/compose_template.go`、`server_env_fix.go`、`installer.go`、`instance_provision.go` | 新装与已安装实例的 UID/GID、修订号、init 挂载、sidecar 参数及自定义 compose 保护 |
+| 镜像内真实 Mod | `backend/internal/games/stardew_junimo/junimo_mod_runtime.go`、`runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`runtime_update_repair.go` | 提取并事务发布目标 JunimoServer；防止宿主 Mods bind 遮住新版；失败恢复原 DLL/配置/数据 |
+| 自动收敛与恢复 | `backend/internal/games/stardew_junimo/required_runtime_update.go`、`runtime_components.go`、`control_runtime_gate.go`、`backend/cmd/panel/runtime_bootstrap.go` | 新 Panel 启动后的逐实例预检、升级、中断恢复和门禁，不能让旧栈被误报为 ready |
+| SMAPI 安装与身份 | `backend/internal/docker/runtime_smapi.go`、`runtime_components.go`，driver 下 `smapi_archive.go`、`smapi_update_workflow.go`、`smapi_bundled_sync.go` | patched 构建身份、安装职责、可信来源、staging 和回滚一致性 |
+| SteamAuth 与邀请码 | driver 下 `steam_credentials.go`、`shared_steam_download.go`、`steam_invite_recovery.go`、`steam_invite_runtime_scope.go` | 自有 sidecar 配套版本、固定 build、session/续期健康与新状态字段；定位独立 auth 构建来源 |
+| 存档与归属 | driver 下 `saves.go`、`save_import_evidence.go`、`farmhand_delete.go`；`embedded/smapi-mod-src/ModEntry.cs` | 新归属文件的生命周期、解绑/删除/导入与持久回执、全目录一致性恢复 |
+| Control | `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/` 与 `embedded/smapi-mod/` | 对上述 bridge/patch 真实编译和加载；更新源码/嵌入 manifest、DLL 及清单 SHA；保留安全门禁 |
+| 控制台 | `backend/internal/games/stardew_junimo/console.go`、`command_results.go` | 非 root FIFO 写入、attach-cli、allowlist、超时、命令回执和脱敏 |
+| 前后端契约 | `backend/internal/web/junimo_update_handlers.go`、`server_runtime_settings_handlers.go`；`frontend/src/games/stardew/junimo-update-status.ts`、`runtime-components-status.ts`、`steam-invite-state.ts` | 版本状态、错误恢复、邀请码就绪与设置迁移展示；必要时补接口字段而非透传上游管理能力 |
+| 自动门禁 | `scripts/compatibility_matrix.py`、`scripts/tests/test_compatibility_matrix.py`、`scripts/run-release-gates.sh`、`scripts/tests/test_release_candidate_upgrade.sh` | 新制品和 health 契约、真实功能专项、固定输入与镜像验证；原有长链按路径规则选择 |
+| 长期文档 | 本文、`docs/02-backend.md`、最新后端接手文档、`docs/06-integration.md`、`docs/08-future-roadmap.md`、`docs/10-junimo-rest-api.md` | 回填最终契约和实际证据；前端有变再同步前端文档与最新接手文档；暂缓能力记 `docs/07-later-optimizations.md` |
+
+## 建议实施顺序
+
+1. **重新确认输入。** 阅读总纲/错题本和上述长期文档；确认 main、工作区已有修改、最新 Panel Release、`.140` tag/OCI revision/digest，记录任务专属证据目录。只读查询当前实例的镜像身份、实际加载组件、UID/GID、挂载类型和数量、共享卷关系、是否启用邀请码及存档侧文件存在性；不输出凭据、存档 GUID 或平台身份。
+2. **建立隔离对照。** Docker info 就绪后，创建任务专属 project/端口/network/bind/volume；运行官方 `.140` server/auth 与克隆测试数据，确认上游原始行为、patched SMAPI BUILD_ID、Mod 版本和新文件。镜像拉取按每个精确引用最多 3 次有界重试，成功后 inspect；不使用生产数据或长期 Steam 凭据。
+3. **先决定运行契约。** 明确非 root 权限、23 个 init 挂载、SMAPI 唯一安装职责、SteamAuth 补丁迁移、旧实例角色归属策略。先补真实契约回归，再更新清单；不能先推推荐栈再让自动收敛试错。
+4. **补原子迁移和恢复。** dry-run 检查空间、目标制品、权限、共享世界、schema/文件和 Control 能力。apply 复用现有通告、保存、完整备份、停服、staging、发布、启动、SMAPI 实载与业务验收事务，记录旧镜像/清单/数据/权限。重启恢复须按原事务继续或回滚，不能重复解绑或导入。
+5. **完成后端、Control 与 UI。** 对目标游戏和 SMAPI DLL 运行真实 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`，与契约测试一起验证；源码复制时排除旧 bin/obj。按需更新前端状态与管理员提示，同时保留普通用户权限和既有功能路径。
+6. **运行完整自动回归和本轮专项。** 后端 test/vet/build、前端全部现有状态脚本和 production build、脚本/兼容清单、updater/Docker integration；本轮变更会涉及运行栈，不应预先跳过 SMAPI/Junimo/远程制品真实检查。实际选跑以 `run-release-gates.sh` 的基线路径判定为准。
+7. **真实 Panel 升级与回滚。** 当前上一正式版经 Web check、dry-run、管理员 apply、预期断线重连到同一候选，再在新 Panel 完成本轮专项；对同一候选注入 unhealthy 并证明旧版恢复。因运行栈/长期文件改变，额外确定受影响的最老支持版本，从代码与历史文档给出边界并跑一条代表升级，不能沿用 v0.7.2“无需更老版本”的结论。
+8. **最后发布。** 仅在干净且与 origin/main 相同的 main 上构建唯一不可变候选；自动 tag/提升精确 digest。证据回填候选/发布 workflow、三仓一致性、选跑矩阵、耗时、失败及清理，旧 tag 不移动。
+
+本地定向命令只用于缩短反馈，须在满足项目依赖的隔离 Linux 环境执行；不会替代发布门禁：
+
+```bash
+python3 scripts/compatibility_matrix.py validate backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
+python3 -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
+go -C backend test ./internal/games/stardew_junimo/config ./internal/games/stardew_junimo ./internal/docker ./internal/web
+go -C backend vet ./...
+go -C backend build ./cmd/panel
+```
+
+前端先读取当前 `frontend/package.json.scripts`，再调用实际存在的 `test:junimo-update`、`test:runtime-components`、`test:smapi-update`、`test:save-import`、`test:player-mods` 等定向脚本及完整回归。测试挂载完整仓库稳定根目录，`frontend/node_modules` 与 dist 用任务独立卷。正式一致性入口使用 `scripts/run-release-gates.sh --version <实际候选版本> --base-ref <实际上一正式tag>`；Windows 候选仍由 `pwsh -NoLogo -NoProfile -File scripts/release-candidate.ps1` 启动。长门禁逐个等待并保留完整日志/退出码。
+
+## 本轮验收矩阵
+
+每行要记录夹具、实际版本/commit/digest、预期与实际、日志位置、清理结果。以下均为下一轮待执行项目，本次调研不能代替勾选。
+
+| 场景 | 必须覆盖的边界 | 通过证据 |
+| --- | --- | --- |
+| 新装与重启 | 空卷、未初始化、已初始化、Panel/游戏重启；无邀请码与有邀请码 | health/version 正确；真实加载 `.140` Junimo、目标 SMAPI 构建和 Control；无重复初始化/数据丢失 |
+| 权限迁移 | 旧 root-owned 数据、Linux bind/ACL、Windows bind；两个世界共用 game-data；大 Mods | 数据/Control/settings/session 可读写；非 root 实际身份正确；失败后旧版可写；非目标卷不变 |
+| 升级事务 | 停服/运行中、同一请求重复 apply、阶段中断、Panel 重启；自定义 compose | dry-run 无变更；单次事务幂等；完整恢复/明确拒绝；无遗留 staging/lease/后台任务 |
+| SMAPI 与游戏完整性 | 原版 4.5.2 到 patched、重复启动、stamp 与真实文件不符、坏游戏文件、下载中断 | 构建身份与文件 hash 一致；5/30/60 TPS 每秒事件正确；game/SDK build 固定；回滚恢复完整运行时 |
+| SteamAuth | 新登录/Guard、旧 session、续期/失败恢复、许可失败、国内网络短断、sidecar 不可达 | health 语义不回归；任务错误可操作且脱敏；关闭邀请码仍可正常开服；不生成永久测试凭据 |
+| 邀请码和玩家 Mod | Steam/GOG 真实加入、relay pending、Steam 短断、Galaxy 恢复、IP 连接 | 代码与 readiness 一致；玩家 Mod 上下文有效、内置运行组件仍被过滤；无 session/邀请码日志泄露 |
+| 归属与认证 | 旧存档/新角色；Steam/GOG/IP 同人切换、他人冒领、解绑/重绑、角色删除；!login 首认领/错误/超时/管理员放行 | XML 与 ownership 文件一致且可恢复；密码隔离/聊天隐私保持；二次重启后仍可按策略进入 |
+| 存档和备份 | as-is、swap-host-to、再次导入、已有 pending、备份导出/恢复、多个世界 | 既有完整导入证据和 GameLoop.Saved；新归属/迁移文件不漏；角色/家具/世界状态完整；无跨实例写入 |
+| 农舍、床、暂停与日切 | 0/1/2/3 级农舍、缺床/不同床型、F9/F10；无人/菜单/睡眠；低 TPS；节日/婚礼/品评会 | 房屋等级与布局不归零；床修复与睡眠有界；手动控制/暂停优先级正确；日切及客户端返回可用 |
+| 小屋与作物 | 各个受支持小屋策略、移动/重叠/共享位置、在线迁移、策略 None；室内花盆/季节切换/雷击 | 角色与小屋关联保持；客户端不用重连即能同步；作物行为符合目标配置；重启不重复迁移 |
+| API 与控制台 | key 正确/缺失/错误、匿名与普通用户；新 status 字段、诊断、FIFO、allowlist、超时 | `.125/.140` 契约明确；Panel 管理权限不放宽；生产 test 端点不可用；每条命令有正确回执 |
+| Panel Web 发布升级 | 实际上一正式版及受影响最老版；同一候选 unhealthy | Web 全流程、`failed_rolled_back/health_check_failed` 和旧版恢复；SQLite/初始化/长期数据、非目标容器/卷、Panel 二次重启保持 |
+| 资源清理 | 成功、失败、回滚、中断各一次；删除测试世界 | 任务容器/network/volume/bind/端口、staging、锁和测试用户回收；只清理经核对归属的精确资源 |
+
+若真实 Steam/GOG 客户端、测试凭据、NAS 权限或受影响最老版夹具不可用，记录具体阻塞场景并停止正式发布。源码签名检查、合成 API 响应和容器 running 均不能代替这些验收。
+
+## 可交给下一位 Codex 的任务入口
+
+> 在 main 上实施 JunimoServer `1.5.0-preview.125` 到 `1.5.0-preview.140` 的运行栈升级。先读本节和 AGENTS.md、项目总纲、错题本、后端/联调/路线及最新接手文档，重新核验精确 tag、commit 和 digest。先解决非 root 与静态 init 挂载、SMAPI patched 构建身份、自有 SteamAuth 迁移、farmhand-ownership 与现有解绑/导入事务，再统一修改清单和默认值。优先复用 Junimo 服务与命令，通过 driver 编排。保留房屋等级、Control 密码隐私和所有启动/回滚门禁。完成本节真实验收矩阵及既有不可变候选流程后才允许正式发布，回填实际证据和资源清理。当前交接状态是审计完成、升级待实施，不得据本文把兼容或发布标记通过。
+
+## 固定来源和复核入口
+
+- 当前项目固定值：[runtime_stack_manifest.json](../backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json)；[Panel v0.7.2 Release](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.2)。
+- 上游制品：[server 精确 tag 元数据](https://hub.docker.com/v2/repositories/sdvd/server/tags/1.5.0-preview.140)、[SteamAuth 精确 tag 元数据](https://hub.docker.com/v2/repositories/sdvd/steam-service/tags/1.5.0-preview.140)、[GitHub Releases](https://github.com/stardew-valley-dedicated-server/server/releases)、[125 到 140 比较](https://github.com/stardew-valley-dedicated-server/server/compare/preview-1.5.0.125...v1.5.0-preview.140)。
+- 固定源码：[docker-compose.yml](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/docker-compose.yml)、[Dockerfile](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/docker/Dockerfile)、[startapp.sh](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/docker/rootfs/startapp.sh)、[server init](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/docker/rootfs/etc/cont-init.d/50-server-init.sh)。
+- SMAPI：[补丁说明](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/patches/smapi/README.md)。
+- 归属与主机：[FarmhandOwnershipService](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/mod/JunimoServer/Services/AuthService/FarmhandOwnershipService.cs)、[FarmhandCommand](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/mod/JunimoServer/Services/Commands/FarmhandCommand.cs)、[ServerSettings](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/mod/JunimoServer/Services/Settings/ServerSettings.cs)、[HostFarmhouseUpgradeGuard](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/mod/JunimoServer/Services/AlwaysOnServer/HostFarmhouseUpgradeGuard.cs)。
+- API 与 sidecar：[ApiService](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/mod/JunimoServer/Services/Api/ApiService.cs)、[SteamAuth Program](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/tools/steam-service/Program.cs)、[SteamAuth entrypoint](https://github.com/stardew-valley-dedicated-server/server/blob/f318717ac06a780b6b21080b0263c16278d8e6e1/tools/steam-service/entrypoint.sh)。
+
 # v0.7.2 正式发布验收（2026-09-19，released）
 
 - 候选 35428836833 在后端全包回归停止，尚未构建镜像/创建 tag：成功保存夹具将两次真实原子写入/fsync 和回读限制为 100ms，CI 约 200ms 时命中 deadline；同 SHA 的独立兼容后端回归通过，原测试本机连续 30 次通过。仅将成功 I/O 夹具预算改为 5s，保留同一 commandId、完整 GameLoop.Saved 证据、真实文件及只发布一次/恢复不重提断言；新增独立 8ms 超时拒绝且不重提测试。生产超时、实现和安全判定保持原样；新测试输入将以新 main SHA 重建候选。

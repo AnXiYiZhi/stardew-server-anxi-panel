@@ -12,6 +12,11 @@ import (
 )
 
 func (c *Client) run(ctx context.Context, op string, workDir string, timeout time.Duration, args ...string) (CommandResult, error) {
+	return c.runWithInput(ctx, op, workDir, timeout, nil, args...)
+}
+
+// Input is sent through stdin, never command arguments or the diagnostic result.
+func (c *Client) runWithInput(ctx context.Context, op string, workDir string, timeout time.Duration, input io.Reader, args ...string) (CommandResult, error) {
 	started := time.Now()
 	result := CommandResult{
 		WorkDir:  workDir,
@@ -36,6 +41,7 @@ func (c *Client) run(ctx context.Context, op string, workDir string, timeout tim
 
 	cmd := exec.CommandContext(commandCtx, c.dockerPath, args...)
 	cmd.Dir = workDir
+	cmd.Stdin = input
 
 	var stdout limitedBuffer
 	var stderr limitedBuffer

@@ -402,10 +402,56 @@ resolve_latest_panel_version() {
   return 1
 }
 
+panel_version_at_least() {
+  local left right index
+  local a=() b=()
+  left="$(normalize_panel_version "$1")" || return 1
+  right="$(normalize_panel_version "$2")" || return 1
+  IFS='.' read -r -a a <<<"$left"
+  IFS='.' read -r -a b <<<"$right"
+  for index in 0 1 2; do
+    (( 10#${a[index]} > 10#${b[index]} )) && return 0
+    (( 10#${a[index]} < 10#${b[index]} )) && return 1
+  done
+  return 0
+}
+
+installed_panel_version() {
+  local observed image
+  observed="$(docker_cmd inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$PANEL_CONTAINER_NAME" 2>/dev/null || true)"
+  if normalize_panel_version "$observed"; then return 0; fi
+  image="$(read_env_value PANEL_IMAGE)"
+  if [[ -n "$image" ]]; then
+    observed="$(docker_cmd image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image" 2>/dev/null || true)"
+    if normalize_panel_version "$observed"; then return 0; fi
+    if normalize_panel_version "${image##*:}"; then return 0; fi
+  fi
+  normalize_panel_version "$(read_env_value PANEL_VERSION)"
+}
+
 prepare_update_target() {
-  if [[ -n "$PANEL_VERSION_WAS_SET" && "$PANEL_VERSION" != "latest" ]]; then
+  PANEL_UPDATE_HANDOFF=0
+  local installed data_dir explicit=0
+  installed="$(installed_panel_version || true)"
+  data_dir="$(read_env_value PANEL_HOST_DATA_DIR)"
+  data_dir="${data_dir:-$PANEL_HOST_DATA_DIR}"
+  [[ -n "$PANEL_VERSION_WAS_SET" && "$PANEL_VERSION_WAS_SET" != resolved-latest && "$PANEL_VERSION" != latest ]] && explicit=1
+  if panel_version_at_least "$installed" 0.7.3 || [[ -f "$data_dir/updater/bridge-0.7.3.json" ]]; then
+    if [[ "$explicit" != 1 || "$(normalize_panel_version "$PANEL_VERSION" || true)" != "$installed" ]]; then
+      PANEL_UPDATE_HANDOFF=1
+      PANEL_VERSION=latest
+      PANEL_VERSION_WAS_SET=""
+      yellow "请在面板的更新中心执行后续升级，查看更新说明、重要提示和影响范围。" >&2
+      return 0
+    fi
+  fi
+  if [[ "$explicit" == 1 ]]; then
     if ! normalize_panel_version "$PANEL_VERSION" >/dev/null; then
       red "PANEL_VERSION 必须是精确稳定版本，例如 0.2.6。" >&2
+      return 1
+    fi
+    if panel_version_at_least "$PANEL_VERSION" 0.8.0 && ! panel_version_at_least "$installed" 0.7.3; then
+      red "请先升级到 0.7.3，完成准备后在面板更新中心继续升级。" >&2
       return 1
     fi
     return 0
@@ -416,6 +462,10 @@ prepare_update_target() {
   if ! latest_version="$(resolve_latest_panel_version)"; then
     red "无法确认最新正式版本，已停止更新；不会继续拉取当前旧版本。" >&2
     yellow "可以显式指定版本重试，例如：PANEL_VERSION=0.2.6 bash run.sh force-update" >&2
+    return 1
+  fi
+  if panel_version_at_least "$latest_version" 0.8.0 && ! panel_version_at_least "$installed" 0.7.3; then
+    red "请先升级到 0.7.3；当前安装不能直接跳到该大版本。" >&2
     return 1
   fi
 
@@ -715,6 +765,7 @@ restart_panel() {
 update_panel() {
   check_prerequisites
   prepare_update_target
+  if [[ "$PANEL_UPDATE_HANDOFF" == 1 ]]; then print_access_info; return 0; fi
   ensure_files
   resolve_panel_image true
   cyan "正在重建面板容器..."
@@ -726,6 +777,7 @@ update_panel() {
 force_update_panel() {
   check_prerequisites
   prepare_update_target
+  if [[ "$PANEL_UPDATE_HANDOFF" == 1 ]]; then print_access_info; return 0; fi
   ensure_files
   local image
   image="$(current_image)"

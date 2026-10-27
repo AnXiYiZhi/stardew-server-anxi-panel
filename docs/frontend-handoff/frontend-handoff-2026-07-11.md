@@ -1,3 +1,59 @@
+## 2026-10-27 正式发布接手增量
+
+- 当前获授权按073→080发布，UI视觉沿用用户已确认方案。三条浏览器回归加入正式候选，channel按环境配置，CI固定Playwright 1.62.1/Chromium。
+- 正式候选须重新覆盖最新提示/范围确认和生产前端；同digest真实专项完成后封存才可发布。官网升级指引更新，各版首页/changelog按正式发布阶段应用。
+- 涉及frontend/scripts三夹具、run-release-gates与官网文档；待填写两版实际候选/发布/Pages结果及公开入口验证，详见docs09顶部。
+
+## 2026-10-27 展示收尾交接（本地未发布）
+
+- 最新样式：顶栏两个20px像素图标保留44px触点且flex-shrink=0；更新中心620px暖黄切角面板，紧凑正文与固定底栏，版本说明/必要风险直接展示，技术详情折叠。修改GameLibrary.tsx/.css、PanelUpdateEntry.tsx、UpdateDetailsDialog.tsx、UpdateCenter.css与FullStackUpgradePanel.tsx；后者新增共用FullStackUpgradeActions，把弹窗操作集中到底栏。
+- 昼夜联动：game-library-state.ts共用既有存储键/初始化读取，GameLibrary保留自动/手动选择逻辑并发布主题到PanelUpdateProvider，弹窗用is-day/is-night与同一布局换色。无新增时钟/轮询，首次实例深链读取同一有效偏好；未挂载游戏库时维持最近主题。修改任一主题时同时检查正文、范围、诊断、链接、确认框、按钮正常/悬停色，避免继承旧日间硬编码颜色。
+- 升级动作协议不变；noticeDigest仍绑定提示确认，prepared确认/取消与已授权恢复按原operation/plan执行。080发行内容精简为3条变更、2条必须确认提醒，保留最低073。旧静态断言适配共用选择器/主题状态模块，14条入口和9条全栈生命周期、游戏库主题/更新状态/响应式回归及生产构建通过；三宽度双主题与刷新保持、固定底栏、文字对比和零API写请求已验收。
+- 本地服务使用 `E:/task-evidence/panel-upgrade-center-20261026/serve-original-preview.mjs`，样例API加载真实App，保持原背景/卡片，不另写页面外壳。1440/390/360截图与update-center-theme-qa.json在同目录；Browser插件未提供，按技能使用regular Playwright。当前产物index-VNsdymw9，V4真实升级证明属于前序工程快照；正式发布必须为新输入重新构建候选。Panel仍不提交/推送/发布。
+
+## 2026-10-27 073全局更新中心验收交接（10月26日开始，Panel未发布）
+
+- GameHubShell用户名之前新增常驻PanelUpdateEntry；全局PanelUpdateProvider挂载唯一UpdateDetailsDialog，保留实例内入口并移除桌面/移动重复挂载。更新内容/重要提醒直接显示，支持noticeDigest确认、暂缓升级、单一主流程；诊断信息与成功记录默认折叠，移除长“正在”清单。
+- UpdateCenter.css沿用Stardew羊皮纸视觉，弹窗有移动适配、Escape、焦点管理和返回入口焦点。30组状态/浏览器回归、最终12条升级入口场景和production build通过；已完成的重要提醒不会在成功态继续要求确认。成功历史只读显示原事务，后续普通补丁不会误入历史游戏迁移流程，已授权恢复保留。
+- 已从真实正式072界面完成073，再通过新总入口完成080重要提示勾选/预检/世界范围确认；同一080引用unhealthy回滚与正常140迁移均通过，正式Auth和有效邀请码、原数据/功能均已验收。实际升级后的080在1473/768/390/360验证用户名之前入口、44px触点、唯一弹窗、无横向溢出、Escape/焦点、历史及诊断默认折叠，世界列表与实例入口均通过。
+- 证据目录 `E:/task-evidence/panel-upgrade-center-20261026`，实际截图在screenshots-actual，12场景截图在screenshots-final；浏览器夹具产物放仓库外，fixture-port.mjs共享可用端口分配。窄屏游戏库沿用既有旋转壳，位置断言必须考虑旋转后的坐标。主代码与脚本在本地main，Panel没有提交/推送/发布。
+
+## 2026-10-26 073全局升级中心前序待办交接
+
+- 最新用户方向为整个项目升级体系改造，保留实例页入口，新增游戏库/实例列表全局入口。推荐 `GameHubShell` 顶栏用户名之前；`App.tsx` 已全局包裹 `PanelUpdateProvider`，复用现有操作状态，不再新建平行升级上下文。
+- 默认面向用户展示版本、更新内容、重要提醒/升级影响与主操作，技术环境及完整进度折叠；成功态收起旧执行清单。发行内容需支持直接展示重大变更/已知问题，而非只链接Release。强制前置073与旧latest更新源分流需前后端一起设计，当前未实施。
+- Auth已正式发布 `1.5.0-preview.140-anxi.1`，固定digest4649205b…，详细身份见镜像文档；Panel继续未发布。后续080接入新正式身份后需重新走072→073→080完整Web流程，旧工程直升证明不覆盖新规则。
+
+## 2026-10-26 升级入口历史验收交接（本地完成，未发布）
+
+- 最终full-v6从真实旧072页面单次升级到080并重连，明确显示实例仍需范围确认；在新页面确认140/Auth3后终态成功、Auth ready且取得有效邀请码。Panel重启后原cookie仍可进入实例总览和版本入口，操作终态保持。用户明确以有效邀请码为本轮通过标准，未执行独立玩家入服。
+- 过渡bridge-v6健康升级自动取码，scoped unhealthy及Auth3故障整组恢复通过；30项声明测试/6入口场景/build输入未变，保留224种实际HTTP表示复用证明。新后端数字UID校验修正后重走旧Web全链，升级后存档/备份/Mod维护、游戏及Panel重启均通过。具体profile与剩余正式发布要求见镜像文档，当前不推送/发布。
+
+## 2026-10-25 升级入口实施记录（未发布）
+
+- 用户最新口径为成功取得邀请码。真实旧072 Web unhealthy回退、过渡版Panel/Control更新和一次Galaxy连接恢复后的取码已通过；大版本确认因可信镜像别名误判409，后端已补双清单固定内容比较，full-v5/bridge-v6继续实测。前端源码未变，224种实际identity/gzip表示核对；当前真实浏览器确认必须立即记录POST响应，拒绝时先查原op，不能只等待永远不会出现的迁移终态。
+
+- `api.ts` 增加发行包 `runtimeUpgrade` 与操作 Auth 身份；`panel-update-machine.ts` 统一判断普通更新/.140/既有授权续接。`UpdateDetailsDialog` 从全局升级上下文取状态；`FullStackUpgradePanel` 仅在对应发行包或已授权操作中展示。过渡补丁能正常进入普通 Panel 确认，.140 要求精确目标/世界范围确认，部署转换入口保留。
+- `test:upgrade-entry` 用真实 React/Chrome 验证三种入口，dashboard 夹具不提供 fullStackUpgrade，状态必须来自 Provider。production build 捕获的 TS 数据来源错误已修正。30项声明测试及构建通过；具体日志见 `tmp/junimo140-closeout-20261025/`，未把 UI mock 当作 Docker 或真实平台联机证据。
+- 入口补充为6场景：过渡包通过 `targetPanelVersion` 和全局updateStatus只对精确0.8.0显示范围确认，普通补丁/未知未来目标保留普通Panel，已授权操作继续；production build与状态测试通过。dashboard仍不提供fullStackUpgrade，避免假上下文。
+- 专用Steam/Guard完成，旧072邀请码ready和测试Mod实际加载；真实旧072 Web unhealthy及断线重连通过。后端健康等待门槛修正后的健康升级、140范围确认与取码也已通过；独立玩家入服已由用户明确免测。临时资源依最终归档/清理清单处理，禁止发布。
+
+## 2026-10-16 P2 邀请轮询与统一升级交接（本地验收完成）
+
+- 邀请轮询：`useStardewDashboardData.ts/api.ts/steam-invite-state.ts` 在初始隐藏或缓存码存在时仍注册唯一可见调度；只有 live snapshot 证明 ready，隐藏中止请求，丢码/unavailable继续恢复；实例/会话/卸载均拒绝旧响应。.125 live ready 后停网络契约保留。真实 StrictMode/Chrome 9场景通过，旧 hook 输入已复现失败，日志 `frontend-before-proof.log` 与 `frontend-after.log`。
+- 全栈入口：`FullStackUpgradePanel/useFullStackUpgrade/full-stack-state/PanelUpdateProvider` 显示精确制品和共享范围，持久确认后通过 GET 续接；实际事务计数、维护视图、范围失效/撤销/人工恢复、旧版刷新边界均接线。全部游戏组验收才显示完成，Panel健康不能提前报绿。桌面/移动壳与诊断页普通变更在维护期间关闭。
+- 新 `test:full-stack-lifecycle` 的8场景验证双击一次、迟到 GET/POST、普通用户、退出登录、断线刷新、范围失效和人工恢复，并量测手机无溢出；与邀请码9场景均为真实 React/DOM + API响应夹具，不当作真实游戏/在线认证。
+- 当前889文件/v4 `91e593400e36…` 的30个前端测试/构建脚本通过；旧正式072真实Web更新/回滚/刷新后范围确认、新协议工程072一次确认跨Panel同op/hash三世界提交、preparing_game中断安全回滚均通过清理。实际role/hash/tag/未知scope拒绝、跨替换/重启用户保留、桌面终态及390px手机无横向溢出均通过；截图为 `web-v4-success/browser-terminal.png`、`web-v4-protocol/browser-mobile.png`。
+- 双组目标退出终态亦通过：第一组failed_rolled_back、第二组unchanged，整次failed_safe、进度0，页面显示升级未完成；重启后实际GET A/B/C均200/无维护。四项真实场景均归档清理，任务运行资源清零，历史v3冷模板源身份失败不计通过。总览、诊断与更新提示使用实例有效inspection，Stopped显示“已静止”。精确身份和证明见镜像文档本轮顶部。启用邀请组因 .140 Auth 未固定发布而预检阻塞，推荐仍125。未提交、推送或发布。
+
+## 2026-10-15 Junimo .140 连接状态续接（本地，未发布）
+
+- 共享升级确认：`types.ts` 增预检范围字段，`DiagnosticsPage.tsx` 预检后显示世界数量确认；取消结束请求，接受后 StrictMode ref 保证一次 apply，并经 `api.ts` 携带原 `sharedGroupSha256`。后端严格 body/范围核对同步接线，无确认的后台入口会拒绝共享升级。production build、两项升级状态测试与 Chrome 3 世界取消=0/接受=1、请求 hash、无横向溢出/错误通过，`group-ui-proof.json` 与 `group-ui-*.png`。完整真实游戏组 E2E 未完成。
+
+- 修改 `frontend/src/types.ts`、`games/stardew/steam-invite-state.ts`、`useStardewDashboardData.ts` 和 `scripts/test-install-state.ts`。原 invite-code 响应六个新增 status 区分通用 S-code/GOG、Steam relay、重连与丢码；保留旧版响应处理。普通 state payload 不能把 live readiness 改成 ready；新版 ready 后继续可见轮询，复制按钮只复制纯码，后台轮询不会一直锁刷新。
+- test:install-state、test:responsive-layout（含关联脚本）和 production build 通过；隔离 Chrome/Playwright 桌面 1473×1033、手机 390×844 四状态流转、丢码/恢复、纯码复制与无溢出/控制台错误通过，证据 `tmp/junimo140-20261015/connectivity-*`。未提供 Browser 插件，采用普通 Playwright；真实 Steam/GOG 登录和 relay 不由 UI 夹具证明。
+- 后端还在完成完整共享组迁移和 Control 制品，推荐仍 .125，没有发布。local-v2 Panel 是前一次冻结输入；新增前端必须进入后续新工程镜像并验收升级后的状态。两端契约与剩余范围见 docs/06 和 docs/09 顶部。
+
 ## v0.7.2 正式发布完成（2026-09-19）
 
 - 官网收尾：v0.7.2 首页/更新日志已上线，docs:build 6.34s、Pages `35430460046` 和生成/线上 HTML 的页底版本、实际链接、版本顺序及四项正文核验全部通过；详见 docs/11-docs-portal.md。发布后仅提交文档证据，正式 tag/digest 保持。

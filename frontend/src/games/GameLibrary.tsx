@@ -9,6 +9,8 @@ import { classifyInstallationState } from './stardew/installation-state'
 import { canonicalInstallJobs } from './stardew/install-state'
 import { shouldClearPendingStartupAction } from './stardew/lifecycle-action-state'
 import { copyText } from './stardew/copy-text'
+import { PanelUpdateEntry } from './stardew/PanelUpdateEntry'
+import { usePanelUpdate } from './stardew/PanelUpdateProvider'
 import { GameInstallRail } from './GameInstallRail'
 import type { GameInstallProgressPresentation } from './stardew/install-progress-presentation'
 import {
@@ -17,6 +19,9 @@ import {
   gameLibraryBackgroundForDate,
   gameLibraryManualBackgroundPreference,
   gameLibraryNextBackgroundBoundary,
+  storedGameLibraryBackground,
+  GAME_LIBRARY_BACKGROUND_STORAGE_KEY,
+  GAME_LIBRARY_BACKGROUND_MANUAL_UNTIL_STORAGE_KEY,
   initialStardewCatalogItem,
   stardewCatalogItems,
   stardewCreateInstanceRequest,
@@ -30,6 +35,7 @@ import {
   stardewShouldLoadConnection,
   stardewWorldLifecycleControl,
   type GameLibraryBackground,
+  type GameLibraryBackgroundSelection,
   type StardewCatalogItem,
   type StardewWorldLifecycleIntent,
 } from './game-library-state'
@@ -245,6 +251,7 @@ function GameHubShell({
         </button>
         <div className="game-hub-account" aria-label="账号区域">
           {resources && <MachineResources sample={resources.data?.machine} error={resources.error} />}
+          <PanelUpdateEntry />
           <strong className="game-hub-account-name">{user.username}</strong>
           <button type="button" className="game-hub-logout" onClick={onLogout}>退出</button>
           {variant === 'library' && onToggleBackground ? (
@@ -252,17 +259,19 @@ function GameHubShell({
               type="button"
               className="game-hub-theme-toggle"
               aria-label={background === 'day' ? '切换到静夜背景' : '切换到暖昼背景'}
+              title={background === 'day' ? '切换到静夜背景' : '切换到暖昼背景'}
               aria-pressed={background === 'night'}
               onClick={onToggleBackground}
             >
               {background === 'day' ? (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="3.5" />
-                  <path d="M12 2v2.2M12 19.8V22M4.93 4.93l1.56 1.56M17.51 17.51l1.56 1.56M2 12h2.2M19.8 12H22M4.93 19.07l1.56-1.56M17.51 6.49l1.56-1.56" />
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M9 1h2v3H9ZM9 16h2v3H9ZM1 9h3v2H1ZM16 9h3v2h-3ZM3 3h2v2H3ZM15 3h2v2h-2ZM3 15h2v2H3ZM15 15h2v2h-2Z" />
+                  <path className="game-hub-icon-accent" d="M7 6h6v1h1v6h-1v1H7v-1H6V7h1Z" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M20.2 15.25A8.4 8.4 0 0 1 8.75 3.8 8.5 8.5 0 1 0 20.2 15.25Z" />
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M8 2h4v2H9v2H7v6h2v2h6v-2h2v3h-2v2H7v-2H4v-2H2V7h2V4h4Z" />
+                  <path className="game-hub-icon-accent" d="M15 3h2v2h-2ZM13 7h2v2h-2Z" />
                 </svg>
               )}
             </button>
@@ -872,32 +881,6 @@ function WorldRail({
 }
 
 const GAME_CARD_ENABLED = [true, false] as const
-const GAME_LIBRARY_BACKGROUND_STORAGE_KEY = 'anxi.game-library-background.v1'
-const GAME_LIBRARY_BACKGROUND_MANUAL_UNTIL_STORAGE_KEY = 'anxi.game-library-background-manual-until.v1'
-
-type GameLibraryBackgroundSelection = {
-  background: GameLibraryBackground
-  manualUntil: number | null
-}
-
-function storedGameLibraryBackground(): GameLibraryBackgroundSelection {
-  const now = new Date()
-  const automaticBackground = gameLibraryBackgroundForDate(now)
-  if (typeof window === 'undefined') return { background: automaticBackground, manualUntil: null }
-  try {
-    const manual = gameLibraryManualBackgroundPreference(
-      window.localStorage.getItem(GAME_LIBRARY_BACKGROUND_STORAGE_KEY),
-      window.localStorage.getItem(GAME_LIBRARY_BACKGROUND_MANUAL_UNTIL_STORAGE_KEY),
-      now.getTime(),
-    )
-    return manual
-      ? { background: manual.background, manualUntil: manual.expiresAt }
-      : { background: automaticBackground, manualUntil: null }
-  } catch {
-    return { background: automaticBackground, manualUntil: null }
-  }
-}
-
 type TouchGesture = {
   pointerId: number
   startX: number
@@ -935,6 +918,8 @@ export function GamesPage({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [backgroundSelection, setBackgroundSelection] = useState<GameLibraryBackgroundSelection>(storedGameLibraryBackground)
   const background = backgroundSelection.background
+  const { setUpdateTheme } = usePanelUpdate()
+  useEffect(() => setUpdateTheme(background), [background, setUpdateTheme])
   const [worldClosePhase, setWorldClosePhase] = useState<WorldRailClosePhase>('idle')
   const worldsClosing = worldClosePhase !== 'idle'
   const [installPresentation, setInstallPresentation] = useState<GameInstallProgressPresentation | null>(null)

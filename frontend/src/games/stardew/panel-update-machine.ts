@@ -2,6 +2,19 @@ import type { CurrentUser } from '../../types'
 import type { PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
 import { updateDisplayKind, withoutVersionPrefix, withVersionPrefix } from './update-status.ts'
 
+export function hasGameUpgradeFlow(version: VersionInfo | null, operation?: { authorizedAt?: string; phase?: string } | null, status?: PanelUpdateStatus | null): boolean {
+  if (operation?.authorizedAt && !['succeeded', 'failed_safe', 'panel_failed_rolled_back', 'preflight_failed'].includes(operation.phase || '')) return true
+  const policy = version?.runtimeUpgrade
+  if (!version || !policy) return false
+  const normalize = (value: string) => value.replace(/^[vV]/, '')
+  const current = normalize(version.version)
+  const target = normalize(status?.updateAvailable ? status.latestVersion || '' : version.version)
+  if (policy.targetPanelVersion) {
+    return target === normalize(policy.targetPanelVersion) || policy.requiresScopeConfirmation && target === current
+  }
+  return policy.requiresScopeConfirmation === true
+}
+
 export const ACTIVE_PANEL_UPDATE_PHASES = new Set([
   'checking',
   'backing_up',
@@ -70,6 +83,7 @@ export function panelUpdatePhaseLabel(phase: string): string {
 		case 'failed_safe': return '运行栈升级未完成，已安全停止或恢复'
 		case 'manual_action': return '运行栈需要人工恢复'
 		case 'not_needed': return '全栈已是目标版本'
+    case 'awaiting_confirmation': return '等待管理员确认范围与目标'
     default: return '等待升级状态'
   }
 }
@@ -111,6 +125,10 @@ export function panelUpdateSurface(
     }
 		const progress = Math.max(0, Math.min(100, Math.round(apply.fullStack?.progress ?? apply.progress ?? 0)))
 		const effectivePhase = apply.fullStack?.phase || apply.phase
+    if(apply.operationId) return {
+      currentVersion:current,targetVersion:target,topbarText:panelUpdatePhaseLabel(effectivePhase),
+      mobileTopbarText:'全栈升级中',overviewText:panelUpdatePhaseLabel(effectivePhase),tone:'working',
+    }
 		return {
 			currentVersion: current, targetVersion: target,
 			topbarText: progress > 0 ? `正在全栈升级 ${progress}%` : panelUpdatePhaseLabel(effectivePhase),
@@ -131,6 +149,10 @@ export function panelUpdateSurface(
     }
   }
   if (apply?.phase === 'succeeded' && terminalApplyMatchesCurrent && !detectedUpdateSupersedesTerminal) {
+    if(apply.fullStack && ['failed_safe','manual_action','awaiting_confirmation'].includes(apply.fullStack.phase)) return {
+      currentVersion:current,targetVersion:target,topbarText:apply.fullStack.errorCode==='legacy_full_stack_confirmation_required' ? '等待游戏迁移确认' : '全栈升级需要处理',
+      mobileTopbarText:'需要处理',overviewText:panelUpdatePhaseLabel(apply.fullStack.phase),tone:'error',
+    }
     const upgraded = apply.toVersion || current
     return {
       currentVersion: upgraded, targetVersion: upgraded,

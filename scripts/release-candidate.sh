@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "Usage: $0 --version <x.y.z> --previous-version <x.y.z> [--commit <sha>] [--build-date <UTC>] [--image <local-ref>] [--metadata-output <path>]" >&2
+  echo "Usage: $0 --version <x.y.z> --previous-version <x.y.z> [--commit <sha>] [--build-date <UTC>] [--image <local-ref>] [--metadata-output <path>] [--reuse-image]" >&2
 }
 
 version=""
@@ -11,6 +11,7 @@ commit=""
 build_date=""
 candidate_image=""
 metadata_output=""
+reuse_image=0
 while (($# > 0)); do
   case "$1" in
     --version)
@@ -37,6 +38,10 @@ while (($# > 0)); do
       metadata_output="${2:-}"
       shift 2
       ;;
+    --reuse-image)
+      reuse_image=1
+      shift
+      ;;
     *)
       usage
       exit 2
@@ -51,6 +56,10 @@ if [[ ! "$version" =~ $semver_pattern || ! "$previous_version" =~ $semver_patter
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if ((reuse_image == 1)) && [[ -z "$candidate_image" || -z "$build_date" ]]; then
+  echo "release candidate: --reuse-image requires an explicit --image and frozen --build-date" >&2
+  exit 2
+fi
 cd "$repo_root"
 
 for command_name in docker git grep jq sort timeout; do
@@ -103,41 +112,67 @@ owner="anxi-release-candidate-$suffix"
 fresh_container="$owner-fresh"
 fresh_volume="$owner-data"
 dind_container="$owner-dind"
+dind_volume="$owner-dind-data"
+dind_container_id=""
+dind_volume_created=0
 temp_root="$(mktemp -d -t "$owner-XXXXXX")"
 candidate_tar="$temp_root/candidate.tar"
 fixtures_tar="$temp_root/fixtures.tar"
 previous_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$previous_version"
 
+remove_owned_dind() {
+  local resource_json
+  if [[ -n "$dind_container_id" ]]; then
+    resource_json="$(docker container inspect "$dind_container_id")" || return 1
+    jq -e --arg owner "$owner" --arg volume "$dind_volume" '
+      length == 1 and .[0].Config.Labels["com.anxi-panel.test-owner"] == $owner and
+      ([.[0].Mounts[] | select(.Destination == "/var/lib/docker" and .Type == "volume" and .Name == $volume)] | length) == 1
+    ' <<<"$resource_json" >/dev/null || return 1
+    docker rm -f "$dind_container_id" >/dev/null || return 1
+    dind_container_id=""
+  fi
+  if ((dind_volume_created == 1)); then
+    resource_json="$(docker volume inspect "$dind_volume")" || return 1
+    jq -e --arg owner "$owner" 'length == 1 and .[0].Labels["com.anxi-panel.test-owner"] == $owner' <<<"$resource_json" >/dev/null || return 1
+    docker volume rm "$dind_volume" >/dev/null || return 1
+    dind_volume_created=0
+  fi
+}
+
 cleanup() {
   local cleanup_status=$?
   set +e
-  docker rm -f "$fresh_container" "$dind_container" >/dev/null 2>&1
+  docker rm -f "$fresh_container" >/dev/null 2>&1
+  remove_owned_dind || cleanup_status=1
   if docker volume inspect "$fresh_volume" >/dev/null 2>&1; then
     docker volume rm "$fresh_volume" >/dev/null 2>&1
   fi
-  if [[ "$temp_root" == /tmp/anxi-release-candidate-* && -d "$temp_root" ]]; then
+  if [[ -z "$dind_container_id" && "$temp_root" == /tmp/anxi-release-candidate-* && -d "$temp_root" ]]; then
     rm -rf -- "$temp_root"
   fi
   exit "$cleanup_status"
 }
 trap cleanup EXIT
 
-echo "release candidate: building $candidate_image"
-docker build --provenance=false --sbom=false --file Dockerfile --tag "$candidate_image" --build-arg "VERSION=$version" --build-arg "COMMIT=$commit" --build-arg "BUILD_DATE=$build_date" .
+prepare_candidate_image() {
+  if ((reuse_image == 0)); then
+    echo "release candidate: building $candidate_image"
+    docker build --provenance=false --sbom=false --file Dockerfile --tag "$candidate_image" --build-arg "VERSION=$version" --build-arg "COMMIT=$commit" --build-arg "BUILD_DATE=$build_date" . || return 1
+  else
+    echo "release candidate: reusing the existing frozen image; build and fresh smoke are already complete"
+  fi
+  image_json="$(docker image inspect "$candidate_image")" || return 1
+  image_id="$(jq -r '.[0].Id' <<<"$image_json")"
+  label_version="$(jq -r '.[0].Config.Labels["org.opencontainers.image.version"] // empty' <<<"$image_json")"
+  label_revision="$(jq -r '.[0].Config.Labels["org.opencontainers.image.revision"] // empty' <<<"$image_json")"
+  label_created="$(jq -r '.[0].Config.Labels["org.opencontainers.image.created"] // empty' <<<"$image_json")"
+  if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ || "$label_version" != "$version" || "$label_revision" != "$commit" || "$label_created" != "$build_date" ]]; then
+    echo "release candidate: OCI metadata does not match the frozen candidate identity" >&2
+    return 1
+  fi
+}
 
-image_json="$(docker image inspect "$candidate_image")"
-image_id="$(jq -r '.[0].Id' <<<"$image_json")"
-label_version="$(jq -r '.[0].Config.Labels["org.opencontainers.image.version"] // empty' <<<"$image_json")"
-label_revision="$(jq -r '.[0].Config.Labels["org.opencontainers.image.revision"] // empty' <<<"$image_json")"
-label_created="$(jq -r '.[0].Config.Labels["org.opencontainers.image.created"] // empty' <<<"$image_json")"
-if [[ "$label_version" != "$version" || "$label_revision" != "$commit" || "$label_created" != "$build_date" ]]; then
-  echo "release candidate: OCI metadata does not match the frozen candidate identity" >&2
-  exit 1
-fi
-
-echo "release candidate: fresh install and restart smoke"
-docker volume create --label "com.anxi-panel.test-owner=$owner" "$fresh_volume" >/dev/null
-docker run -d --name "$fresh_container" --label "com.anxi-panel.test-owner=$owner" --mount "type=volume,src=$fresh_volume,dst=/data" "$candidate_image" >/dev/null
+prepare_candidate_image
 
 wait_fresh() {
   local deadline=$((SECONDS + 120))
@@ -214,6 +249,10 @@ assert_frontend_contract_from_container() {
   fi
 }
 
+if ((reuse_image == 0)); then
+echo "release candidate: fresh install and restart smoke"
+docker volume create --label "com.anxi-panel.test-owner=$owner" "$fresh_volume" >/dev/null
+docker run -d --name "$fresh_container" --label "com.anxi-panel.test-owner=$owner" --mount "type=volume,src=$fresh_volume,dst=/data" "$candidate_image" >/dev/null
 wait_fresh
 if [[ "$(docker exec "$fresh_container" wget -qO- http://127.0.0.1:8090/api/setup/status | jq -r '.initialized')" != false ]]; then
   echo "release candidate: fresh setup state is not uninitialized" >&2
@@ -224,6 +263,8 @@ docker restart "$fresh_container" >/dev/null
 wait_fresh
 docker rm -f "$fresh_container" >/dev/null
 docker volume rm "$fresh_volume" >/dev/null
+
+fi
 
 echo "release candidate: exporting exact image for isolated Web-upgrade E2E"
 docker save -o "$candidate_tar" "$candidate_image"
@@ -247,7 +288,15 @@ for fixture_image in "$previous_ref" registry:2 nginx:alpine alpine:3.20; do
   pull_fixture_image "$fixture_image"
 done
 docker save -o "$fixtures_tar" "$previous_ref" registry:2 nginx:alpine alpine:3.20
-docker run -d --privileged --name "$dind_container" --label "com.anxi-panel.test-owner=$owner" --env DOCKER_TLS_CERTDIR= --volume "$repo_root:/workspace:ro" --volume "$temp_root:/candidate:ro" docker:29-dind >/dev/null
+existing_dind_container="$(docker ps -aq --filter "name=^/$dind_container$")"
+existing_dind_volume="$(docker volume ls -q --filter "name=^$dind_volume$")"
+if [[ -n "$existing_dind_container" || -n "$existing_dind_volume" ]]; then
+  echo "release candidate: isolated Docker resource collision" >&2
+  exit 1
+fi
+docker volume create --label "com.anxi-panel.test-owner=$owner" "$dind_volume" >/dev/null
+dind_volume_created=1
+dind_container_id="$(docker run -d --privileged --name "$dind_container" --label "com.anxi-panel.test-owner=$owner" --env DOCKER_TLS_CERTDIR= --mount "type=volume,src=$dind_volume,dst=/var/lib/docker" --volume "$repo_root:/workspace:ro" --volume "$temp_root:/candidate:ro" docker:29-dind)"
 
 dind_ready=0
 for _ in $(seq 1 90); do
@@ -278,8 +327,12 @@ if ((dind_tools_ready != 1)); then
   echo "release candidate: isolated DinD tools could not be installed after 3 attempts" >&2
   exit 1
 fi
-docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version"
-docker rm -f "$dind_container" >/dev/null
+upgrade_mode_args=()
+if ((reuse_image == 1)); then
+  upgrade_mode_args+=(--upgrade-only)
+fi
+docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version" "${upgrade_mode_args[@]}"
+remove_owned_dind
 
 mkdir -p "$(dirname "$metadata_output")"
 jq -n --arg version "$version" --arg previousVersion "$previous_version" --arg commit "$commit" --arg buildDate "$build_date" --arg image "$candidate_image" --arg imageId "$image_id" '{schemaVersion:1,version:$version,previousVersion:$previousVersion,commit:$commit,buildDate:$buildDate,localImage:$image,imageId:$imageId}' >"$metadata_output"

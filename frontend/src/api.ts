@@ -197,10 +197,10 @@ export function getJunimoUpdateApply(instanceId = defaultInstanceId, signal?: Ab
   return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/apply`, { signal })
 }
 
-export function startJunimoUpdateApply(instanceId = defaultInstanceId) {
+export function startJunimoUpdateApply(instanceId = defaultInstanceId, sharedGroupSha256?: string) {
   return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/apply`, {
     method: 'POST',
-    body: { confirm: true },
+    body: { confirm: true, ...(sharedGroupSha256 ? { sharedGroupSha256 } : {}) },
   })
 }
 
@@ -400,8 +400,8 @@ export function restartInstance(instanceId = defaultInstanceId) {
   })
 }
 
-export function getInviteCode(instanceId = defaultInstanceId) {
-  return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`)
+export function getInviteCode(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`, { signal })
 }
 
 export function getInstanceDirectConnect(instanceId = defaultInstanceId) {
@@ -823,11 +823,19 @@ export interface VersionInfo {
   version: string
   commit?: string
   buildDate?: string
+  runtimeUpgrade?: {
+    requiresScopeConfirmation: boolean
+    targetPanelVersion?: string
+    serverVersion: string
+    authVersion: string
+  }
 }
 
 export type PanelUpdateCheckStatus = 'pending' | 'checking' | 'ok' | 'error' | 'unavailable'
 
 export interface PanelUpdateStatus {
+	content?: { schemaVersion: number; version?: string; minimumUpdaterVersion?: string; title?: string; summary?: string; changes?: string[]; notes?: string; blocked?: boolean; notices?: Array<{level: string; title: string; message: string; requiresConfirmation: boolean}> }
+	noticeDigest?: string
   currentVersion: string
   currentCommit: string
   currentBuildDate: string
@@ -877,6 +885,7 @@ export interface PanelUpdateDryRunStatus {
 }
 
 export interface PanelUpdateApplyStatus {
+  operationId?: string
   updateId: string
   phase: 'checking' | 'backing_up' | 'pulling' | 'recreating' | 'waiting_health' | 'succeeded' | 'rolling_back' | 'failed_rolled_back' | 'rollback_failed'
   progress: number
@@ -946,8 +955,50 @@ export function getPanelUpdateApplyStatus() {
   return request<PanelUpdateApplyStatus>('/api/system/update/apply')
 }
 
-export function applyPanelUpdate() {
-	return request<PanelUpdateApplyStatus>('/api/system/update/apply', { method: 'POST', body: { confirmFullStack: true } })
+export function applyPanelUpdate(noticeDigest?: string, targetVersion?: string) {
+	return request<PanelUpdateApplyStatus>('/api/system/update/apply', { method: 'POST', body: { confirmFullStack: true, noticeDigest, targetVersion } })
+}
+
+export type FullStackUpgradeStatus = {
+  operationId: string
+  planSha256: string
+  phase: string
+  actorId: number
+  panel: { version: string; image: string; imageId: string; revision: string; buildDate: string }
+  runtimeVersion: string
+  runtimeDigest: string
+  controlVersion: string
+  controlSha256: string
+  gameBuildId: string
+  sdkBuildId: string
+  smapiIdentity: string
+  authVersion?: string
+  authDigest?: string
+  createdAt: string
+  expiresAt: string
+  authorizedAt?: string
+  panelUpdateId?: string
+  continuation: boolean
+  errorCode?: string
+  error?: string
+  jobId?: string
+  groups: Array<{ primaryId: string; members: string[]; memberNames: Record<string,string>; runningWorlds: number; coldTemplates: number; savedWorlds: number; stoppedWorlds: number; updatedWorlds: number; scopeSha256: string; applyId: string; phase: string; errorCode?: string }>
+}
+
+export function getFullStackUpgrade(signal?: AbortSignal) {
+  return request<FullStackUpgradeStatus>('/api/system/update/full-stack', {signal})
+}
+export function prepareFullStackUpgrade(targetVersion: string) {
+  return request<FullStackUpgradeStatus>('/api/system/update/full-stack', {method:'POST',body:{action:'prepare',targetVersion}})
+}
+export function confirmFullStackUpgrade(plan: FullStackUpgradeStatus, noticeDigest?: string) {
+  return request<FullStackUpgradeStatus>('/api/system/update/full-stack', {method:'POST',body:{action:'confirm',confirm:true,operationId:plan.operationId,planSha256:plan.planSha256,noticeDigest}})
+}
+export function cancelFullStackUpgrade(operationId: string) {
+  return request<FullStackUpgradeStatus>('/api/system/update/full-stack', {method:'POST',body:{action:'cancel',operationId}})
+}
+export function recoverFullStackUpgrade(plan: FullStackUpgradeStatus) {
+  return request<FullStackUpgradeStatus>('/api/system/update/full-stack', {method:'POST',body:{action:'recover',confirm:true,operationId:plan.operationId,planSha256:plan.planSha256}})
 }
 
 // ── Support Bundle ──────────────────────────────────────────────────────────

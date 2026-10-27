@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -290,6 +291,16 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	}
 	if err := addCheck("compose_target_config", "ok", validationMessage); err != nil {
 		return err
+	}
+	if junimo140FixedTarget(status.Target) {
+		plan, err := d.junimo140PlanFromStore(ctx, instance, newRuntimeApplyID())
+		if err != nil {
+			return fail("shared_group_invalid", "无法确认共享游戏组件的完整世界范围。")
+		}
+		status.SharedGroupSHA256, status.SharedGroupMembers = plan.membershipDigest(), len(plan.Members)
+		if err := addCheck("shared_game_group", "ok", fmt.Sprintf("本次升级将同时处理共享游戏组件的 %d 个世界；请确认后再应用。", len(plan.Members))); err != nil {
+			return err
+		}
 	}
 	return finish(RuntimeUpdatePhaseSucceeded, "", "Junimo 运行组件升级预检通过；未修改实例或容器。")
 }

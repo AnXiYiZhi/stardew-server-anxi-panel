@@ -41,6 +41,8 @@ type SMAPICurrent struct {
 	Present           bool   `json:"present"`
 	RequiredFiles     bool   `json:"requiredFiles"`
 	GameDataVolume    string `json:"gameDataVolume,omitempty"`
+	BuildID           string `json:"buildId,omitempty"`
+	BuildVerified     bool   `json:"buildVerified,omitempty"`
 }
 
 type SMAPICompatibility struct {
@@ -110,6 +112,22 @@ func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 		return result, nil
 	}
 	result.Current.Present, result.Current.RequiredFiles, result.Current.VersionSource = metadata.Present, metadata.RequiredFiles, metadata.VersionEvidence
+	result.Current.BuildID = metadata.BuildID
+	contract, contractErr := readConsoleRuntimeContract(instance.DataDir)
+	if contractErr != nil {
+		result.Status, result.Code, result.Reason = SMAPIStatusCustomUnknown, "runtime_config_unavailable", "无法读取当前运行栈配置。"
+		return result, nil
+	}
+	if contract.fifo == junimo140InputFIFO || metadata.ImageBuildID != "" || metadata.BuildID != "" {
+		result.Current.BuildVerified = junimo140SMAPIIdentityVerified(metadata)
+		if !result.Current.BuildVerified {
+			result.Status, result.Code, result.Reason = SMAPIStatusInvalid, "smapi_image_build_mismatch", "镜像管理的 SMAPI 构建标记与核心文件不匹配；请通过运行栈恢复流程处理。"
+			return result, nil
+		}
+		result.Current.Version = "4.5.2"
+		result.Status, result.Code, result.Reason = SMAPIStatusCustomUnknown, "image_managed_smapi", "此 SMAPI 由固定 Junimo 镜像管理；独立原版安装器不可替换该构建，请通过运行栈更新。"
+		return result, nil
+	}
 	if !metadata.Present {
 		result.Supported, result.Available, result.Status, result.Code, result.Reason = true, true, SMAPIStatusMissing, "smapi_missing", "实际游戏目录中未找到 SMAPI 程序集。"
 		return result, nil

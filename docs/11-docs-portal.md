@@ -1,5 +1,12 @@
 # 文档门户网站建设方案
 
+## 2026-10-27：073 → 080 升级说明准备
+
+- `website/docs/maintain/update.md` 按当前更新策略重写，`deploy/nas.md` 与 `guide/deploy.md` 同步入口：旧版先完成 `v0.7.3`，后续从游戏库/世界列表/实例版本入口打开统一更新中心，阅读提示、预检范围、明确确认后再执行 `v0.8.0` 游戏组升级。说明停服、备份、事务恢复、Auth `.140-anxi.1`、第三方 Mod 兼容性和升级后检查。
+- 明确 GitHub latest Release 保持 `v0.7.3`，073+ 从正式 Release 列表选择可达版本；Docker latest 独立随正式镜像提升。脚本先更新自身、旧版显式更新到073，之后交给 Web；NAS 也遵守相同顺序。
+- 首页与 changelog 在073正式发布前继续展示当前正式版072。073/080的阶段文案与发布后补丁保存在任务证据目录 `E:\task-evidence\panel-release-20261027`，仅在对应版本完成正式门禁后应用，避免官网提前宣布未发布版本。正式候选与工程证明的边界见 `docs/09-image-build.md`。
+- 构建入口仍为 `npm --prefix website run docs:build`（执行前核对当前 scripts）；既有 `.github/workflows/docs.yml` 在main的 `website/**` 变更后自动构建并部署GitHub Pages。生成HTML、线上首页/更新日志/升级指引和实际链接的验收结果待本次正式发布完成后回填。
+
 ## 2026-09-19：官网展示 v0.7.2
 
 - 官网首页 release/摘要与 changelog 同步 v0.7.2，说明直连配置、认证/总览/响应式改进以及素材/构建减负，链接正式 Release；v0.7.1 作为历史版本保留。页底继续复用 frontmatter.release。

@@ -252,6 +252,8 @@ export type JunimoUpdateDryRunPhase =
   | 'unsupported'
 
 export type JunimoUpdateDryRunStatus = {
+  sharedGroupSha256?: string
+  sharedGroupMembers?: number
   dryRunId?: string
   jobId?: string
   phase: JunimoUpdateDryRunPhase
@@ -460,6 +462,7 @@ export type SteamInviteAuthState =
   | 'failed'
 
 export type InstanceState = {
+  maintenance?: { operationId:string; phase:string; message:string }
   instanceId: string
   driverId: string
   name: string
@@ -895,6 +898,12 @@ export type SaveImportJobResponse = {
 export type SteamInviteStatus =
   | 'disabled'
   | 'ready'
+  | 'connection_ready'
+  | 'steam_relay_pending'
+  | 'reconnecting'
+  | 'connection_starting'
+  | 'steam_session_down'
+  | 'invite_unavailable'
   | 'generating'
   | 'server_stopped'
   | 'waiting_authorization'
@@ -905,6 +914,8 @@ export type InviteCodeResult = {
   steamInviteEnabled: boolean
   status: SteamInviteStatus
   inviteCode: string
+  connectionStatusCode?: string
+  authReadiness?: 'unknown' | 'ok' | 'expiring' | 'unavailable'
 }
 
 export type DirectConnectConfig = {

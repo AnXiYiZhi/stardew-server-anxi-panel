@@ -595,7 +595,10 @@ public sealed record SaveCommandExpectation(
 public sealed record FarmhandBindingSummary(
 	int TotalFarmhands,
 	int CustomizedFarmhands,
-	int BoundFarmhands);
+	int BoundFarmhands,
+	bool OwnershipRequired = false,
+	int ReleasedFarmhands = 0,
+	bool OwnershipPersisted = false);
 
 public sealed record FarmhandUnbindDecision(bool CanApply, string ErrorCode, string Message);
 
@@ -700,6 +703,15 @@ public static class SaveCommandContract
 			if (farmhandBindings.TotalFarmhands <= 0 || farmhandBindings.BoundFarmhands != 0)
 				return Outcome(command, CommandStatuses.Failed, "farmhand_unbind_incomplete",
 					"GameLoop.Saved completed but at least one farmhand role remains bound.", now, details);
+			if (farmhandBindings.OwnershipRequired)
+			{
+				details["farmhandOwnershipRequired"] = "true";
+				details["releasedFarmhandCount"] = farmhandBindings.ReleasedFarmhands.ToString(System.Globalization.CultureInfo.InvariantCulture);
+				details["farmhandOwnershipPersisted"] = farmhandBindings.OwnershipPersisted ? "true" : "false";
+				if (!farmhandBindings.OwnershipPersisted || farmhandBindings.ReleasedFarmhands != farmhandBindings.TotalFarmhands)
+					return Outcome(command, CommandStatuses.Failed, "farmhand_ownership_unconfirmed",
+						"GameLoop.Saved completed but durable farmhand ownership release was not confirmed.", now, details);
+			}
 		}
 
 		return Outcome(command, CommandStatuses.Succeeded, "ok",

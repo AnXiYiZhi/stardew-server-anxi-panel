@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
@@ -56,7 +57,9 @@ func TestInstallFailurePersistsActionableCause(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+			// This fixture deliberately persists over 1100 SQLite log rows. Its
+			// observer must allow cold or contended filesystems to flush them.
+			waitForDriverTestJobStatusWithin(t, store, job.ID, storage.JobStatusFailed, 45*time.Second)
 			finished, err := store.GetJob(ctx, job.ID)
 			if err != nil {
 				t.Fatal(err)

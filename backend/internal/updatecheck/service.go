@@ -22,7 +22,7 @@ const (
 	defaultInterval         = 6 * time.Hour
 	defaultJitter           = 36 * time.Minute
 	requestTimeout          = 15 * time.Second
-	maxResponseBytes        = 1 << 20
+	maxResponseBytes        = 8 << 20 // A release index includes notes for up to 100 releases.
 )
 
 type CheckStatus string
@@ -39,16 +39,18 @@ const (
 // CheckedAt deliberately records the last successful check. A failed request
 // changes CheckStatus/CheckError but does not erase the last known release.
 type Status struct {
-	CurrentVersion   string      `json:"currentVersion"`
-	CurrentCommit    string      `json:"currentCommit"`
-	CurrentBuildDate string      `json:"currentBuildDate"`
-	LatestVersion    string      `json:"latestVersion"`
-	UpdateAvailable  bool        `json:"updateAvailable"`
-	ReleaseURL       string      `json:"releaseUrl"`
-	PublishedAt      *time.Time  `json:"publishedAt"`
-	CheckedAt        *time.Time  `json:"checkedAt"`
-	CheckStatus      CheckStatus `json:"checkStatus"`
-	CheckError       string      `json:"checkError"`
+	CurrentVersion   string         `json:"currentVersion"`
+	CurrentCommit    string         `json:"currentCommit"`
+	CurrentBuildDate string         `json:"currentBuildDate"`
+	LatestVersion    string         `json:"latestVersion"`
+	UpdateAvailable  bool           `json:"updateAvailable"`
+	ReleaseURL       string         `json:"releaseUrl"`
+	PublishedAt      *time.Time     `json:"publishedAt"`
+	CheckedAt        *time.Time     `json:"checkedAt"`
+	CheckStatus      CheckStatus    `json:"checkStatus"`
+	CheckError       string         `json:"checkError"`
+	Content          ReleaseContent `json:"content"`
+	NoticeDigest     string         `json:"noticeDigest,omitempty"`
 }
 
 type HTTPDoer interface {
@@ -90,6 +92,9 @@ func New(opts Options) *Service {
 	latestReleaseURL := strings.TrimSpace(opts.LatestReleaseURL)
 	if latestReleaseURL == "" {
 		latestReleaseURL = defaultLatestReleaseURL
+		if AtLeast(opts.CurrentVersion, BridgeVersion) {
+			latestReleaseURL = strings.TrimSuffix(defaultLatestReleaseURL, "/latest") + "?per_page=100"
+		}
 	}
 	interval := opts.Interval
 	if interval <= 0 {
@@ -164,12 +169,18 @@ func (s *Service) Check(ctx context.Context) Status {
 	if !ok {
 		return s.recordFailure(errors.New("GitHub 最新正式 Release 没有有效的语义化版本号"))
 	}
+	content, err := releaseContent(release)
+	if err != nil {
+		return s.recordFailure(err)
+	}
 
 	checkedAt := s.now().UTC()
 	publishedAt := release.PublishedAt.UTC()
 	s.mu.Lock()
 	s.status.LatestVersion = release.TagName
-	s.status.UpdateAvailable = compareSemver(current, latest) < 0
+	s.status.UpdateAvailable = compareSemver(current, latest) < 0 && !content.Blocked
+	s.status.Content = content
+	s.status.NoticeDigest = noticeDigest(release.TagName, content)
 	s.status.ReleaseURL = release.HTMLURL
 	s.status.PublishedAt = &publishedAt
 	s.status.CheckedAt = &checkedAt
@@ -191,6 +202,8 @@ func (s *Service) recordFailure(err error) Status {
 }
 
 type githubRelease struct {
+	Name        string    `json:"name"`
+	Body        string    `json:"body"`
 	TagName     string    `json:"tag_name"`
 	HTMLURL     string    `json:"html_url"`
 	Draft       bool      `json:"draft"`
@@ -199,7 +212,11 @@ type githubRelease struct {
 }
 
 func (s *Service) fetchLatestRelease(ctx context.Context) (githubRelease, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.latestReleaseURL, nil)
+	return s.fetchRelease(ctx, s.latestReleaseURL, true)
+}
+
+func (s *Service) fetchRelease(ctx context.Context, url string, allowBridge bool) (githubRelease, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return githubRelease{}, fmt.Errorf("创建 GitHub Release 请求失败: %w", err)
 	}
@@ -217,13 +234,53 @@ func (s *Service) fetchLatestRelease(ctx context.Context) (githubRelease, error)
 		return githubRelease{}, fmt.Errorf("GitHub Release 返回 HTTP %d", resp.StatusCode)
 	}
 
-	var release githubRelease
+	var raw json.RawMessage
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes))
-	if err := decoder.Decode(&release); err != nil {
+	if err := decoder.Decode(&raw); err != nil {
 		return githubRelease{}, fmt.Errorf("解析 GitHub Release 响应失败: %w", err)
+	}
+	var release githubRelease
+	if len(raw) > 0 && raw[0] == '[' {
+		var releases []githubRelease
+		if err := json.Unmarshal(raw, &releases); err != nil {
+			return release, err
+		}
+		for _, candidate := range releases {
+			if candidate.Draft || candidate.Prerelease {
+				continue
+			}
+			version, valid := parseSemver(candidate.TagName)
+			if !valid {
+				continue
+			}
+			content, err := releaseContent(candidate)
+			if err != nil {
+				return release, err
+			}
+			if content.MinimumUpdaterVersion != "" && !AtLeast(s.Status().CurrentVersion, content.MinimumUpdaterVersion) {
+				continue
+			}
+			previous, selected := parseSemver(release.TagName)
+			if !selected || compareSemver(previous, version) < 0 {
+				release = candidate
+			}
+		}
+		if release.TagName == "" {
+			return release, errors.New("没有适用于当前面板的正式版本")
+		}
+	} else if err := json.Unmarshal(raw, &release); err != nil {
+		return release, err
 	}
 	if release.Draft || release.Prerelease {
 		return githubRelease{}, errors.New("GitHub latest Release 不是正式 Release")
+	}
+	if allowBridge && ValidateTransition(s.Status().CurrentVersion, release.TagName) != nil {
+		bridgeURL := strings.TrimSuffix(strings.Split(url, "?")[0], "/latest") + "/tags/v" + BridgeVersion
+		bridge, err := s.fetchRelease(ctx, bridgeURL, false)
+		if err == nil && strings.TrimPrefix(bridge.TagName, "v") != BridgeVersion {
+			err = errors.New("升级准备版本与请求的 v0.7.3 不一致")
+		}
+		return bridge, err
 	}
 	return release, nil
 }

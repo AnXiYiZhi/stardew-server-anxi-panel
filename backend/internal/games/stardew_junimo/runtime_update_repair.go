@@ -274,7 +274,7 @@ func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry
 	}
 	status, err := readRuntimeUpdateApplyStatus(instance.DataDir)
 	if plan.Code != "repair/rollback_failed" {
-		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		inspection := d.EffectiveRuntimeInspection(instance)
 		return d.startKnownRuntimeRepairPlan(ctx, runtimeDocker, instance, createdBy, status, inspection, *plan)
 	}
 	if err != nil {
@@ -453,7 +453,7 @@ func (d *Driver) retryRuntimeUpdateAfterRepair(ctx context.Context, job *jobs.Co
 		return d.failRuntimeUpdateRepair(ctx, instance, status, "repair_instance_reload_failed", "无法读取修复后的实例状态；旧运行组件保持可用，未继续升级。")
 	}
 	instance.State, instance.DriverPhase, instance.DriverPayload = stored.State, stored.DriverPhase, stored.DriverPayload
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.EffectiveRuntimeInspection(instance)
 	if inspection.Repairable {
 		status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "known_legacy_config", Status: "warning", Message: inspection.RepairReason})
 		status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)

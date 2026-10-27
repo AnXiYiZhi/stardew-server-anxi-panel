@@ -16,6 +16,7 @@ import (
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/static"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
@@ -35,6 +36,7 @@ type Deps struct {
 	Registry           *registry.Registry
 	UpdateChecker      UpdateChecker
 	Updater            UpdaterService
+	UpgradeReady       func() error
 	FarmCatalogScanner func(string) (sj.FarmCatalogResult, error)
 	pendingUploads     *durablePendingUploadStore
 }
@@ -71,6 +73,7 @@ type server struct {
 	publicIPResolver          *publicIPResolver
 	updateChecker             UpdateChecker
 	updater                   UpdaterService
+	upgradeReady              func() error
 	farmCatalogScanner        func(string) (sj.FarmCatalogResult, error)
 	farmPrepareMu             sync.Mutex
 	instanceCreateMu          sync.Mutex
@@ -132,6 +135,7 @@ func NewHandlerWithError(deps Deps) (http.Handler, error) {
 		publicIPResolver:   newPublicIPResolver(defaultPublicIPProviders),
 		updateChecker:      deps.UpdateChecker,
 		updater:            deps.Updater,
+		upgradeReady:       deps.UpgradeReady,
 		farmCatalogScanner: deps.FarmCatalogScanner,
 		metricsCache:       make(map[string]resourceMetricsCacheEntry),
 		metricsFlights:     make(map[string]*resourceMetricsFlight),
@@ -213,6 +217,8 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleSystemUpdateDryRun(w, r)
 	case "/api/system/update/apply":
 		s.handleSystemUpdateApply(w, r)
+	case "/api/system/update/full-stack":
+		s.handleFullStackUpdate(w, r)
 	case "/api/setup/status":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -379,6 +385,7 @@ func isKnownAPIPath(p string) bool {
 		"/api/system/update/capability",
 		"/api/system/update/dry-run",
 		"/api/system/update/apply",
+		"/api/system/update/full-stack",
 		"/api/setup/status",
 		"/api/setup/admin",
 		"/api/auth/login",
@@ -533,6 +540,12 @@ type healthDatabase struct {
 }
 
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if s.upgradeReady != nil {
+		if err := s.upgradeReady(); err != nil {
+			writeError(w, http.StatusServiceUnavailable, updater.CodeUpgradePrerequisiteRequired, err.Error())
+			return
+		}
+	}
 	statusCode := http.StatusOK
 	response := healthResponse{
 		Status:    "ok",
@@ -556,17 +569,22 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type versionResponse struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit,omitempty"`
-	BuildDate string `json:"buildDate,omitempty"`
+	Version        string                         `json:"version"`
+	Commit         string                         `json:"commit,omitempty"`
+	BuildDate      string                         `json:"buildDate,omitempty"`
+	RuntimeUpgrade *sjconfig.RuntimeUpgradePolicy `json:"runtimeUpgrade,omitempty"`
 }
 
 func (s *server) handleVersion(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, versionResponse{
+	response := versionResponse{
 		Version:   s.config.Version,
 		Commit:    s.config.Commit,
 		BuildDate: s.config.BuildDate,
-	})
+	}
+	if policy, err := sjconfig.BuiltInRuntimeUpgradePolicy(); err == nil {
+		response.RuntimeUpgrade = &policy
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 type errorResponse struct {

@@ -436,6 +436,8 @@ func TestInstancePlayersReturnsParsedInfoOutput(t *testing.T) {
 			case 1:
 				return paneldocker.CommandResult{Stdout: "0 /tmp/server-output.log", ExitCode: 0}, nil
 			case 2:
+				return paneldocker.CommandResult{ExitCode: 0}, nil // FIFO type probe
+			case 3:
 				if stdinData != "info\n" {
 					t.Fatalf("stdin = %q, want info newline", stdinData)
 				}

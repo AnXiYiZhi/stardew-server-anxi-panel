@@ -539,7 +539,7 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 			savesCommands := record.savesCommands
 			record.mu.Unlock()
 			if savesCommands <= cfg.savesProbeFailures {
-				return paneldocker.CommandResult{Stdout: "$>saves info Upload_1\n"}, nil
+				return paneldocker.CommandResult{Stdout: "Save 'Upload_1' not found.\n"}, nil
 			}
 			return paneldocker.CommandResult{Stdout: "Save: Upload_1\n  Farm Type: Standard\n"}, nil
 		}
@@ -819,6 +819,8 @@ func TestSaveInfoReadinessOutputMustNameExactTarget(t *testing.T) {
 		"Available Saves:\n    Upload_1",
 		"Save 'Upload_1' not found.",
 		"Save: Other_1",
+		"Save: Upload_10",
+		"$>saves info Upload_1",
 	} {
 		if isSaveInfoOutput(output, "Upload_1") {
 			t.Fatalf("non-target response was accepted: %q", output)

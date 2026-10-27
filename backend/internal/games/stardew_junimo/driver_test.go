@@ -3293,11 +3293,16 @@ func TestBuildSteamCMDAuthMigrationOptsCopiesLegacyCachesIntoCanonicalVolume(t *
 
 func waitForDriverTestJobStatus(t *testing.T, store *storage.Store, jobID string, status string) storage.Job {
 	t.Helper()
+	return waitForDriverTestJobStatusWithin(t, store, jobID, status, 15*time.Second)
+}
+
+func waitForDriverTestJobStatusWithin(t *testing.T, store *storage.Store, jobID string, status string, timeout time.Duration) storage.Job {
+	t.Helper()
 	// Several lifecycle fixtures use a 10-second job timeout. Under the full
 	// package gate, concurrent SQLite/filesystem work can legitimately push a
 	// terminal transition past five seconds, so the observer must outlive the
 	// runner's own bounded timeout without becoming unbounded itself.
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		job, err := store.GetJob(context.Background(), jobID)
 		if err != nil {
@@ -3309,6 +3314,11 @@ func waitForDriverTestJobStatus(t *testing.T, store *storage.Store, jobID string
 		time.Sleep(20 * time.Millisecond)
 	}
 	job, _ := store.GetJob(context.Background(), jobID)
+	if logs, _, err := store.ListLatestJobLogs(context.Background(), jobID, 12); err == nil {
+		for _, line := range logs {
+			t.Logf("last job log: %s", line.Message)
+		}
+	}
 	t.Fatalf("job %s did not reach %s, got %s", jobID, status, job.Status)
 	return storage.Job{}
 }

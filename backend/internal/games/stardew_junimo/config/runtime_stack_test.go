@@ -183,7 +183,10 @@ func TestSteamAuthHealthContractCompatibilityIsExplicit(t *testing.T) {
 	if !steamAuthHealthContractSupported("1.5.0-anxi.2") {
 		t.Fatal("reviewed steam-auth-cn 1.5.0-anxi.2 health contract was not accepted")
 	}
-	for _, tag := range []string{"", "1.5.0-anxi.1", "1.5.0-anxi.3", "latest"} {
+	if !steamAuthHealthContractSupported(Junimo140SteamAuthTag) {
+		t.Fatal("reviewed Junimo .140 SteamAuth health contract was not accepted")
+	}
+	for _, tag := range []string{"", "1.5.0-anxi.1", "1.5.0-anxi.4", "latest"} {
 		if steamAuthHealthContractSupported(tag) {
 			t.Fatalf("unreviewed steam-auth health contract accepted: %q", tag)
 		}

@@ -389,8 +389,9 @@ PauseDecision Pause(
     bool worldReady = true,
     bool countKnown = true,
     bool automationKnown = true,
-    bool automationEnabled = true
-) => PausePolicy.Evaluate(enabled, server, worldReady, automationKnown, automationEnabled, countKnown, connections, festival, time);
+    bool automationEnabled = true,
+    bool hostActivityManaged = false
+) => PausePolicy.Evaluate(enabled, server, worldReady, automationKnown, automationEnabled, countKnown, connections, festival, time, hostActivityManaged);
 
 ExpectPause(Pause(), true, PauseReason.NoConnectedClients, "normal daytime with no clients");
 ExpectPause(Pause(time: 610), true, PauseReason.NoConnectedClients, "idle pause lower time boundary");
@@ -406,6 +407,15 @@ ExpectPause(Pause(server: false), false, PauseReason.None, "non-server game");
 ExpectPause(Pause(worldReady: false), false, PauseReason.None, "world not ready");
 ExpectPause(Pause(automationEnabled: false), false, PauseReason.ManualControl, "F9 manual-control override");
 ExpectPause(Pause(automationKnown: false), true, PauseReason.NoConnectedClients, "unknown automation fails closed");
+ExpectPause(Pause(time: 2500, hostActivityManaged: true), false, PauseReason.None, "upstream warp or unreadable activity must finish unpaused");
+ExpectPause(Pause(time: 1200, hostActivityManaged: true), false, PauseReason.None, "upstream also owns idle pause without competing writers");
+ExpectPause(Pause(automationEnabled: false, hostActivityManaged: true), false, PauseReason.ManualControl, "manual control keeps precedence over upstream activity");
+if (!HostSleepRetryPolicy.ShouldRetry(1, 4, true, false, false)
+    || HostSleepRetryPolicy.ShouldRetry(4, 4, true, false, false)
+    || HostSleepRetryPolicy.ShouldRetry(1, 4, false, false, false)
+    || HostSleepRetryPolicy.ShouldRetry(1, 4, true, true, false)
+    || HostSleepRetryPolicy.ShouldRetry(1, 4, true, false, true))
+    throw new InvalidOperationException("host sleep retry crossed an upstream-owned or day-ending boundary");
 
 var manualNow = DateTimeOffset.Parse("2026-08-16T00:00:00Z");
 var manualLease = TimeSpan.FromMinutes(10);
@@ -1053,4 +1063,5 @@ finally
     if (Directory.Exists(atomicDir))
         Directory.Delete(atomicDir, true);
 }
+FarmhandOwnershipBridgeTests.Run();
 Console.WriteLine("control command outcome branch tests passed");

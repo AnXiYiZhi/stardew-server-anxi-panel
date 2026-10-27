@@ -1,3 +1,63 @@
+## 2026-10-27 正式候选前端验收准备
+
+- 073/080已获顺序发布授权。保持透明像素入口、共用紧凑正文/固定底栏、暖昼/静夜主题及提示/范围确认；发布准备不更换视觉方案。
+- 候选门禁纳入upgrade-entry、full-stack-lifecycle、steam-invite-lifecycle三条真实浏览器夹具；CI固定Playwright 1.62.1及Chromium，浏览器channel可配置。本地Browser插件未提供，沿用Playwright。
+- 最新UI输入必须随正式候选重新构建，工程index-VNsdymw9和V4证明仅保留历史用途。官网升级指引先更新，各版本首页/变更记录在对应正式Release后上线。
+
+## 2026-10-27 图标与更新中心展示收尾（本地未发布）
+
+- 游戏库/世界列表的更新与昼夜入口统一为20px像素SVG、透明底色和44px不可收缩触点，提供title、ARIA名称和更新状态标记。`GameLibrary.tsx/.css` 与 `PanelUpdateEntry.tsx` 共用布局；原App、背景及卡片保持原布局，预览只隔离API数据。
+- 更新中心随原页面暖昼/静夜切换：暖黄/棕色与深青/柔金两套CSS token，共用布局、操作与提示确认。`game-library-state.ts` 统一导出既有存储键和初始化读取；页面沿用原自动时钟/手动有效期并向全局provider同步当前主题，不新增轮询或第二套昼夜计时器。实例入口继承最近主题，首次进入也读取同一偏好。
+- `UpdateDetailsDialog.tsx`/`UpdateCenter.css` 使用暖黄、棕色与少量绿色，6px阶梯切角、像素标题/关闭图标和方形确认框；宽度620px，正文可滚动、底部操作栏固定可见。移除重复版本/流程说明，更新内容与停服/Mod提醒直接展示，诊断与历史保持折叠。
+- `FullStackUpgradeActions` 从范围展示中分离，弹窗正文只显示范围，底栏每阶段保留一个主操作；已准备状态显示取消与确认，恢复沿用原事务，已授权事务不提供重新准备入口。`deploy/updates/0.8.0.json` 精简为3条变更和2条必须确认的提醒，最低073、noticeDigest绑定及所有后端拦截保持。
+- 验证：14条更新中心浏览器场景（含已准备范围的提示摘要及夜间提示/链接）、9条StrictMode全栈生命周期、游戏库主题状态/更新状态/响应式及关联回归、production build通过，最终产物index-VNsdymw9。原App预览1440/390/360三宽度两套主题、刷新保持、固定底栏、单主按钮和提示勾选通过，切换主题无API写请求；主按钮正常/悬停、范围文字和发行链接对比度合格，零pageerror。证据在 `E:/task-evidence/panel-upgrade-center-20261026` 的 `update-center-theme-qa.json`、`update-center-layout-qa.json`/`pixel-actions-qa.json` 和对应截图。
+- 预览地址 `http://127.0.0.1:19172/games/stardew`，由外部 `serve-original-preview.mjs` 提供样例API，加载仓库真实main.tsx/App/GameLibrary，未连接生产游戏。此次展示/文案与前端操作组件改动是V4之后的新输入；原V4两段真实升级证明保留为历史，正式候选须从干净同步main重新构建，不直接提升旧工程镜像。
+
+## 2026-10-27 073更新中心本地验收完成（10月26日开始，Panel未发布）
+
+- `GameHubShell` 用户名之前新增 `PanelUpdateEntry`，游戏库和世界列表共用；原实例入口保留。`PanelUpdateProvider` 统一挂载唯一弹窗，移动/桌面实例不再分别渲染弹窗，不新增轮询。
+- `UpdateDetailsDialog`/`UpdateCenter.css` 保留现有羊皮纸视觉，主区展示版本变化、发行内容和重要提示；主操作按环境检查/确认升级推进。诊断信息及成功历史默认折叠，移除完成后仍显示“正在”的长阶段清单；支持Escape、焦点圈定与关闭后恢复焦点。重要提示确认绑定noticeDigest，版本提示变化后不能沿用旧勾选。
+- 30组前端回归和production build通过；最终升级入口12条浏览器场景覆盖提醒摘要、暂缓、历史成功、迁移后普通补丁、已授权恢复等。成功后隐藏已消费的停服确认提醒，保留仍适用的危险/已知问题提示。三个Vite夹具共享fixture-port.mjs，避免Windows HNS排除端口及port:0退回5173。
+- 在真实072升级得到的073上，用游戏库总入口读取080说明、勾选提醒、预检并明确确认世界范围，unhealthy回滚与正常080迁移均通过；实例入口仍可用。真实080在1473/768/390/360四宽度验证唯一弹窗、用户名之前入口、44px触点、无横向溢出、Escape及焦点返回，诊断与成功历史默认折叠。窄屏游戏库沿用既有旋转横屏布局，更新中心本身按屏幕直向适配。
+- 最终生产资源index-B7k138b2，QA截图与日志在 `E:/task-evidence/panel-upgrade-center-20261026/screenshots-actual/`；`actual-ui-qa.json`记录真实升级后结果。更新中心由全局provider共用，不新增轮询或独立升级状态。本轮不提交/推送/发布Panel。
+
+## 2026-10-26 073升级中心前序讨论稿
+
+- 用户要求保留实例内升级按钮，并在总入口增加常驻入口。建议位置为 `GameLibrary.tsx` 的共享 `GameHubShell` 顶栏右侧、用户名之前，游戏库与实例列表同时可见；有更新时显示提示。现有 `App.tsx` 已有全局 `PanelUpdateProvider`，应共用当前状态与持久操作，避免增加第二套轮询/升级状态。
+- 升级中心首屏只呈现当前/可升级版本、面向用户的更新内容、升级影响/重要提醒和一个主操作；检查时间、Compose/镜像/digest、技术阶段及日志放入默认折叠的技术详情。成功后显示简短完成结果，历史进度收起，完成步骤不能继续使用“正在…”文案。
+- 重大版本提醒必须由发行数据提供并直接展示，可包含已知问题、适用范围及暂缓建议；不只给Release外链。前置073版本提示与后端门禁保持一致，旧版只提供073、073后才提供080。Auth已独立正式发布，Panel未修改/发布此方案；待讨论后实施和真实验收。
+
+## 2026-10-26 升级入口历史真实验收（未发布）
+
+- 真实正式072页面已完成更新检查、新dry-run、一次确认、apply及新Panel重连；直达080后显示“Panel已就绪、实例需范围确认”，通过新页面明确确认后迁移140/Auth3，终态succeeded且邀请码有效。最终full-v6已重复完整路径，Panel重启后原cookie仍可访问实例总览、版本入口及成功终态。
+- 过渡bridge-v6健康升级和取码通过；073→080范围流程的unhealthy与Auth3故障分别验证回退和整组恢复。30项声明前端测试、6种React/Chrome入口场景及production build通过；后续后端修正未改变前端输入，224种实际HTTP identity/gzip表示复用证明保留。用户明确以有效邀请码作为本轮联机标准，未执行独立玩家入服。
+- 后端最终补数字UID校验，升级后的备份恢复、Mod开关、游戏重新启动和Panel重启保持均已通过。不得把Panel升级成功提前显示为游戏迁移完成；仍遵循持久操作/范围确认状态。正式候选与发布尚未执行，详见镜像文档。
+
+## 2026-10-25 过渡补丁与实例升级入口实施记录
+
+- 最新验收：用户将邀请码成功取得作为本轮通过标准。旧072页面的检查、dry-run、确认、断线及unhealthy回退已实测；过渡版Panel/Control成功，旧125的Galaxy连接失败经一次实际restart恢复取码。真实大版本预检成功，确认的409定位为可信镜像别名误判，后端已修正并重新冻结full-v5/bridge-v6。前端源码保持不变，224种实际identity/gzip表示已核对，继续真实范围确认、回滚和升级终态验收。
+
+- `VersionInfo.runtimeUpgrade` 描述当前发行包的实例迁移能力及已声明 `targetPanelVersion`；`hasGameUpgradeFlow` 同时读取全局更新检查状态与既有授权。过渡包只对精确已知0.8.0显示范围预检；普通补丁和未知未来目标保留普通Panel入口，目标包激活后可继续当前版本迁移，已授权操作优先续接。`FullStackUpgradePanel` 展示固定 Auth 版本/digest。
+- `UpdateDetailsDialog` 从真实 `PanelUpdateProvider` 读取迁移状态。production build 曾发现误从 `StardewDashboardData` 读取该字段，已修正；`test:upgrade-entry` 的 dashboard 夹具显式移除此字段，浏览器验证过渡补丁、.140 和已授权断线恢复三种入口，防止夹具掩盖上下文来源错误。
+- 本轮30个声明的前端测试脚本通过，入口浏览器补为6场景（普通补丁、旧DTO的140、过渡包当前版、已知大版本、未知未来目标、已授权重连），状态测试与production build再通过。Browser插件不可用，使用bundled Playwright/Chrome。旧072真实Web unhealthy回滚及重连无页面异常；后续健康升级与140范围确认已完成，用户以有效邀请码取代独立玩家入服验收。证据 `tmp/junimo140-closeout-20261025/`。
+
+## 2026-10-16 邀请轮询 P2 与统一升级入口（本地验收完成）
+
+- `useStardewDashboardData.ts` 不再把 `/state` 缓存码当作已核实的 live ready；可见轮询订阅在初始隐藏/已有缓存时仍安装，隐藏时中止当前 invite 读，回到可见即读取。只保留一个 in-flight 请求，实例/会话/卸载代际保护覆盖迟到响应；.140 的 unavailable/丢码继续轮询恢复，.125 真实 ready 后停止网络轮询。
+- 新增真实 React StrictMode + Chrome 的 `test:steam-invite-lifecycle`（9 场景，旧输入复现/新输入通过）及 `test:full-stack-lifecycle`（8 场景）：双击一次请求、旧 GET/POST 迟到、退出登录、普通用户、断线后 GET 续接、人工恢复、范围变化与预检阻塞；手机 scope/hash 无横向溢出。UI 夹具不计真实 Steam/GOG 认证。
+- `FullStackUpgradePanel`、`useFullStackUpgrade`、`full-stack-state` 接入全局 `PanelUpdateProvider`；升级详情显示精确制品、共享成员及原运行/空模板选择，下载预检和执行确认分开。实际 Saved/Stopped/Updated 计数来自事务，Stopped显示“已静止”以包含原已停止成员；全部组持久验收后才显示整次完成。普通游戏变更在维护视图中关闭，进度/诊断/管理员恢复可访问；需要人工恢复时不能新建操作覆盖。v2的总览更新提示改用实例有效inspection，避免已验收140仍被全局125提示重新更新。
+- API/类型与桌面/移动壳、诊断入口同步；旧版先更新Panel后必须刷新新资产再确认游戏范围，健康可达本身不显示全栈成功。当前889文件冻结v4 `91e593400e36…` 的前端30个测试/构建脚本通过；真实旧正式072 Web更新/回滚/范围确认、新协议工程072一次确认跨Panel三世界提交、preparing_game中断安全回滚均通过清理。实际匿名/普通用户/另一管理员/hash/未知scope及可变tag拒绝、跨替换/重启用户保留、桌面终态与390px手机维护无横向溢出均通过。
+- v4双组目标退出亦通过：第一组安全回滚、第二组未开始，页面显示升级未完成且总进度0；重启后实际GET A/B/C均200、无维护，用户与持久状态保留。四项真实场景均归档清理，任务运行资源清零；冷模板源身份失败的历史v3材料保留，不计通过。精确身份、最终矩阵与清理见镜像文档本轮顶部。推荐栈未改，未提交、推送或发布。
+
+## 2026-10-15 Junimo .140 连接状态适配（本地，未发布）
+
+- 诊断页新增共享世界范围确认：预检 `sharedGroupMembers/sharedGroupSha256` 对应数量确认框，取消后不发送 apply；StrictMode 下接受仅发一次并携带原范围 hash。`.140` 文案说明预检后的整组确认。`group-ui-proof.json` 真实隔离 Chrome 的 3 世界取消/接受、请求 hash、1473px 无溢出和控制台错误通过；`test:junimo-update`、`test:component-update-flow` 和 production build 通过。完整多世界游戏 E2E 仍待完成。
+
+- 原 invite-code 接口增加实时连接状态；`types.ts` 与 `steam-invite-state.ts` 区分 GOG 可加入/Steam relay 连接中、完全就绪、连接恢复、Steam session 断开与大厅启动。`useStardewDashboardData.ts` 在可见页持续刷新新版状态，清除被撤回的码，保留同会话/实例的代际保护；旧 state payload 不覆盖 live snapshot，旧版有邀请码后停止轮询的契约保持。
+- 桌面/手机共用 presentation，复制始终只写原邀请码，GOG 提示不会进入剪贴板；实时后台轮询不持续禁用刷新按钮。新增状态是 `connection_ready/steam_relay_pending/reconnecting/connection_starting/steam_session_down/invite_unavailable`，不由码非空认定 Steam ready。
+- 验证：test:install-state 新增状态/轮询/复制语义断言、test:responsive-layout 及其关联脚本、production build 通过。Chrome/Playwright 在 1473×1033 和 390×844 验证 pending→ready→丢码→恢复四状态与复制，root/body 无横向溢出、无框架或控制台错误；截图和结果在 `tmp/junimo140-20261015/connectivity-*`。Browser 插件未提供，使用隔离 Chrome；UI 使用响应夹具，真实 Steam/GOG relay 按后端矩阵单独验收。
+- 推荐栈仍为 .125；完整共享迁移、Control 制品与目标业务门禁尚未完成。最新前端源码晚于 local-v2 Panel 工程镜像，后续重建后再做升级验收。
+
 ## v0.7.2 正式发布完成（2026-09-19）
 
 - 官网收尾：v0.7.2 首页/更新日志已上线，docs:build 6.34s、Pages `35430460046` 和生成/线上 HTML 的页底版本、实际链接、版本顺序及四项正文核验全部通过；详见 docs/11-docs-portal.md。发布后仅提交文档证据，正式 tag/digest 保持。

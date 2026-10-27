@@ -8,14 +8,17 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../smapi-mod-src/ControlContract.cs" Link="ControlContract.cs" />
+    <Compile Include="../smapi-mod-src/FarmhandOwnershipBridge.cs" Link="FarmhandOwnershipBridge.cs" />
     <Compile Include="../smapi-mod-src/PlayerModContexts.cs" Link="PlayerModContexts.cs" />
     <Compile Include="../smapi-mod-src/PlayerCommandOutcomes.cs" Link="PlayerCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/DeferredCommandOutcomes.cs" Link="DeferredCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/PausePolicy.cs" Link="PausePolicy.cs" />
+    <Compile Include="../smapi-mod-src/HostSleepRetryPolicy.cs" Link="HostSleepRetryPolicy.cs" />
     <Compile Include="../smapi-mod-src/HostControlContract.cs" Link="HostControlContract.cs" />
     <Compile Include="../smapi-mod-src/LoginChatPrivacyPolicy.cs" Link="LoginChatPrivacyPolicy.cs" />
     <Compile Include="../smapi-mod-src/RoleCredentialStore.cs" Link="RoleCredentialStore.cs" />
     <Compile Include="../smapi-mod-src/RolePasswordPolicy.cs" Link="RolePasswordPolicy.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="FarmhandOwnershipBridgeTests.cs" />
   </ItemGroup>
 </Project>

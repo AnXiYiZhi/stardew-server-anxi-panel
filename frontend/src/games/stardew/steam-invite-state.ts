@@ -13,14 +13,22 @@ export function steamInviteIsEnabled(
   return state?.steamInviteEnabled === true
 }
 
+export function isLiveSteamInviteStatus(status: SteamInviteStatus | null): boolean {
+  return status === 'connection_ready' || status === 'steam_relay_pending'
+    || status === 'reconnecting' || status === 'connection_starting'
+    || status === 'steam_session_down' || status === 'invite_unavailable'
+}
+
 export function shouldPollSteamInvite(
   state: Pick<InstanceState, 'steamInviteEnabled' | 'state'> | null | undefined,
   requested: boolean,
   inviteCode: string | null,
   status: SteamInviteStatus | null,
 ): boolean {
-  if (!steamInviteIsEnabled(state) || !requested || Boolean(inviteCode)) return false
+  if (!steamInviteIsEnabled(state) || !requested) return false
   if (state?.state !== 'running' && state?.state !== 'starting') return false
+  if (isLiveSteamInviteStatus(status)) return true
+  if (inviteCode) return false
   return status === null || status === 'generating' || status === 'ready'
 }
 
@@ -90,6 +98,21 @@ export function steamInvitePresentation(
 ): SteamInvitePresentation {
   if (!enabled) {
     return { text: '', copyable: false, retryAuthorization: false, tone: 'muted' }
+  }
+  if (status === 'steam_relay_pending') {
+    return { text: `${inviteCode ?? ''}（GOG 可加入，Steam 连接中…）`, copyable: Boolean(inviteCode), retryAuthorization: false, tone: 'loading' }
+  }
+  if (status === 'reconnecting') {
+    return { text: inviteCode ? `${inviteCode}（连接恢复中…）` : '连接恢复中…', copyable: Boolean(inviteCode), retryAuthorization: false, tone: 'loading' }
+  }
+  if (status === 'steam_session_down') {
+    return { text: '正在连接 Steam…', copyable: false, retryAuthorization: false, tone: 'loading' }
+  }
+  if (status === 'connection_starting') {
+    return { text: '联机大厅启动中…', copyable: false, retryAuthorization: false, tone: 'loading' }
+  }
+  if (status === 'invite_unavailable') {
+    return { text: '邀请码暂不可用（直连仍可用）', copyable: false, retryAuthorization: false, tone: 'muted' }
   }
   if (inviteCode) {
     return { text: inviteCode, copyable: true, retryAuthorization: false, tone: 'normal' }

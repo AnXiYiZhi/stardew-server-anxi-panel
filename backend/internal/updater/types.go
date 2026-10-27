@@ -75,6 +75,8 @@ type DryRunStatus struct {
 }
 
 type ApplyStatus struct {
+	OperationID      string           `json:"operationId,omitempty"`
+	PinnedTarget     *PanelTarget     `json:"pinnedTarget,omitempty"`
 	UpdateID         string           `json:"updateId"`
 	Phase            string           `json:"phase"`
 	Progress         int              `json:"progress"`

@@ -143,6 +143,20 @@ func TestUpdaterEndpointsAreAdminOnly(t *testing.T) {
 	_, playerCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{
 		"username": "player", "password": "player-password",
 	}, nil)
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		for _, identity := range []struct {
+			cookie *http.Cookie
+			status int
+		}{{nil, http.StatusUnauthorized}, {playerCookie, http.StatusForbidden}, {adminCookie, http.StatusServiceUnavailable}} {
+			response, _ := doJSON(t, handler, method, "/api/system/update/full-stack", map[string]string{"action": "prepare", "targetVersion": "0.1.15"}, identity.cookie)
+			if response.Code != identity.status {
+				t.Fatalf("full-stack %s role boundary = %d, want %d: %s", method, response.Code, identity.status, response.Body.String())
+			}
+		}
+	}
+	if fake.applies != 0 || fake.starts != 0 {
+		t.Fatal("rejected full-stack requests started a legacy update")
+	}
 	for _, path := range []string{"/api/system/update/capability", "/api/system/update/dry-run"} {
 		method := http.MethodGet
 		if path == "/api/system/update/dry-run" {

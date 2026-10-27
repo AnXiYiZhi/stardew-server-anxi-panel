@@ -103,39 +103,64 @@
   font-weight: 650;
 }
 
-.game-hub-theme-toggle {
+.game-hub-theme-toggle,
+.game-hub-update {
   width: 44px;
   height: 44px;
+  flex: 0 0 44px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid rgba(217, 164, 65, 0.48);
-  border-radius: 50%;
-  color: #efc55f;
-  background: rgba(8, 24, 27, 0.76);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #9db8c9;
+  background: transparent;
   cursor: pointer;
-  transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  transition: color 180ms ease, background 180ms ease;
 }
 
 .game-hub-theme-toggle[aria-pressed="true"] {
-  border-color: rgba(115, 216, 255, 0.45);
   color: #b7dcf1;
 }
 
-.game-hub-theme-toggle:hover {
-  border-color: currentColor;
-  background: rgba(22, 47, 51, 0.9);
-  transform: translateY(-1px);
+.game-hub-theme-toggle:hover,
+.game-hub-update:hover {
+  color: #e8f4f7;
+  background: rgba(92, 147, 181, 0.13);
 }
 
-.game-hub-theme-toggle svg {
-  width: 21px;
-  height: 21px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+.game-hub-theme-toggle svg,
+.game-hub-update svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  stroke: none;
+  shape-rendering: crispEdges;
+}
+
+.game-hub-icon-accent {
+  fill: #c28b30;
+}
+
+.game-hub-update {
+  position: relative;
+}
+
+.game-hub-update-dot {
+  position: absolute;
+  top: 9px;
+  right: 8px;
+  width: 4px;
+  height: 4px;
+  background: #719441;
+}
+
+.game-hub-update.has-attention .game-hub-update-dot {
+  background: #bd7b24;
+}
+
+.game-hub--background-night .game-hub-icon-accent {
+  fill: #e3c47c;
 }
 
 .game-hub--library:not(.game-hub--background-night) .game-hub-topbar {
@@ -159,14 +184,16 @@
   background: rgba(255, 250, 222, 0.58);
 }
 
-.game-hub--library:not(.game-hub--background-night) .game-hub-theme-toggle {
-  border-color: rgba(151, 101, 37, 0.56);
-  color: #a56b20;
-  background: rgba(255, 247, 207, 0.72);
+.game-hub--library:not(.game-hub--background-night) .game-hub-theme-toggle,
+.game-hub--library:not(.game-hub--background-night) .game-hub-update {
+  color: #6d5135;
+  background: transparent;
 }
 
-.game-hub--library:not(.game-hub--background-night) .game-hub-theme-toggle:hover {
-  background: #fff7d5;
+.game-hub--library:not(.game-hub--background-night) .game-hub-theme-toggle:hover,
+.game-hub--library:not(.game-hub--background-night) .game-hub-update:hover {
+  color: #294326;
+  background: rgba(255, 250, 222, 0.58);
 }
 
 .game-hub--library.game-hub--background-night .game-hub-topbar {
@@ -193,14 +220,15 @@
   background: rgba(92, 147, 181, 0.13);
 }
 
-.game-hub--library.game-hub--background-night .game-hub-theme-toggle {
-  border-color: rgba(112, 180, 216, 0.54);
+.game-hub--library.game-hub--background-night .game-hub-theme-toggle,
+.game-hub--library.game-hub--background-night .game-hub-update {
   color: #b7dff0;
-  background: rgba(9, 28, 46, 0.82);
+  background: transparent;
 }
 
-.game-hub--library.game-hub--background-night .game-hub-theme-toggle:hover {
-  background: #173550;
+.game-hub--library.game-hub--background-night .game-hub-theme-toggle:hover,
+.game-hub--library.game-hub--background-night .game-hub-update:hover {
+  background: rgba(92, 147, 181, 0.13);
 }
 
 .game-hub-main {

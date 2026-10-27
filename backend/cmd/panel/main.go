@@ -35,6 +35,16 @@ func main() {
 	ctx := context.Background()
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	_, databaseStatErr := os.Stat(cfg.DBPath)
+	if errors.Is(databaseStatErr, os.ErrNotExist) {
+		if err := updater.RecordBridgeReady(cfg.DataDir, cfg.Version, true); err != nil {
+			logger.Error("upgrade preparation required", "error", err)
+		}
+	}
+	if err := updater.BridgeReady(cfg.DataDir, cfg.Version); err != nil {
+		logger.Error("upgrade prerequisite missing; refusing to open the database or mutate game state", "error", err)
+		os.Exit(1)
+	}
 	store, err := storage.Open(ctx, cfg)
 	if err != nil {
 		logger.Error("failed to open storage", "error", err)
@@ -69,8 +79,14 @@ func main() {
 	jobManager := jobs.NewManager(store, logger)
 	driverRegistry := registry.New()
 	steamDownloads := sharedsteamcmd.NewManager(cfg.DataDir, cfg.ComposeProject)
+	hostname, _ := os.Hostname()
+	var panelIdentity *updater.PanelTarget
+	if observed, err := updater.NewDockerCLI().InspectRunningPanel(ctx, hostname, cfg.Version); err == nil {
+		panelIdentity = &observed
+	}
 	stardewDriver := stardew_junimo.NewWithOptions(dockerClient, logger, jobManager, store, stardew_junimo.DriverOptions{
 		PanelVersion:     cfg.Version,
+		PanelIdentity:    panelIdentity,
 		ContainerDataDir: cfg.DataDir,
 		HostDataDir:      cfg.HostDataDir,
 		SteamDownloads:   steamDownloads,
@@ -116,6 +132,12 @@ func main() {
 			continue
 		}
 		registryInstance := registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}
+		// Shared-root recovery must run before template/auth bootstrap can touch
+		// a peer whose .env is temporarily absent during an interrupted restore.
+		if err := stardewDriver.RecoverRuntimeUpdateApply(ctx, registryInstance); err != nil {
+			logger.Error("failed to recover Junimo runtime update", "instance", instance.ID, "error", err)
+			continue
+		}
 		if installationTemplate.ID != "" && registryInstance.ID != installationTemplate.ID {
 			if changed, err := stardewDriver.ConvergeProvisionedInstanceTemplate(ctx, installationTemplate, registryInstance); err != nil {
 				logger.Warn("failed to converge provisioned instance installation template", "instance", instance.ID, "error", err)
@@ -126,14 +148,10 @@ func main() {
 		if err := stardewDriver.RecoverInterruptedSteamInviteAuthorization(ctx, registryInstance); err != nil {
 			logger.Error("failed to recover interrupted Steam invite authorization", "instance", instance.ID, "error", err)
 		}
-		if err := stardewDriver.RecoverRuntimeUpdateApply(ctx, registryInstance); err != nil {
-			logger.Error("failed to recover Junimo runtime update", "instance", instance.ID, "error", err)
-		}
 		if err := stardewDriver.RecoverSMAPIUpdateApply(ctx, registryInstance); err != nil {
 			logger.Error("failed to recover SMAPI update", "instance", instance.ID, "error", err)
 		}
 	}
-	startPreparedRequiredRuntimeUpdates(signalCtx, logger, stardewDriver, instances)
 	backupInstances := make([]registry.Instance, 0, len(instances))
 	for _, instance := range instances {
 		if instance.DriverID != stardewDriver.ID() {
@@ -161,14 +179,17 @@ func main() {
 		Logger:         logger,
 	})
 	go updateChecker.Run(signalCtx)
-	hostname, _ := os.Hostname()
 	panelUpdater := updater.NewService(updater.ServiceOptions{
 		Docker: updater.NewDockerCLI(), DataDir: cfg.DataDir, ContainerRef: hostname, ContainerDataDir: cfg.DataDir,
 		HostInstallDir: cfg.HostInstallDir, HostComposeFile: cfg.HostComposeFile,
 		HostDataDir: cfg.HostDataDir, ComposeProject: cfg.ComposeProject, Logger: logger,
-		Database: store, DatabasePath: cfg.DBPath,
+		Database: store, DatabasePath: cfg.DBPath, CurrentVersion: cfg.Version,
 	})
+	go startRequiredRuntimeUpdatesAfterPanelUpgrade(signalCtx, logger, stardewDriver, store, panelUpdater.ApplyStatus, cfg.Version, time.Second, func() error { return updater.RecordBridgeReady(cfg.DataDir, cfg.Version, false) })
 	go panelUpdater.ReconcileCompletedImageCleanup(signalCtx, cfg.Version)
+	if updater.BridgeReady(cfg.DataDir, cfg.Version) == nil {
+		go stardewDriver.RunFullStackCoordinator(signalCtx, panelUpdater)
+	}
 
 	handler, err := web.NewHandlerWithError(web.Deps{
 		Config:        cfg,
@@ -179,6 +200,7 @@ func main() {
 		Registry:      driverRegistry,
 		UpdateChecker: updateChecker,
 		Updater:       panelUpdater,
+		UpgradeReady:  func() error { return updater.BridgeReady(cfg.DataDir, cfg.Version) },
 	})
 	if err != nil {
 		logger.Error("failed to initialize HTTP handler", "error", err)

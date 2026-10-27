@@ -15,6 +15,11 @@ var errStardewMutationResponseWritten = errors.New("stardew mutation response al
 // guard to one stable HTTP conflict without teaching Web how owner files work.
 // Stardew remains the sole authority for whether an owner is valid/unfinished.
 func writeStardewMutationGuardConflict(w http.ResponseWriter, err error) bool {
+	var runtimeErr *sj.RuntimeUpdateValidationError
+	if errors.As(err,&runtimeErr) && (runtimeErr.Code=="full_stack_maintenance" || runtimeErr.Code=="full_stack_recovery_required") {
+		writeError(w,http.StatusConflict,runtimeErr.Code,runtimeErr.Message)
+		return true
+	}
 	if errors.Is(err, sj.ErrSteamInviteCleanupPending) {
 		writeError(w, http.StatusConflict, "steam_invite_cleanup_pending", "Steam 授权 holder 尚未安全收敛，请检查 Docker 状态后重试。")
 		return true

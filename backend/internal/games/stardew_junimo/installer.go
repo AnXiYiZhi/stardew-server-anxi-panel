@@ -280,20 +280,46 @@ func (r *installRunner) runPrepared(ctx context.Context, jobCtx *jobs.Context) e
 func (r *installRunner) ensureSteamAuthImage(ctx context.Context, jobCtx *jobs.Context) (string, error) {
 	envPath := filepath.Join(r.instance.DataDir, ".env")
 	envVals, _ := sjconfig.ReadEnvFile(envPath)
+	refs := steamServiceImageRefs(envVals)
+	var authTarget *sjconfig.RuntimeStackManifestComponent
+	contract, err := readConsoleRuntimeContract(r.instance.DataDir)
+	if err != nil {
+		return "", err
+	}
+	if contract.fifo == junimo140InputFIFO {
+		manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+		if err != nil || manifest.FullStackUpgrade == nil || !sjconfig.HasJunimo140SteamAuthTarget(manifest.FullStackUpgrade.SteamAuth) {
+			return "", errors.New("Junimo .140 SteamAuth target is unavailable")
+		}
+		authTarget = &manifest.FullStackUpgrade.SteamAuth
+		refs = authTarget.TrustedCandidates
+	}
 
 	steamImage, err := r.ensureCandidateImage(ctx, jobCtx, imageCandidatePullOptions{
 		Service:       "steam-auth",
 		Label:         "steam-auth-cn",
 		EnvKey:        "STEAM_SERVICE_IMAGE",
-		Refs:          steamServiceImageRefs(envVals),
+		Refs:          refs,
 		PullLogPrefix: "[steam-auth:pull] ",
 	})
 	if err != nil {
 		return "", err
 	}
+	if authTarget != nil {
+		reader, ok := r.driver.docker.(interface {
+			RuntimeImageInspect(context.Context, string, string) (paneldocker.RuntimeImageMetadata, error)
+		})
+		if !ok {
+			return "", errors.New("Docker driver cannot verify Junimo .140 SteamAuth content")
+		}
+		metadata, err := reader.RuntimeImageInspect(ctx, r.instance.DataDir, steamImage)
+		if err != nil || metadata.Digest != authTarget.Digests[steamImage] || !runtimeImageDigestPattern.MatchString(metadata.ID) {
+			return "", errors.New("Junimo .140 SteamAuth image does not match the fixed release content")
+		}
+	}
 	if err := sjconfig.UpdateEnvFile(envPath, map[string]string{
 		"STEAM_SERVICE_IMAGE":            steamImage,
-		"STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(steamServiceImageRefs(envVals), ","),
+		"STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(refs, ","),
 	}); err != nil {
 		return "", fmt.Errorf("write selected steam-auth image to .env: %w", err)
 	}

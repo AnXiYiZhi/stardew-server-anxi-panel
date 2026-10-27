@@ -216,6 +216,14 @@ func runtimeUpdateServerMayHaveBeenRecreated(manifest runtimeUpdateRecoveryManif
 }
 
 func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
+	return d.startRuntimeUpdateApplyWithScope(ctx, instance, createdBy, "")
+}
+
+func (d *Driver) StartRuntimeUpdateApplyWithScope(ctx context.Context, instance registry.Instance, createdBy int64, sharedGroupSHA256 string) (RuntimeUpdateApplyStatus, error) {
+	return d.startRuntimeUpdateApplyWithScope(ctx, instance, createdBy, sharedGroupSHA256)
+}
+
+func (d *Driver) startRuntimeUpdateApplyWithScope(ctx context.Context, instance registry.Instance, createdBy int64, sharedGroupSHA256 string) (RuntimeUpdateApplyStatus, error) {
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return RuntimeUpdateApplyStatus{}, err
 	}
@@ -228,7 +236,7 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 	if previous, err := readRuntimeUpdateApplyStatus(instance.DataDir); err == nil && previous.Phase == RuntimeUpdateApplyRollbackFailed {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "manual_recovery_required", Message: "上次升级自动回滚失败；必须先人工处理并保全恢复材料，禁止自动重试。"}
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.EffectiveRuntimeInspection(instance)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "already_up_to_date", Message: "当前已启用的运行组件已经是推荐版本。"}
 	}
@@ -259,6 +267,9 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	status := RuntimeUpdateApplyStatus{CreatedBy: createdBy, ApplyID: newRuntimeApplyID(), Phase: RuntimeUpdateApplyChecking, Current: inspection.Current, Target: inspection.Recommended, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}, ServerWasRunning: instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting, StartedAt: now, UpdatedAt: now}
+	if junimo140FixedTarget(status.Target) {
+		return d.startJunimo140GroupLocked(ctx, instance, status, dryRun, sharedGroupSHA256)
+	}
 	gate := make(chan struct{})
 	var initialWriteErr error
 	job, err := d.jobs.Start(ctx, jobs.Spec{Type: RuntimeUpdateApplyJobType, DisplayName: "Junimo 运行组件升级", TargetType: "instance", TargetID: instance.ID, CreatedBy: createdBy, Timeout: 2 * time.Hour, Run: func(runCtx context.Context, jobCtx *jobs.Context) error {
@@ -283,7 +294,7 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 func (d *Driver) RuntimeUpdateApplyStatus(instance registry.Instance) (RuntimeUpdateApplyStatus, error) {
 	status, err := readRuntimeUpdateApplyStatus(instance.DataDir)
 	if errors.Is(err, os.ErrNotExist) {
-		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		inspection := d.EffectiveRuntimeInspection(instance)
 		return RuntimeUpdateApplyStatus{Phase: "idle", Current: inspection.Current, Target: inspection.Recommended, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}}, nil
 	}
 	return status, err
@@ -295,6 +306,9 @@ func (d *Driver) RuntimeUpdateApplyStatus(instance registry.Instance) (RuntimeUp
 func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registry.Instance) error {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if handled, err := d.recoverJunimo140GroupLocked(ctx, instance); handled || err != nil {
+		return err
+	}
 	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
 		return err
 	}

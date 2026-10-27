@@ -154,7 +154,22 @@ func DurableCommandResultProtected(dataDir, commandID string) (bool, error) {
 	if err != nil || protected {
 		return protected, err
 	}
-	return SaveImportCommandResultProtected(dataDir, commandID)
+	protected, err = SaveImportCommandResultProtected(dataDir, commandID)
+	if err != nil || protected {
+		return protected, err
+	}
+	// A shared group's immutable owner lives at its primary member, whose path
+	// cannot be inferred safely by this local cleanup gate. Retain outcomes for
+	// the whole leased member until the group releases its durable owner. This
+	// also covers the save-intent checkpoint and a late same-command receipt.
+	_, err = readJunimo140GroupLease(dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read shared runtime lease before command result cleanup: %w", err)
+	}
+	return true, nil
 }
 
 func ListCommandResultFiles(dataDir string) ([]CommandResultFile, error) {

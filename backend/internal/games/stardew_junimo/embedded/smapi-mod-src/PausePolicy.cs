@@ -20,13 +20,19 @@ public static class PausePolicy
         bool connectionCountKnown,
         int connectionCount,
         bool isFestivalDay,
-        int timeOfDay)
+        int timeOfDay,
+        bool hostActivityManaged = false)
     {
         if (!enabled || !isServer || !worldReady)
             return new(false, PauseReason.None);
 
         if (automationKnown && !automationEnabled)
             return new(false, PauseReason.ManualControl);
+
+        // The newer upstream policy also owns the sleep-request and transition
+        // phases surrounding a warp or event; a legacy pause must not race it.
+        if (hostActivityManaged)
+            return new(false, PauseReason.None);
 
         if (
             connectionCountKnown

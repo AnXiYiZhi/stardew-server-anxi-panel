@@ -35,6 +35,9 @@ func deletionError(message string) error {
 // RejectInstanceDeletion also fences bootstrap and background workflows after
 // restart. The durable journal must not be replaced by Prepare or reconciliation.
 func (d *Driver) RejectInstanceDeletion(ctx context.Context, id string) error {
+	if err := d.fullStackOwnsInstance(ctx, id); err != nil {
+		return err
+	}
 	if provisions, ok := d.store.(interface {
 		InstanceProvisionOwner(context.Context, string) (string, error)
 	}); ok {

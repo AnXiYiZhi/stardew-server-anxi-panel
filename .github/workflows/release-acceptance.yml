@@ -1,0 +1,122 @@
+name: Validate real Docker candidate acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful immutable candidate workflow run
+        required: true
+        type: string
+      acceptance_json:
+        description: Safe acceptance summary for the exact candidate digest
+        required: true
+        type: string
+
+concurrency:
+  group: candidate-acceptance-main
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+jobs:
+  acceptance:
+    name: Seal completed real Docker acceptance
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the exact successful candidate proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID")"
+          jq -e --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .head_repository.full_name == $repo and .path == ".github/workflows/release-candidate.yml"' <<<"$run_json" >/dev/null
+          proof_dir="$RUNNER_TEMP/candidate-proof"
+          mkdir -p "$proof_dir"
+          artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/artifacts")"
+          mapfile -t artifact_names < <(jq -r '.artifacts[] | select((.name | startswith("release-candidate-")) and (.expired | not)) | .name' <<<"$artifacts_json")
+          if [[ "${#artifact_names[@]}" -ne 1 ]]; then
+            echo "expected exactly one immutable candidate proof" >&2
+            exit 1
+          fi
+          gh run download "$CANDIDATE_RUN_ID" --name "${artifact_names[0]}" --dir "$proof_dir"
+          jq -e --arg sha "$GITHUB_SHA" --arg run "$CANDIDATE_RUN_ID" '.commit == $sha and .workflowRunId == $run' "$proof_dir/candidate.json" >/dev/null
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
+
+      - name: Validate completed specialist checks and identity
+        id: proof
+        shell: bash
+        env:
+          ACCEPTANCE_JSON: ${{ inputs.acceptance_json }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$ACCEPTANCE_JSON" >"$RUNNER_TEMP/acceptance-input.json"
+          python3 scripts/candidate_acceptance.py --candidate "$RUNNER_TEMP/candidate-proof/candidate.json" --acceptance "$RUNNER_TEMP/acceptance-input.json" --output "$RUNNER_TEMP/acceptance.json" --acceptance-run-id "$GITHUB_RUN_ID"
+          version="$(jq -r '.version' "$RUNNER_TEMP/acceptance.json")"
+          commit="$(jq -r '.commit' "$RUNNER_TEMP/acceptance.json")"
+          echo "artifact_name=release-acceptance-$version-${commit:0:12}" >>"$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Seal exact tested digest as the formal candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          command -v skopeo
+          skopeo --version
+          proof="$RUNNER_TEMP/candidate-proof/candidate.json"
+          version="$(jq -r '.version' "$proof")"
+          commit="$(jq -r '.commit' "$proof")"
+          digest="$(jq -r '.digest' "$proof")"
+          candidate_ref="$(jq -r '.candidateRef' "$proof")"
+          validation_ref="$(jq -r '.validationRef' "$proof")"
+          repository=ghcr.io/anxiyizhi/stardew-server-anxi-panel
+          [[ "$candidate_ref" == "$repository:candidate-$version-${commit:0:12}" ]]
+          [[ "$validation_ref" == "$repository:validation-$version-${commit:0:12}" ]]
+          [[ "$(skopeo inspect --format '{{.Digest}}' "docker://$validation_ref")" == "$digest" ]]
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          [[ "$(git rev-parse origin/main)" == "$commit" ]]
+          versions_json="$(gh api --paginate --slurp "users/$GITHUB_REPOSITORY_OWNER/packages/container/stardew-server-anxi-panel/versions?per_page=100")"
+          candidate_exists="$(jq -r --arg tag "${candidate_ref##*:}" 'any(.[][]; .metadata.container.tags | index($tag) != null)' <<<"$versions_json")"
+          if [[ "$candidate_exists" == true ]]; then
+            [[ "$(skopeo inspect --format '{{.Digest}}' "docker://$candidate_ref")" == "$digest" ]]
+          else
+            [[ "$candidate_exists" == false ]]
+            skopeo copy --all --preserve-digests "docker://$repository@$digest" "docker://$candidate_ref"
+          fi
+          [[ "$(skopeo inspect --format '{{.Digest}}' "docker://$candidate_ref")" == "$digest" ]]
+
+      - name: Upload immutable specialist acceptance proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.proof.outputs.artifact_name }}
+          path: ${{ runner.temp }}/acceptance.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Acceptance summary
+        shell: bash
+        run: |
+          {
+            echo '## Real Docker acceptance sealed'
+            jq -r '"- Version: " + .version, "- Commit: " + .commit, "- Digest: " + .digest, "- Candidate workflow: " + .candidateWorkflowRunId, "- Evidence manifest SHA256: " + .evidence.manifestSha256' "$RUNNER_TEMP/acceptance.json"
+          } >>"$GITHUB_STEP_SUMMARY"

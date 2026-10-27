@@ -82,23 +82,25 @@ type RuntimeUpdateDownloadProgress struct {
 }
 
 type RuntimeUpdateDryRunStatus struct {
-	DryRunID      string                              `json:"dryRunId,omitempty"`
-	JobID         string                              `json:"jobId,omitempty"`
-	Phase         string                              `json:"phase"`
-	Progress      int                                 `json:"progress"`
-	Download      *RuntimeUpdateDownloadProgress      `json:"download,omitempty"`
-	Current       sjconfig.RuntimeStackCurrent        `json:"current"`
-	Target        sjconfig.RuntimeStackRecommendation `json:"target"`
-	Selected      RuntimeUpdateSelectedPair           `json:"selected"`
-	Checks        []RuntimeUpdateDryRunCheck          `json:"checks"`
-	Warnings      []string                            `json:"warnings"`
-	Logs          []RuntimeUpdateDryRunLog            `json:"logs"`
-	ServerRunning bool                                `json:"serverRunning"`
-	ErrorCode     string                              `json:"errorCode,omitempty"`
-	Error         string                              `json:"error,omitempty"`
-	StartedAt     string                              `json:"startedAt,omitempty"`
-	UpdatedAt     string                              `json:"updatedAt,omitempty"`
-	FinishedAt    string                              `json:"finishedAt,omitempty"`
+	SharedGroupSHA256  string                              `json:"sharedGroupSha256,omitempty"`
+	SharedGroupMembers int                                 `json:"sharedGroupMembers,omitempty"`
+	DryRunID           string                              `json:"dryRunId,omitempty"`
+	JobID              string                              `json:"jobId,omitempty"`
+	Phase              string                              `json:"phase"`
+	Progress           int                                 `json:"progress"`
+	Download           *RuntimeUpdateDownloadProgress      `json:"download,omitempty"`
+	Current            sjconfig.RuntimeStackCurrent        `json:"current"`
+	Target             sjconfig.RuntimeStackRecommendation `json:"target"`
+	Selected           RuntimeUpdateSelectedPair           `json:"selected"`
+	Checks             []RuntimeUpdateDryRunCheck          `json:"checks"`
+	Warnings           []string                            `json:"warnings"`
+	Logs               []RuntimeUpdateDryRunLog            `json:"logs"`
+	ServerRunning      bool                                `json:"serverRunning"`
+	ErrorCode          string                              `json:"errorCode,omitempty"`
+	Error              string                              `json:"error,omitempty"`
+	StartedAt          string                              `json:"startedAt,omitempty"`
+	UpdatedAt          string                              `json:"updatedAt,omitempty"`
+	FinishedAt         string                              `json:"finishedAt,omitempty"`
 }
 
 type RuntimeUpdateValidationError struct {
@@ -144,7 +146,7 @@ func (d *Driver) StartRuntimeUpdateDryRun(ctx context.Context, instance registry
 	if instance.DriverID != DriverID {
 		return RuntimeUpdateDryRunStatus{}, &RuntimeUpdateValidationError{Code: "unsupported/driver", Message: "实例不是 stardew_junimo driver。"}
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.EffectiveRuntimeInspection(instance)
 	switch inspection.Status {
 	case sjconfig.RuntimeStackStatusNotInstalled:
 		return RuntimeUpdateDryRunStatus{}, &RuntimeUpdateValidationError{Code: "not_installed", Message: "实例尚未安装 Junimo 运行组件。"}
@@ -220,7 +222,7 @@ func (d *Driver) StartRuntimeUpdateDryRun(ctx context.Context, instance registry
 func (d *Driver) RuntimeUpdateDryRunStatus(instance registry.Instance) (RuntimeUpdateDryRunStatus, error) {
 	status, err := readRuntimeUpdateDryRunStatus(instance.DataDir)
 	if errors.Is(err, os.ErrNotExist) {
-		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		inspection := d.EffectiveRuntimeInspection(instance)
 		return RuntimeUpdateDryRunStatus{
 			Phase:         RuntimeUpdatePhaseIdle,
 			Current:       inspection.Current,

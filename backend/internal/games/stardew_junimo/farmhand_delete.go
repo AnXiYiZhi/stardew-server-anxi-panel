@@ -356,11 +356,11 @@ func readJunimoFarmhands(ctx context.Context, exec commandExecutor, dataDir stri
 }
 
 func (r *farmhandDeleteRunner) deleteViaJunimo(ctx context.Context) error {
-	apiPort, apiKey, err := readJunimoAPIConfig(r.instance.DataDir)
+	_, apiKey, err := readJunimoAPIConfig(r.instance.DataDir)
 	if err != nil {
 		return err
 	}
-	requestURL := "http://localhost:" + apiPort + "/farmhands?playerId=" + url.QueryEscape(r.playerID)
+	requestURL := "http://localhost:" + junimoContainerAPIPort + "/farmhands?playerId=" + url.QueryEscape(r.playerID)
 	args := []string{"curl", "-sS", "--max-time", "20", "-w", "\n%{http_code}", "-X", "DELETE"}
 	if apiKey != "" {
 		args = append(args, "-H", "Authorization: Bearer "+apiKey)
@@ -439,5 +439,5 @@ func verifyFarmhandAbsentOnDisk(dataDir, saveName, playerID string) error {
 			return fmt.Errorf("磁盘主存档仍包含被删除人物")
 		}
 	}
-	return nil
+	return verifyDeletedJunimoFarmhandOwnership(dataDir, saveName, playerID)
 }

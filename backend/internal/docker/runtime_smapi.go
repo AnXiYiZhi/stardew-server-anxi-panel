@@ -16,6 +16,9 @@ type RuntimeSMAPIMetadata struct {
 	RequiredFiles   bool
 	Version         string
 	VersionEvidence string
+	BuildID         string
+	ImageBuildID    string
+	CoreHashes      map[string]string
 }
 
 func (c *Client) RuntimeCreateSMAPIStagingVolume(ctx context.Context, dir, project, name string) error {
@@ -93,9 +96,14 @@ func (c *Client) RuntimeReadSMAPIMetadata(ctx context.Context, dir, volumeName, 
 	if _, err := c.RuntimeVolumeInspect(ctx, dir, volumeName); err != nil {
 		return RuntimeSMAPIMetadata{}, err
 	}
-	if _, err := c.RuntimeImageInspect(ctx, dir, imageRef); err != nil {
+	image, err := c.RuntimeImageInspect(ctx, dir, imageRef)
+	if err != nil {
 		return RuntimeSMAPIMetadata{}, errors.New("local runtime image is unavailable")
 	}
+	return c.readSMAPIMetadataFromImageID(ctx, dir, volumeName, image.ID)
+}
+
+func (c *Client) readSMAPIMetadataFromImageID(ctx context.Context, dir, volumeName, imageID string) (RuntimeSMAPIMetadata, error) {
 	const script = `set -eu
 if [ ! -f /game/StardewModdingAPI.dll ]; then printf 'PRESENT=0\nFILES=0\n'; exit 0; fi
 printf 'PRESENT=1\n'
@@ -103,22 +111,38 @@ files=1
 for path in /game/StardewModdingAPI /game/StardewModdingAPI.dll /game/StardewModdingAPI.deps.json /game/StardewModdingAPI.runtimeconfig.json /game/smapi-internal/config.json; do [ -e "$path" ] || files=0; done
 printf 'FILES=%s\n' "$files"
 version="$(grep -aoE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\+[0-9a-f]{7,64}' /game/StardewModdingAPI.dll 2>/dev/null | sort -u | head -n 1 || true)"
-printf 'VERSION=%s\n' "$version"`
+printf 'VERSION=%s\n' "$version"
+build=''; image_build=''
+if [ -f /game/smapi-internal/.sdvd-smapi-build ]; then IFS= read -r build </game/smapi-internal/.sdvd-smapi-build || true; fi
+if [ -f /opt/smapi/BUILD_ID ]; then IFS= read -r image_build </opt/smapi/BUILD_ID || true; fi
+printf 'BUILD_ID=%s\nIMAGE_BUILD_ID=%s\n' "$build" "$image_build"
+for path in StardewModdingAPI.dll StardewModdingAPI.runtimeconfig.json smapi-internal/SMAPI.Toolkit.dll smapi-internal/0Harmony.dll; do
+    if [ -f "/game/$path" ]; then
+        hash="$(sha256sum "/game/$path")"; hash="${hash%% *}"
+        printf 'HASH:%s=%s\n' "$path" "$hash"
+    fi
+done`
 	result, err := c.run(ctx, "read SMAPI assembly metadata", dir, c.timeouts.Ps,
 		"run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp",
+		"--label", "com.anxi-panel.smapi-metadata-helper=true", "--label", "com.anxi-panel.game-data-volume="+volumeName,
 		"--mount", "type=volume,src="+volumeName+",dst=/game,readonly",
-		"--entrypoint", "sh", imageRef, "-c", script)
+		"--entrypoint", "sh", imageID, "-c", script)
 	if err != nil {
 		return RuntimeSMAPIMetadata{}, err
 	}
 	values := map[string]string{}
+	hashes := map[string]string{}
 	for _, line := range strings.Split(strings.ReplaceAll(result.Stdout, "\r\n", "\n"), "\n") {
 		if key, value, ok := strings.Cut(line, "="); ok {
 			values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+			if name, ok := strings.CutPrefix(key, "HASH:"); ok {
+				hashes[name] = strings.TrimSpace(value)
+			}
 		}
 	}
 	return RuntimeSMAPIMetadata{
 		Present: values["PRESENT"] == "1", RequiredFiles: values["FILES"] == "1",
 		Version: values["VERSION"], VersionEvidence: "StardewModdingAPI.dll AssemblyInformationalVersion",
+		BuildID: values["BUILD_ID"], ImageBuildID: values["IMAGE_BUILD_ID"], CoreHashes: hashes,
 	}, nil
 }

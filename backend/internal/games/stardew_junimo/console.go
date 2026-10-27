@@ -23,7 +23,7 @@ type CommandDef struct {
 	Name        string // display name, e.g. "服务器信息"
 	Description string // short description for the frontend
 	AdminOnly   bool   // only admin role can execute
-	CommandLine string // single SMAPI/Junimo command written to /tmp/smapi-input
+	CommandLine string // single SMAPI/Junimo command written to the deployed runtime's FIFO
 }
 
 // commandDefs is the global allowlist. The ID is the key the frontend sends.
@@ -446,9 +446,15 @@ func randomHex(byteCount int) (string, error) {
 }
 
 func sendServerCommand(ctx context.Context, exec commandExecutor, dir, command string) (string, int, string, error) {
-	before := readServerLogSize(ctx, exec, dir)
-	writeResult, err := exec.ComposeExecPipe(ctx, dir, "server", command+"\n", "tee", "-a", serverInputFIFO)
+	before, err := strictServerLogSize(ctx, exec, dir)
 	if err != nil {
+		return "", -1, "服务器输出日志不可读，无法确认命令回执", err
+	}
+	writeResult, err := writeServerInput(ctx, exec, dir, command)
+	if err != nil {
+		if writeResult.Stderr == "" {
+			writeResult.Stderr = "无法向服务器控制管道写入命令，请检查游戏进程与目录权限"
+		}
 		return writeResult.Stdout, writeResult.ExitCode, writeResult.Stderr, err
 	}
 
@@ -456,7 +462,7 @@ func sendServerCommand(ctx context.Context, exec commandExecutor, dir, command s
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		output = readServerLogSince(ctx, exec, dir, before)
-		if strings.TrimSpace(output) != "" || time.Now().After(deadline) {
+		if serverCommandResponseMatches(command, output) || time.Now().After(deadline) {
 			break
 		}
 		select {
@@ -465,8 +471,8 @@ func sendServerCommand(ctx context.Context, exec commandExecutor, dir, command s
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
-	if strings.TrimSpace(output) == "" {
-		output = writeResult.Stdout
+	if !serverCommandResponseMatches(command, output) {
+		return output, -1, "服务器未返回命令回执，请检查游戏状态后再试", &CommandError{Code: "console_response_missing", Message: "服务器未返回命令回执"}
 	}
 	return output, writeResult.ExitCode, writeResult.Stderr, nil
 }
@@ -488,14 +494,8 @@ func readServerLogSize(ctx context.Context, exec commandExecutor, dir string) in
 }
 
 func readServerLogSince(ctx context.Context, exec commandExecutor, dir string, offset int64) string {
-	if offset > 0 {
-		result, err := exec.ComposeExecPipe(ctx, dir, "server", "", "tail", "-c", fmt.Sprintf("+%d", offset+1), serverOutputLog)
-		if err == nil {
-			return result.Stdout
-		}
-	}
-	result, err := exec.ComposeExecPipe(ctx, dir, "server", "", "tail", "-n", "80", serverOutputLog)
-	if err != nil {
+	result, err := exec.ComposeExecPipe(ctx, dir, "server", "", "tail", "-c", fmt.Sprintf("+%d", offset+1), serverOutputLog)
+	if err != nil || result.ExitCode != 0 {
 		return ""
 	}
 	return result.Stdout

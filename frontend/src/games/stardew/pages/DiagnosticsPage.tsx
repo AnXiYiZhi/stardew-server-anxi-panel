@@ -347,8 +347,13 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     if (!shouldStartRequestedApply(junimoRequestedDryRunId, junimoDryRun?.dryRunId, junimoDryRun?.phase, junimoApplyBusy, junimoApplyActive(junimoApply?.phase))) return
     if (junimoApplyStartedForDryRun.current === junimoRequestedDryRunId) return
     junimoApplyStartedForDryRun.current = junimoRequestedDryRunId
+    const sharedWorlds = junimoDryRun?.sharedGroupMembers ?? 0
+    if (sharedWorlds > 0 && !window.confirm(`预检确认本次组件升级涉及 ${sharedWorlds} 个共享游戏文件的世界。\n\n系统将整组保存、停止和备份，再逐个升级验收；任一世界失败都会整组回滚。没有存档的模板保持关闭。\n\n确认应用到这 ${sharedWorlds} 个世界？`)) {
+      setJunimoRequestedDryRunId(null)
+      return
+    }
     setJunimoApplyBusy(true)
-    startJunimoUpdateApply().then((result) => {
+    startJunimoUpdateApply(defaultInstanceId, junimoDryRun?.sharedGroupSha256).then((result) => {
       setJunimoApply(result)
       setJunimoApplyError(null)
       setJunimoRequestedDryRunId(null)
@@ -356,7 +361,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
       setJunimoApplyError(errorMessage(e))
       setJunimoRequestedDryRunId(null)
     }).finally(() => setJunimoApplyBusy(false))
-  }, [junimoApply?.phase, junimoApplyBusy, junimoDryRun?.dryRunId, junimoDryRun?.phase, junimoRequestedDryRunId])
+  }, [junimoApply?.phase, junimoApplyBusy, junimoDryRun?.dryRunId, junimoDryRun?.phase, junimoDryRun?.sharedGroupMembers, junimoDryRun?.sharedGroupSha256, junimoRequestedDryRunId])
 
   useEffect(() => {
     if (junimoRequestedDryRunId === junimoDryRun?.dryRunId && (junimoDryRun?.phase === 'failed' || junimoDryRun?.phase === 'unsupported')) setJunimoRequestedDryRunId(null)
@@ -481,7 +486,9 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
 
   async function handleJunimoUpgrade() {
     if (!junimoUpdate || !junimoUpdateAvailable || junimoRepairPlan || junimoApply?.phase === 'rollback_failed') return
-    const runningNote = junimoDryRun?.serverRunning || instanceState?.state === 'running'
+    const runningNote = junimoUpdate.recommended.server.tag === '1.5.0-preview.140'
+      ? '预检后将展示本次共享世界范围，确认后再整组应用。'
+      : junimoDryRun?.serverRunning || instanceState?.state === 'running'
       ? '更新期间服务器会安全停服，完成后恢复运行。'
       : '服务器当前停止；验收时会临时启动，完成后恢复停止。'
     if (!window.confirm(`升级 Junimo 服务组件到 ${junimoUpdate.recommended.server.tag}？\n\n点击确认后会自动完成环境校验、镜像下载、安装和验收。${runningNote}\n如果新版本验收失败，系统会尝试恢复原版本。`)) return
@@ -554,8 +561,8 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
 
   const junimoProgress = junimoUserPhase(junimoDryRun, junimoApply)
   const smapiProgress = smapiUserPhase(smapiDryRun, smapiApply)
-  const junimoUpgradeBusy = junimoRequestedDryRunId !== null || junimoDryRunBusy || junimoApplyBusy || junimoDryRunActive(junimoDryRun?.phase) || junimoApplyActive(junimoApply?.phase)
-  const smapiUpgradeBusy = smapiRequestedDryRunId !== null || smapiDryRunBusy || smapiApplyBusy || smapiPhaseActive(smapiDryRun?.phase) || smapiPhaseActive(smapiApply?.phase)
+  const junimoUpgradeBusy = Boolean(instanceState?.maintenance) || junimoRequestedDryRunId !== null || junimoDryRunBusy || junimoApplyBusy || junimoDryRunActive(junimoDryRun?.phase) || junimoApplyActive(junimoApply?.phase)
+  const smapiUpgradeBusy = Boolean(instanceState?.maintenance) || smapiRequestedDryRunId !== null || smapiDryRunBusy || smapiApplyBusy || smapiPhaseActive(smapiDryRun?.phase) || smapiPhaseActive(smapiApply?.phase)
   const junimoWorkflowVisible = junimoRequestedDryRunId !== null || junimoDryRunBusy || junimoApplyBusy || (junimoDryRun != null && junimoDryRun.phase !== 'idle') || (junimoApply != null && junimoApply.phase !== 'idle') || !!junimoDryRunError || !!junimoApplyError
   const smapiWorkflowVisible = smapiRequestedDryRunId !== null || smapiDryRunBusy || smapiApplyBusy || (smapiDryRun != null && smapiDryRun.phase !== 'idle') || (smapiApply != null && smapiApply.phase !== 'idle') || !!smapiError
 
@@ -878,7 +885,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
                     ? `检测：${junimoRepairPlan.detection} 处理：${junimoRepairPlan.method}`
                     : junimoNeedsReview
                       ? (junimoUpdate?.reason || junimoUpdateError || junimoApplyError || '当前版本配置无法可靠判断，请联系面板管理员处理。')
-                      : `${junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → ${junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。${junimoUpdate?.recommended.runtimeUpdatePolicy === 'required' ? '当前 Panel 强制使用此版本，系统会自动完成升级，无需再次确认。' : '点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。'}`}</p>
+                      : `${junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → ${junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。${junimoUpdate?.recommended.server.tag === '1.5.0-preview.140' ? '预检后展示共享世界范围，由管理员确认后整组升级。' : junimoUpdate?.recommended.runtimeUpdatePolicy === 'required' ? '当前 Panel 强制使用此版本，系统会自动完成升级，无需再次确认。' : '点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。'}`}</p>
                 </div>
                 {isAdmin ? (junimoRepairAvailable
                   ? <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoUpgradeBusy} onClick={handleJunimoRepair}>{junimoUpgradeBusy ? '修复进行中…' : junimoRepairPlan.buttonLabel}</button>

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
@@ -19,6 +20,7 @@ import (
 	sharedsteamcmd "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/steamcmd"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updater"
 )
 
 const (
@@ -122,6 +124,7 @@ type Driver struct {
 	store              StateStore
 	importJournalWrite func(string, ImportJournal) error
 	panelVersion       string
+	panelIdentity      atomic.Pointer[updater.PanelTarget]
 	containerDataDir   string
 	hostDataDir        string
 	steamDownloads     *sharedsteamcmd.Manager
@@ -131,6 +134,8 @@ type Driver struct {
 	guardChans map[string]chan string
 
 	runtimeUpdateMu                  sync.Mutex
+	fullStackMu                      sync.Mutex
+	fullStackRunning                 bool
 	inviteCodeMu                     sync.Mutex
 	inviteCodeCache                  map[string]inviteCodeCacheEntry
 	inviteCodeFlights                map[string]*inviteCodeFlight
@@ -153,6 +158,7 @@ type Driver struct {
 
 type DriverOptions struct {
 	PanelVersion     string
+	PanelIdentity    *updater.PanelTarget
 	ContainerDataDir string
 	HostDataDir      string
 	SteamDownloads   *sharedsteamcmd.Manager
@@ -182,7 +188,7 @@ func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.
 	if steamDownloads == nil && strings.TrimSpace(options.ContainerDataDir) != "" {
 		steamDownloads = sharedsteamcmd.NewManager(options.ContainerDataDir, "anxi-panel")
 	}
-	return &Driver{
+	driver := &Driver{
 		docker:                           docker,
 		logger:                           logger,
 		jobs:                             jobManager,
@@ -203,6 +209,11 @@ func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.
 		requiredRuntimeRunning:           make(map[string]bool),
 		installationEvidence:             make(map[string]requiredFilesEvidence),
 	}
+	if options.PanelIdentity != nil && options.PanelIdentity.Valid() && options.PanelIdentity.Version == strings.TrimPrefix(panelVersion, "v") {
+		pin := *options.PanelIdentity
+		driver.panelIdentity.Store(&pin)
+	}
+	return driver
 }
 
 // ── registry.GameDriver interface ─────────────────────────────────────────────
@@ -634,6 +645,12 @@ func (d *Driver) SendSteamGuardInput(jobID string, input string) error {
 //   - "running"/"starting" when the Docker container is no longer actually up → "stopped"
 //   - installed states when the expected local install directory is still empty → "error"
 func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) (storage.Instance, error) {
+	if d.InstanceFullStackMaintenance(instance.ID) != nil {
+		return instance, nil
+	}
+	if err := rejectJunimo140GroupLease(instance.DataDir); err != nil {
+		return instance, nil
+	}
 	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
 		return instance, err
 	}
@@ -1087,9 +1104,11 @@ echo "INSTALL_REQUIRED_FILES_OK"
 	exitCode, err := d.docker.RunContainerTTY(ctx, paneldocker.ContainerTTYRunOpts{
 		ImageRef:   imageRef,
 		Entrypoint: []string{"/bin/sh"},
-		User:       "root",
-		Command:    []string{"-lc", script},
-		Binds:      []string{gameDataVolume + ":/data/game"},
+		// Junimo .140 omits /etc/passwd. Numeric UID works on both legacy and
+		// current images without requiring a named-user lookup in the image.
+		User:    "0",
+		Command: []string{"-lc", script},
+		Binds:   []string{gameDataVolume + ":/data/game"},
 	}, nil, func(line string) {
 		if lineHandler != nil {
 			lineHandler(line)

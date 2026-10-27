@@ -383,7 +383,7 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	if err != nil || version != "1.5.0-preview.125" {
 		t.Fatalf("host-mounted JunimoServer mod was not upgraded: version=%q err=%v", version, err)
 	}
-	if !strings.Contains(calls, "tee -a "+serverInputFIFO) || strings.Contains(calls, "attach-cli") {
+	if !strings.Contains(calls, "dd of="+serverInputFIFO+" oflag=nonblock conv=nocreat") || strings.Contains(calls, "attach-cli") {
 		t.Fatalf("runtime verification did not use the FIFO control contract: %s", calls)
 	}
 }

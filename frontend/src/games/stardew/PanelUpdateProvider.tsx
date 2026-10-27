@@ -15,10 +15,14 @@ import type { CurrentUser } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import { isPanelUpdateActive, isPanelUpdateTerminal, panelUpdatePhaseLabel, reconnectDelay } from './panel-update-machine'
 import './PanelUpdateProvider.css'
+import { useFullStackUpgrade } from './useFullStackUpgrade'
+import { projectFullStackApply } from './full-stack-state'
+import { UpdateDetailsDialog } from './UpdateDetailsDialog'
+import { storedGameLibraryBackground, type GameLibraryBackground } from '../game-library-state'
 
 type ReconnectMode = 'idle' | 'offline' | 'timeout'
 
-export type PanelUpdateContextValue = {
+export type PanelUpdateContextValue = ReturnType<typeof useFullStackUpgrade> & {
   versionInfo: VersionInfo | null
   updateStatus: PanelUpdateStatus | null
   updateDryRun: PanelUpdateDryRunStatus | null
@@ -30,11 +34,13 @@ export type PanelUpdateContextValue = {
   updateDryRunChecking: boolean
   updateApplyStarting: boolean
   updateDialogOpen: boolean
+  updateTheme: GameLibraryBackground
+  setUpdateTheme: (theme: GameLibraryBackground) => void
   reconnectMode: ReconnectMode
   reconnectAttempts: number
   refreshUpdateStatus: (manual?: boolean) => Promise<void>
   runUpdateDryRun: (targetVersion: string) => Promise<void>
-  applyUpdate: () => Promise<void>
+  applyUpdate: (noticeDigest?: string) => Promise<void>
   openUpdateDialog: () => void
   closeUpdateDialog: () => void
   continueReconnect: () => void
@@ -79,11 +85,27 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
   const [updateDryRunChecking, setUpdateDryRunChecking] = useState(false)
   const [updateApplyStarting, setUpdateApplyStarting] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [updateTheme, setUpdateTheme] = useState<GameLibraryBackground>(() => storedGameLibraryBackground().background)
   const [reconnectMode, setReconnectMode] = useState<ReconnectMode>('idle')
   const [reconnectAttempts, setReconnectAttempts] = useState(0)
   const [reconnectGeneration, setReconnectGeneration] = useState(0)
   const reconnectStartedRef = useRef(0)
   const reconnectGenerationRef = useRef(0)
+  const fullStack = useFullStackUpgrade(user.id,isAdmin,setUpdateApply,useCallback((offline:boolean)=>{
+    if(offline) {
+      if(!reconnectStartedRef.current) reconnectStartedRef.current=Date.now()
+      setReconnectMode(Date.now()-reconnectStartedRef.current>=RECONNECT_TIMEOUT_MS ? 'timeout' : 'offline')
+      setReconnectAttempts(value=>value+1)
+    } else {
+      reconnectStartedRef.current=0
+      setReconnectMode('idle')
+      setReconnectAttempts(0)
+    }
+  },[]),useCallback(()=>{
+    setUpdateDialogOpen(true)
+    window.dispatchEvent(new CustomEvent('panel-update-recovered'))
+  },[]))
+  const projectedApply = useMemo(()=>projectFullStackApply(updateApply,fullStack.fullStackUpgrade,versionInfo?.version || updateStatus?.currentVersion || ''),[updateApply,fullStack.fullStackUpgrade,versionInfo?.version,updateStatus?.currentVersion])
 
   const refreshUpdateStatus = useCallback(async (manual = false) => {
     if (manual && !isAdmin) return
@@ -111,12 +133,12 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     }
   }, [isAdmin])
 
-  const applyUpdate = useCallback(async () => {
+  const applyUpdate = useCallback(async (noticeDigest?: string) => {
     if (!isAdmin) return
     setUpdateApplyStarting(true)
     setUpdateApplyError(null)
     try {
-      const apply = await applyPanelUpdate()
+      const apply = await applyPanelUpdate(noticeDigest, updateStatus?.latestVersion)
       setUpdateApply(apply)
       reconnectStartedRef.current = Date.now()
       setReconnectAttempts(0)
@@ -183,7 +205,7 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
   }, [isAdmin, updateDryRun])
 
   useEffect(() => {
-    if (!isAdmin || !isPanelUpdateActive(updateApply)) return
+    if (!isAdmin || fullStack.fullStackUpgrade?.authorizedAt || !isPanelUpdateActive(updateApply)) return
     let cancelled = false
     let timer = 0
     const generation = reconnectGenerationRef.current
@@ -250,29 +272,33 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [isAdmin, reconnectGeneration, updateApply?.phase, updateApply?.toVersion, updateStatus?.latestVersion])
+  }, [isAdmin, reconnectGeneration, updateApply?.phase, updateApply?.toVersion, updateStatus?.latestVersion,fullStack.fullStackUpgrade?.authorizedAt])
 
+  const openUpdateDialog = useCallback(() => setUpdateDialogOpen(true), [])
+  const closeUpdateDialog = useCallback(() => setUpdateDialogOpen(false), [])
   const value = useMemo<PanelUpdateContextValue>(() => ({
-    versionInfo, updateStatus, updateDryRun, updateApply,
+    ...fullStack,
+    versionInfo, updateStatus, updateDryRun, updateApply:projectedApply,
     updateError, updateDryRunError, updateApplyError,
     updateChecking, updateDryRunChecking, updateApplyStarting,
-    updateDialogOpen, reconnectMode, reconnectAttempts,
+    updateDialogOpen, updateTheme, setUpdateTheme, reconnectMode, reconnectAttempts,
     refreshUpdateStatus, runUpdateDryRun, applyUpdate,
-    openUpdateDialog: () => setUpdateDialogOpen(true),
-    closeUpdateDialog: () => setUpdateDialogOpen(false),
+    openUpdateDialog,
+    closeUpdateDialog,
     continueReconnect,
   }), [
-    versionInfo, updateStatus, updateDryRun, updateApply,
+    versionInfo, updateStatus, updateDryRun, projectedApply,fullStack,
     updateError, updateDryRunError, updateApplyError,
     updateChecking, updateDryRunChecking, updateApplyStarting,
-    updateDialogOpen, reconnectMode, reconnectAttempts,
-    refreshUpdateStatus, runUpdateDryRun, applyUpdate, continueReconnect,
+    updateDialogOpen, updateTheme, reconnectMode, reconnectAttempts,
+    refreshUpdateStatus, runUpdateDryRun, applyUpdate, continueReconnect, openUpdateDialog, closeUpdateDialog,
   ])
 
-	const overlayPhase = panelUpdatePhaseLabel(updateApply?.fullStack?.phase ?? updateApply?.phase ?? '')
+	const overlayPhase = panelUpdatePhaseLabel(projectedApply?.fullStack?.phase ?? projectedApply?.phase ?? '')
   return (
     <PanelUpdateContext.Provider value={value}>
       {children}
+      {updateDialogOpen ? <UpdateDetailsDialog user={user} /> : null}
       {reconnectMode !== 'idle' ? (
         <div className="sd-panel-update-reconnect" role="alert" aria-live="assertive">
           <div className="sd-panel-update-reconnect-card">

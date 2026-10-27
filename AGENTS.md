@@ -54,6 +54,8 @@
 
 ## 命令执行与编码错题本
 
+- 复用 HTTP 验收夹具前，先按对应接口源码核对成功状态码和 JSON 包裹结构（例如任务详情为 `{"job": ...}`）。写请求接受后先保存原始状态码、operation/job/update ID，再做后续断言；断言失败必须先只读核对同一操作，禁止按旧脚本的错误假设重发动作。`wait` 结果必须先读取终态，再决定是否需要下一次写操作，不能在同一编排里预排重试。
+
 GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同一 run ID、artifact 名或精确引用最多三次有界重读；监控失败不代表 workflow 失败。不得把只读重试用于 dispatch、取消、tag、push、Release edit 或镜像提升；写操作响应不确定时先核对外部实际状态。
 
 项目级错题本固定为 `.agents/error-notebook.md`。它是每次工作的必读输入，不是任务结束时可选的复盘。
@@ -85,13 +87,16 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - PowerShell 中原生命令的可执行名必须直接处于命令位置（如 `rg ...`），或通过调用运算符执行字符串/变量（如 `& $rgExe @args`）；禁止把可执行名和参数生成成相邻的独立字符串字面量（如 `'rg' '-n' ...`），该形态只会在解析阶段报错。批量生成命令时优先生成参数数组并调用一次，不拼 PowerShell 源码文本。
 - 嵌套 `pwsh -Command` 或 `functions.exec` JavaScript 字符串中的文本检索默认拆成多次 `rg -F` 或使用 `Select-String -SimpleMatch`；模式本身含单双引号、反引号、括号或复杂字符类时不得继续内联 `rg`，改用 `Select-String -SimpleMatch`、读取已知行段或任务专属脚本，避免外层解析把模式截断成路径参数。
 - 原生命令失败后若还要运行 `docker logs`、`inspect` 等诊断，必须先把原始 `$LASTEXITCODE` 保存到任务专属变量，诊断完成后退出该保存值；不得在其它原生命令之后再直接 `exit $LASTEXITCODE`。长运行服务先做有上限 readiness 轮询。
+- 原生命令输出不得直接管道给 `Select-Object -First` 等提前终止消费者；先完整捕获输出并立即保存退出码，再对内存结果限段投影，避免只读查询因断管误报失败。
 - Docker `inspect` 需要读取嵌套 label、数组或多个字段时，必须输出完整 JSON 并由 PowerShell `ConvertFrom-Json` 投影；禁止在多层 PowerShell 命令中拼接带引号或反斜杠的 Go template。只有经过独立探针的单个无引号字段才可使用 `--format`。生产投影除 `Config.Env` 等凭据外，还必须默认剔除匿名 volume hash、容器/网络完整 ID、存档 GUID 和玩家关联标识；只输出完成判断所需的布尔值、类型、计数或脱敏短形态。
+- 私有测试证据与日志同样执行最小投影：禁止对 `private-*` JSON/归档目录宽模式 `rg` 后输出整行对象，禁止用“Loaded”等宽日志词输出含存档/角色标识的上下文。按已知JSON契约读取并只投影必要布尔、计数、状态或脱敏错误；首次路径/字段不明确时先输出键名/条目类型，不能把整个私有对象当作诊断文本。
 - Windows 发布夹具不得把 Python `-c`、内联 JSON、正则、`find -printf`、`cut` 或其它含多层引号的逻辑继续嵌入 `pwsh → docker exec → sh -c`。优先直接传递单个命令及独立参数；确需多步逻辑时使用 `apply_patch` 创建任务专属脚本后执行，并先探测 BusyBox/GNU/OpenSSL 等实际能力，禁止靠猜测 flag。
 - PowerShell 通过 `ConvertFrom-Json` 或 `Invoke-RestMethod` 读取 ISO 8601 时间时，不得直接与原始字符串比较；先确认值类型，统一转为 UTC 并以不变区域格式规范化，再做精确断言。
 - PowerShell 的语句形式 `foreach (...) { ... }`、`if (...) { ... }` 不能直接接管道；需要继续传给 `Format-Table`、`ConvertTo-Json` 等命令时，先用 `@(...)` 收集输出，或改用 `ForEach-Object`。工具调用中的单行批处理默认使用 `ForEach-Object`，不要写语句式 `foreach` 后再接管道。
 - Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。Windows 当前 PATH 的裸 `bash`/`Get-Command bash` 可能命中没有发行版的 WSL relay，必须从 `Get-Command git` 的真实安装根反解并验证 `bin\bash.exe --version`，或使用已验证的 Linux 容器；不得先执行 PATH `bash` 试错。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
 - Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。使用 Pillow 等额外依赖前分别验证模块可用性，优先使用工作区 bundled runtime；读取/写入仓库 UTF-8 文本必须显式指定 `encoding='utf-8'`，不能仅设置 stdout 编码。CI 使用 workflow 明确配置的 Python。
 - Docker 操作前先运行 `docker info`；Docker Desktop 未启动时先启动并轮询就绪。临时资源必须使用任务专属前缀/label，创建前查重，清理前核对归属；禁止 `docker system prune`、`docker volume prune` 或模糊批量删除。`golang:*-alpine` 中执行 Go 命令使用 `sh -c`，不要用可能重置 PATH 的 `sh -lc`。
+- Windows Docker Desktop 大镜像构建、导入和 DinD/游戏副本矩阵启动前，必须检查宿主 C 盘及已确认的数据盘可用空间；C 盘至少预留 10 GiB，并按并发镜像、源卷、staging 和备份预算追加余量。不得只看 VM 内虚拟磁盘总容量。空间不足或 daemon 报只读文件系统时停止新夹具，保留精确容器/卷/进程与日志，不重放创建、load 或重启；禁止清理无关缓存/用户数据、全局 prune，或未经当次明确授权重启承载其他容器的 Docker Desktop。
 - 正式候选预取上一正式版和固定 fixture 镜像时，每个精确引用必须使用最多三次的有界 `docker pull`，单次 GHCR/Docker Hub token、TLS 或 EOF 失败不得直接判成镜像缺失；成功后必须 `docker image inspect` 再打包进入隔离 DinD。重试不关闭 TLS/认证、不改变引用，也不得重放 push、tag 或 workflow dispatch。
 - 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前同时检查 `Get-NetTCPConnection -State Listen` 和 `netsh interface ipv4 show excludedportrange protocol=tcp`，默认端口也必须不在排除范围内；清理后再次检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留。清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。
 - 正式发布门禁不得在同一个工具编排调用中以 `Promise.all` 等方式并发启动多个长运行 Shell；必须逐项使用可等待、可取得完整退出码与输出的独立调用。编排层异常、超时或提前返回后，先核对精确宿主进程、容器和 volume，再决定恢复或重跑，禁止在终态未知时重复启动同一门禁。
@@ -103,6 +108,8 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - `TestSMAPIArchiveRealDownload` 会断言 Linux `0600` 权限，正式发布门禁只能在任务专属 Linux 容器与独立 Go module/build cache 中运行；禁止先在 Windows 宿主试跑并把必然的 `0666` 当成产品失败。其它涉及 `Mode().Perm()`、UID/GID、symlink 或 Unix socket 的发布测试同样先选择目标 Linux 文件系统。
 - 应用内 Browser 验证本地 Vite/VitePress 时使用 `domcontentloaded` 后等待唯一可见 DOM，不使用当前后端不支持的 `networkidle`；导航断言只传文档支持的精确 URL，不能传正则/predicate。静态站的精确目标必须从当前 DOM `href` 与实际 SPA/普通文档路由模式解析，不得硬编码 `.html` 规范化假设；主测试与 A/B/补充脚本共用同一目标契约。VitePress 的复合链接可能含图标/箭头，标题 accessible name 可能附带 permalink；定位前先读 DOM snapshot，链接优先用唯一 role/href，标题顺序从 `main h1/h2` 可见文本或首文本节点断言，禁止把肉眼主文案直接传给 `exact:true` 重放已知超时。窄屏固定导航页面不得用 `fullPage` 拼接截图判断渲染，必须结合普通视口截图与 root/body `scrollWidth <= clientWidth` 度量。
 - 带装饰字符的卡片标题同样不得用肉眼主文案加 `getByText(..., { exact: true })` 作为就绪条件。首次无匹配后读取 fresh DOM，并按实际唯一 heading、按钮或已确认区块 selector 验证；AX 中拆开的文本不代表 DOM 元素的完整 textContent。
+- Browser/API夹具等待异步新任务时，发起动作前先记录旧operationId/jobId/updateId；等待条件必须同时核对本次ID和目标阶段，不能把上一次failed/succeeded当作新请求的终态。幂等预检仅在明确读取当前未授权、已准备好的同一计划后复用；请求超时或页面提前关闭时先只读核对持久状态，不重放确认。下游仅在准备进程成功退出且本次就绪artifact存在后启动；未来日志先Test-Path再读取。
+- 真实Web故障E2E的浏览器、观察器与总测试时限必须覆盖实际执行进程的生产健康门禁、准备及回滚预算。测试进程driver参数不影响Docker内Panel的默认值；开始前先读实际生产配置。观察超时只代表监控不足，先核对原op/hash/命令与资源状态，再续接只读核验，不重发确认/保存/故障，也不为缩短验收降低生产安全等待。
 - 应用内 Browser 从移动壳恢复桌面验收时不得把 `viewport.reset()` 当成路由或断点恢复保证；必须显式设置已知桌面宽度、重新导航到精确目标 URL、读取当前 DOM snapshot 确认 shell/route，再等待桌面专属 heading。后端重启、HMR reload 或移动壳自动改写内部路由后同样执行此顺序，禁止直接复用上一视口的 locator 假设。
 - 应用内 Browser 的响应式视口覆盖固定先从当前 browser 读取 `browser.capabilities.get("viewport")`，再调用 capability 的 `set({ width, height })` / `reset()`；禁止猜测 `tab.viewport`、`tab.playwright.setViewportSize()` 或其它 Page 级接口。页面只读 `playwright.evaluate()` 不得用 DOM 构造器 `instanceof`、命令式 `.click()`、页面全局写入或未确认存在的 `performance` 做测试编排；交互使用 locator/CUA API，evaluate 只返回当前调用内可序列化的只读状态。
 - 应用内 Browser 当前截图接口固定使用 `tab.screenshot({ fullPage: false })` 并用 `nodeRepl.emitImage` 展示；`tab.playwright` 只用于 DOM/locator，禁止使用不存在的 `tab.playwright.screenshot()`，即使上层技能示例这么写也以 runtime API 为准。
@@ -118,6 +125,7 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - `rg` 在 Windows 上不要传递未由 Shell 展开的 `path/*` 或 `Dockerfile*`；使用 `rg -g '<glob>' <pattern> <root>`、明确目录或先用 `rg --files`。搜索模式以 `-` 开头时必须使用 `-e '<pattern>'` 显式声明，或在其它参数后用 `--` 结束选项解析；引号与 `-F` 都不能替代该边界。文本搜索优先 `rg`，文件列表优先 `rg --files`。同一任务一旦复发该错误，余下每条 `rg` 的位置参数只允许一个已确认、无通配的目录；即使组合命令前段已有有效输出，也禁止追加第二个猜测路径或通配路径。
 - 文本检索须区分 `rg` 退出 0（命中）、1（无命中）与大于 1（执行错误）。允许无命中的候选排查不得把 1 直接 throw；保存并判断退出码后明确成功结束包装，避免最后一个原生命令的 1 泄漏。需要精确锚点时，无命中必须重新定位，不得继续猜文件路径。
 - 按函数、类型或文本定位源码时，`rg` 返回的真实文件路径是后续读取的唯一依据；禁止在同一组合命令后半继续读取凭记忆猜测的文件名。先完成检索，再以独立 fail-fast 命令读取精确命中路径；PowerShell 只读组合也必须使用 `$ErrorActionPreference='Stop'` 或逐项检查，不能让后续成功命令掩盖 `Get-Content` 失败。`Group-Object` 等聚合只剩文件名时，必须重新检索完整路径，不得根据模块职责补猜目录；批量读取前逐项用 `Test-Path -LiteralPath` 验证已确认路径。
+- 同一任务出现一次猜测源码路径导致的退出 2 后，下一条同类命令必须先独立运行 `rg --files` 取得目录清单；后续读取/检索的文件参数须来自该清单并先通过 `Test-Path -LiteralPath`，不得在有效命中后追加由模块名称推导的新文件路径。
 - Git tag/ref 发布审计中，`git for-each-ref --format` 禁止使用属于 `git log --format` 的 `%n` 换行占位符；结构化证据默认一字段一命令，只有经过独立探针确认时才使用该子命令支持的 `%0a`。tag type、object、peeled commit、tagger date 与 subject 分别核对，不能让退出 0 的字面量占位符冒充有效格式。
 - Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。`functions.exec` 中编排 `web__run` 对象数组时，只从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
@@ -129,6 +137,7 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - Windows 上需要递归删除工作区任务目录时，不得把 `Remove-Item -Recurse` 直接内联到工具命令；从一开始就用 `apply_patch` 创建任务专属 `.ps1`，脚本内核对解析后的绝对路径精确等于预期目标且位于 `.agents` 等任务边界内，执行并验证清零后再用 `apply_patch` 删除脚本。策略拒绝视为零执行，不得原样重试。
 - `apply_patch` 的多文件或 update/delete 混合操作默认拆成独立补丁；确需多文件时必须先结束当前 hunk，再写下一个 `*** Update File`/`*** Delete File` 声明。出现 `Unexpected line found in update hunk` 时视为零修改，先检查实际 diff，再按文件拆分，禁止原样重放。
 - `apply_patch` 的 update hunk 按完整行匹配；即使只改行内一个数字，也必须从当前文件读取并提供完整的删除行与新增行，不能把半行或行内片段当作可匹配的删除行。长行先用 `rg -F`/精确邻域取得真实文本，不从聊天摘要或记忆手抄。
+- 为既有大段代码增加条件或循环包裹时，优先以唯一首尾锚点拆分短 hunk，不手抄包含空行的整段代码；任一 hunk 拒绝后先核对该次补丁的实际修改边界，再读取当前精确上下文，不继续发送依赖未成功修改的后续补丁。
 - 工具返回对象或 JSON 序列化输出中的 `\"` 可能只是传输层对真实 `"` 的转义，不能直接抄进 `apply_patch`。含引号/反斜杠的行在首次补丁匹配失败后，必须先用字节/字符码或读取到独立原始文件确认真实字符；不得仅换 JavaScript 字符串写法原样重放同一假设。
 - 同一文件存在重复代码片段时，`apply_patch` hunk 必须包含目标函数、测试或章节名等唯一语义锚点；补丁成功后、任何长门禁开始前，必须用精确 `git diff -- <file>` 与逐处检索确认修改命中目标且未改相邻副本。测试偶然通过不能替代这项审查。
 - 跨 worktree 整合旧差异时先用 `git diff --ignore-space-at-eol` 去除换行噪声；不得把带行号的原始 Git hunk header 直接重放给 `apply_patch`。对已在 `main` 变化的文件必须重新读取当前上下文并做语义合并，禁止用整文件覆盖掩掉新版本内容。

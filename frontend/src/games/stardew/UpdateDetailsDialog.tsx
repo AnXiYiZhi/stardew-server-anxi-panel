@@ -1,250 +1,120 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CurrentUser } from '../../types'
-import type { StardewDashboardData } from './stardew-routes'
-import { updateDisplayKind, updateSummaryText, withVersionPrefix } from './update-status'
-import { canStartPanelUpdate, isPanelUpdateActive, panelUpdatePhaseLabel, panelUpdateSurface } from './panel-update-machine'
+import { usePanelUpdate } from './PanelUpdateProvider'
+import { FullStackUpgradeActions, FullStackUpgradePanel } from './FullStackUpgradePanel'
+import { canStartPanelUpdate, hasGameUpgradeFlow, isPanelUpdateActive, panelUpdatePhaseLabel, panelUpdateSurface } from './panel-update-machine'
+import { withVersionPrefix } from './update-status'
 import './UpdateDetailsDialog.css'
+import './UpdateCenter.css'
 
-type UpdateDetailsDialogProps = {
-  user: CurrentUser
-  dashboardData: StardewDashboardData
+function date(value?: string | null) {
+  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未检查'
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  }).format(date)
-}
+export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
+  const data = usePanelUpdate()
+  const theme = data.updateTheme ?? 'day'
+  const card = useRef<HTMLElement>(null)
+  const [confirm, setConfirm] = useState(false)
+  const [acknowledged, setAcknowledged] = useState('')
+  const status = data.updateStatus
+  const apply = data.updateApply
+  const surface = panelUpdateSurface(status, apply, data.versionInfo)
+  const admin = user.role === 'admin'
+  const active = isPanelUpdateActive(apply)
+  const gameUpgrade = hasGameUpgradeFlow(data.versionInfo, data.fullStackUpgrade, status)
+  const content = status?.content
+  const noticesAccepted = !status?.noticeDigest || acknowledged === status.noticeDigest
+  const ready = status?.checkStatus === 'ok' && !content?.blocked
+  const dryRun = data.updateDryRun
+  const scopedUpgrade = gameUpgrade && !dryRun?.capability.conversionRequired
+  const environmentReady = dryRun?.phase === 'succeeded' && dryRun.targetVersion.replace(/^v/, '') === surface.targetVersion.replace(/^v/, '')
+  const busy = data.updateDryRunChecking || dryRun?.phase === 'starting' || dryRun?.phase === 'running' || active || data.updateApplyStarting
+  const canApply = ready && noticesAccepted && canStartPanelUpdate(user, status, dryRun, apply)
+  const phase = apply?.fullStack?.phase || apply?.phase || ''
+  const progress = apply?.fullStack?.progress ?? apply?.progress ?? 0
+  const successfulHistory = apply && ['succeeded', 'not_needed'].includes(phase)
+  const completedGameUpgrade = data.fullStackUpgrade?.phase === 'succeeded'
+  const authorizedGameUpgrade = Boolean(data.fullStackUpgrade?.authorizedAt && !['succeeded', 'failed_safe', 'panel_failed_rolled_back'].includes(data.fullStackUpgrade.phase))
+  const newAuthorization = !authorizedGameUpgrade && Boolean(status?.updateAvailable || scopedUpgrade && !completedGameUpgrade)
+  const visibleNotices = content?.notices?.filter(notice => newAuthorization || content?.blocked || notice.level === 'danger' || notice.level === 'warning' && !notice.requiresConfirmation) || []
+  const showScope = admin && scopedUpgrade && !completedGameUpgrade && (authorizedGameUpgrade || !content?.blocked && (!status?.updateAvailable || environmentReady))
+  const showPanelAction = admin && status?.updateAvailable && !active && !content?.blocked && (!scopedUpgrade || !environmentReady)
+  const releaseTitle = content?.title?.replace(/^v?\d+\.\d+\.\d+\s*[·：:-]\s*/, '')
+  const close = data.closeUpdateDialog
 
-function dryRunPhaseLabel(phase: string): string {
-  switch (phase) {
-    case 'starting': return '正在启动演练 helper'
-    case 'running': return '正在检查镜像与 Compose 配置'
-    case 'succeeded': return '升级环境演练通过'
-    case 'unsupported': return '当前部署模式不支持安全升级'
-    case 'failed': return '升级环境演练未通过'
-    default: return phase
-  }
-}
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    card.current?.focus()
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); close() }
+      if (event.key !== 'Tab') return
+      const controls = Array.from(card.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), summary, [tabindex="0"]') || [])
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === card.current)) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    document.addEventListener('keydown', keyboard)
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keyboard); previous?.focus() }
+  }, [close])
 
-export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialogProps) {
-  const [confirmApply, setConfirmApply] = useState(false)
-  if (!dashboardData.updateDialogOpen) return null
-  const status = dashboardData.updateStatus
-  const displayKind = updateDisplayKind(status)
-  const apply = dashboardData.updateApply
-  const surface = panelUpdateSurface(status, apply, dashboardData.versionInfo)
-  const currentVersion = surface.currentVersion
-  const latestVersion = surface.targetVersion
-  const isAdmin = user.role === 'admin'
-  const dryRun = dashboardData.updateDryRun
-  const dryRunBusy = dashboardData.updateDryRunChecking || dryRun?.phase === 'starting' || dryRun?.phase === 'running'
-  const applyActive = isPanelUpdateActive(apply)
-	const canApply = canStartPanelUpdate(user, status, dryRun, apply)
-	const onlineHumans = dashboardData.players?.players.filter((player) => player.status === 'online' && !player.isHost).length
-	const updatePhases = [
-		'backing_up', 'pulling', 'recreating', 'waiting_health',
-		'checking_runtime', 'notifying_players', 'saving_game', 'backing_up_save', 'updating_runtime', 'verifying_auth', 'verifying_runtime', 'restoring_server',
-		...apply && ['rolling_back', 'failed_rolled_back', 'rollback_failed'].includes(apply.phase) ? ['rolling_back'] : [],
-	]
-	const effectivePhase = apply?.fullStack?.phase || apply?.phase || ''
-	const effectiveProgress = apply?.fullStack?.progress ?? apply?.progress ?? 0
-	const currentPhaseIndex = updatePhases.indexOf(effectivePhase)
-  const closeDialog = () => {
-    setConfirmApply(false)
-    dashboardData.closeUpdateDialog()
-  }
+  const progressCard = apply ? <section className={'sd-update-apply sd-update-apply--' + apply.phase} aria-live="polite">
+    <div><strong>{panelUpdatePhaseLabel(phase)}</strong><span>{progress}%</span></div>
+    <p>{withVersionPrefix(apply.fromVersion)} → {withVersionPrefix(apply.toVersion)}</p>
+    <progress max="100" value={progress} />
+    {apply.fullStack?.result || apply.result ? <p>{apply.fullStack?.result || apply.result}</p> : null}
+    {apply.fullStack?.error || apply.error ? <p className="sd-update-error">{apply.fullStack?.error || apply.error}</p> : null}
+  </section> : null
 
-  return (
-    <div className="sd-update-overlay" role="presentation" onMouseDown={closeDialog}>
-      <section
-        className="sd-update-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="sd-update-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="sd-update-dialog-head">
-          <div>
-            <p className="sd-update-dialog-kicker">PANEL UPDATE</p>
-            <h2 id="sd-update-dialog-title">面板版本详情</h2>
-          </div>
-          <button type="button" className="sd-update-close" onClick={closeDialog} aria-label="关闭版本详情">×</button>
-        </div>
-
-        <div className={`sd-update-state sd-update-state--${apply ? surface.tone : displayKind}`}>
-          <span className="sd-update-state-dot" aria-hidden="true" />
-          <span>{apply ? surface.topbarText : updateSummaryText(status)}</span>
-        </div>
-
-        <dl className="sd-update-details">
-          <div><dt>当前版本</dt><dd>{withVersionPrefix(currentVersion)}</dd></div>
-          <div><dt>最新版本</dt><dd>{latestVersion ? withVersionPrefix(latestVersion) : '—'}</dd></div>
-          <div><dt>发布时间</dt><dd>{formatDate(status?.publishedAt)}</dd></div>
-          <div><dt>检查时间</dt><dd>{formatDate(status?.checkedAt)}</dd></div>
-          <div><dt>检查状态</dt><dd>{status?.checkStatus ?? 'pending'}</dd></div>
-        </dl>
-
-        {status?.checkError || dashboardData.updateError ? (
-          <div className="sd-update-error">{status?.checkError || dashboardData.updateError}</div>
-        ) : null}
-
-		<div className="sd-update-boundary">
-			<strong>这是一键全栈升级。</strong>Panel 更新后会检查全部实例的 Control 版本与 DLL hash；不匹配的运行中实例将保存、整档备份、停服、同步 Control、重启并验证 SMAPI 实际加载版本。Panel 健康失败会自动恢复旧容器。
-        </div>
-
-        <section className="sd-update-release-notes">
-          <strong>更新说明</strong>
-          <p>详细变更记录由正式 Release 提供。升级前可打开 Release 页面查看本版本修复与兼容说明。</p>
-          {status?.releaseUrl ? <a href={status.releaseUrl} target="_blank" rel="noreferrer">查看 {withVersionPrefix(latestVersion)} Release 说明</a> : null}
-        </section>
-
-        {isAdmin && dryRun ? (
-          <section className={`sd-update-dry-run sd-update-dry-run--${dryRun.phase}`} aria-live="polite">
-            <div className="sd-update-dry-run-title">
-              <strong>{dryRunPhaseLabel(dryRun.phase)}</strong>
-              <code>{dryRun.capability.code || dryRun.errorCode}</code>
-            </div>
-            <p>{dryRun.capability.reason || dryRun.error}</p>
-            {dryRun.capability.composeProject || dryRun.logs.length > 0 ? (
-              <details className="sd-update-environment-details">
-                <summary>查看环境详情</summary>
-                {dryRun.capability.composeProject ? (
-                  <dl>
-                    <div><dt>Compose 项目</dt><dd>{dryRun.capability.composeProject}</dd></div>
-                    <div><dt>Compose 服务</dt><dd>{dryRun.capability.composeService || '—'}</dd></div>
-                    <div><dt>当前容器</dt><dd>{dryRun.capability.currentContainer || '—'}</dd></div>
-                    <div><dt>当前镜像</dt><dd>{dryRun.capability.currentImage || '—'}</dd></div>
-                    <div><dt>目标镜像</dt><dd>{dryRun.targetImage || '检查中…'}</dd></div>
-                  </dl>
-                ) : null}
-                {dryRun.logs.length > 0 ? (
-                  <div className="sd-update-dry-run-logs">
-                    {dryRun.logs.map((entry, index) => (
-                      <div key={`${entry.at}-${index}`} className={`sd-update-dry-run-log sd-update-dry-run-log--${entry.level}`}>
-                        <time>{formatDate(entry.at)}</time><span>{entry.message}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </details>
-            ) : null}
-          </section>
-        ) : null}
-
-        <section className={`sd-update-capability sd-update-capability--${dryRun?.phase ?? 'unknown'}`}>
-          <strong>升级环境</strong>
-          <span>
-            {!isAdmin ? '部署能力仅管理员可检查' : dryRun?.phase === 'succeeded' ? '✓ 支持安全升级' : dryRun?.phase === 'unsupported' ? '当前部署不支持 Web 升级' : dryRun?.phase === 'failed' ? '环境检查未通过' : dryRunBusy ? '正在检查…' : '尚未检查'}
-          </span>
-        </section>
-
-        {isAdmin && dryRun?.phase === 'succeeded' && dryRun.capability.conversionRequired ? (
-          <div className="sd-update-boundary">
-            <strong>将先转换为标准部署。</strong> 系统会反查当前容器、镜像、数据挂载与旧配置，备份 Compose、环境变量和旧镜像 digest，再由独立 helper 重建 Panel；新 Panel 健康检查失败会自动恢复旧容器。
-          </div>
-        ) : null}
-
-        {isAdmin && dashboardData.updateDryRunError ? (
-          <div className="sd-update-error">{dashboardData.updateDryRunError}</div>
-        ) : null}
-
-        {isAdmin && apply ? (
-          <section className={`sd-update-apply sd-update-apply--${apply.phase}`} aria-live="polite">
-			<div><strong>{panelUpdatePhaseLabel(effectivePhase)}</strong><span>{effectiveProgress}%</span></div>
-            <p>{withVersionPrefix(apply.fromVersion)} → {withVersionPrefix(apply.toVersion)}</p>
-			<progress max="100" value={effectiveProgress} />
-            <ol className="sd-update-timeline">
-              {updatePhases.map((phase, index) => (
-                <li
-                  key={phase}
-				className={index < currentPhaseIndex ? 'is-done' : index === currentPhaseIndex ? 'is-active' : effectivePhase === 'succeeded' || effectivePhase === 'not_needed' ? 'is-done' : ''}
-                >
-                  {panelUpdatePhaseLabel(phase)}
-                </li>
-              ))}
-            </ol>
-			{apply.fullStack?.result || apply.result ? <p>{apply.fullStack?.result || apply.result}</p> : null}
-			{apply.fullStack?.error || apply.error ? <div className="sd-update-error">{apply.fullStack?.error || apply.error}</div> : null}
-			{apply.fullStack?.instances?.length ? (
-				<details className="sd-update-environment-details">
-					<summary>查看全部实例同步状态</summary>
-					<dl>
-						{apply.fullStack.instances.map((instance) => (
-							<div key={instance.instanceId}>
-								<dt>{instance.instanceId}</dt>
-								<dd>{panelUpdatePhaseLabel(instance.phase)} · {instance.progress}%{instance.error ? ` · ${instance.error}` : ''}</dd>
-							</div>
-						))}
-					</dl>
-				</details>
-			) : null}
-          </section>
-        ) : null}
-
-        {isAdmin && dashboardData.updateApplyError ? <div className="sd-update-error">{dashboardData.updateApplyError}</div> : null}
-
-        <div className="sd-update-actions">
-          {isAdmin ? (
-            <>
-              <button
-                type="button"
-                className="sd-update-environment"
-                onClick={() => void dashboardData.runUpdateDryRun(latestVersion)}
-                disabled={!latestVersion || !status?.updateAvailable || dryRunBusy || applyActive}
-              >
-                {dryRunBusy ? '环境检查中…' : '检查升级环境'}
-              </button>
-              <button
-                type="button"
-                className="sd-update-apply-button"
-                disabled={!canApply || dashboardData.updateApplyStarting}
-                onClick={() => setConfirmApply(true)}
-              >
-                {applyActive || dashboardData.updateApplyStarting ? '升级处理中…' : dryRun?.capability.conversionRequired ? '转换为标准部署并升级' : '立即升级并重启面板'}
-              </button>
-              <button
-                type="button"
-                className="sd-update-refresh"
-                onClick={() => void dashboardData.refreshUpdateStatus(true)}
-                disabled={dashboardData.updateChecking}
-              >
-                {dashboardData.updateChecking ? '检查中…' : '手动检查版本'}
-              </button>
-            </>
-          ) : (
-            <span className="sd-update-user-note">仅管理员可手动刷新</span>
-          )}
-          <button type="button" className="sd-update-dismiss" onClick={closeDialog}>关闭</button>
-        </div>
-
+  return <div className={`sd-update-overlay is-${theme}`} onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
+    <section ref={card} tabIndex={-1} className={`sd-update-dialog sd-update-center is-${theme}`} data-theme={theme} role="dialog" aria-modal="true" aria-labelledby="sd-update-dialog-title">
+      <header className="sd-update-dialog-head">
+        <div className="sd-update-title"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M9 2h2v2h2v2h2v2h-4v6H9V8H5V6h2V4h2ZM3 13h2v3h10v-3h2v5H3Z" /></svg><h2 id="sd-update-dialog-title">更新中心</h2></div>
+        <button type="button" className="sd-update-close" onClick={close} aria-label="关闭更新中心"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2h2v2h2v2h2V4h2V2h2v2h-2v2h-2v2h2v2h2v2h-2v-2h-2v-2H8v2H6v2H4v-2h2v-2h2V6H6V4H4Z" /></svg></button>
+      </header>
+      <div className="sd-update-center-body">
+      <div className="sd-update-version-path">
+        <div><span>当前版本</span><strong>{withVersionPrefix(surface.currentVersion)}</strong></div>
+        {status?.updateAvailable ? <><span aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3h2v2h2v2h2v2h2v2h-2v2h-2v2h-2v2h-2v-6H2V9h8Z" /></svg></span><div><span>{content?.blocked ? '暂缓升级' : '可升级版本'}</span><strong>{withVersionPrefix(surface.targetVersion)}</strong></div></> : <span className="sd-update-current-state">{content?.blocked ? '暂缓升级' : status?.checkStatus === 'ok' ? '已是最新版本' : '等待检查'}</span>}
+      </div>
+      <section className="sd-update-release-notes" aria-label="本次更新">
+        <h3>{releaseTitle || (status?.updateAvailable ? '本次更新' : status?.checkStatus === 'ok' ? '当前版本更新内容' : '检查可用更新')}</h3>
+        {content?.summary ? <p>{content.summary}</p> : null}
+        {content?.changes?.length ? <ul>{content.changes.map((change, index) => <li key={index}>{change}</li>)}</ul> : content?.notes ? <p className="sd-update-notes-text">{content.notes}</p> : <p>此版本暂未提供详细更新说明。</p>}
+        {status?.updateAvailable && surface.targetVersion.replace(/^v/, '') === '0.7.3' ? <p className="sd-update-route">完成此升级准备版本后，可继续更新游戏大版本。</p> : null}
+        {status?.releaseUrl ? <a href={status.releaseUrl} target="_blank" rel="noreferrer">查看完整更新说明 ↗</a> : null}
       </section>
-      {confirmApply ? (
-        <div className="sd-update-confirm" role="alertdialog" aria-modal="true" aria-labelledby="sd-update-confirm-title" onMouseDown={(event) => event.stopPropagation()}>
-          <div className="sd-update-confirm-card">
-            <p className="sd-update-dialog-kicker">SECOND CONFIRMATION</p>
-            <h3 id="sd-update-confirm-title">确认升级并重启面板？</h3>
-			<p>{onlineHumans !== undefined ? `当前有 ${onlineHumans} 名真人玩家在线。` : '当前在线真人玩家数量暂时无法确认。'} 本次升级会先保存并创建整档保护备份；若 Control 或运行栈不匹配，游戏服务器会停止并重启，在线玩家将断开连接。新 Panel 健康失败时自动恢复旧容器；Control 同步或实载验证失败时禁止实例继续带旧 DLL 启动。</p>
-            <div>
-              <button type="button" className="sd-update-dismiss" onClick={() => setConfirmApply(false)}>取消</button>
-              <button
-                type="button"
-                className="sd-update-apply-button"
-                onClick={() => {
-                  setConfirmApply(false)
-                  dashboardData.closeUpdateDialog()
-                  void dashboardData.applyUpdate()
-                }}
-              >
-                确认升级
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
+      {visibleNotices.length ? <section className="sd-update-notices" aria-label="重要提示">
+        <h3>升级提醒</h3>
+        {visibleNotices.map((notice, index) => <div key={index} className={'sd-update-notice sd-update-notice--' + notice.level}><strong>{notice.title}</strong><p>{notice.message}</p></div>)}
+        {admin && newAuthorization && status?.noticeDigest ? <label className="sd-update-ack"><input type="checkbox" checked={noticesAccepted} onChange={event => setAcknowledged(event.target.checked ? status.noticeDigest || '' : '')} />我已阅读并理解以上重要提示</label> : null}
+      </section> : null}
+      {content?.blocked ? <p className="sd-update-error" role="alert">此版本暂缓升级，请按照重要提示处理并等待后续通知。</p> : null}
+      {status?.checkError || data.updateError ? <p className="sd-update-error" role="alert">{status?.checkError || data.updateError}</p> : null}
+      {active || apply && !successfulHistory ? progressCard : null}
+      {showScope ? <FullStackUpgradePanel compact hideActions /> : null}
+      {environmentReady && status?.updateAvailable && !active ? <p className="sd-update-environment-result">升级环境检查通过</p> : null}
+      {data.updateDryRunError || data.updateApplyError ? <p className="sd-update-error" role="alert">{data.updateDryRunError || data.updateApplyError}</p> : null}
+      {successfulHistory ? <details className="sd-update-history"><summary>上次升级已完成 · {withVersionPrefix(apply.toVersion)}</summary>{progressCard}{completedGameUpgrade ? <><FullStackUpgradePanel readOnly compact />{admin && !status?.updateAvailable && data.versionInfo?.runtimeUpgrade?.requiresScopeConfirmation ? <button type="button" className="sd-update-environment" disabled={data.fullStackBusy} onClick={() => void data.prepareFullStack(data.versionInfo?.version || '')}>重新检查游戏组件更新</button> : null}</> : null}</details> : null}
+      <details className="sd-update-technical"><summary>版本与诊断详情</summary>
+        <dl className="sd-update-details"><div><dt>发布时间</dt><dd>{date(status?.publishedAt)}</dd></div><div><dt>最近检查</dt><dd>{date(status?.checkedAt)}</dd></div><div><dt>构建提交</dt><dd>{status?.currentCommit || data.versionInfo?.commit || '—'}</dd></div><div><dt>升级环境</dt><dd>{dryRun?.capability.reason || '尚未检查'}</dd></div></dl>
+        {dryRun?.error ? <p>{dryRun.error}</p> : null}
+        {dryRun?.logs.map((log, index) => <p key={index}>{log.message}</p>)}
+        {apply?.logs.map((log, index) => <p key={index}>{log.message}</p>)}
+      </details>
+      </div>
+      <footer className="sd-update-center-footer">
+        {admin ? <button type="button" className="sd-update-refresh" disabled={data.updateChecking || active} onClick={() => void data.refreshUpdateStatus(true)}>{data.updateChecking ? '检查中…' : '重新检查'}</button> : <span>请联系管理员执行升级</span>}
+        {showScope ? <FullStackUpgradeActions compact noticeDigest={noticesAccepted ? status?.noticeDigest : undefined} noticesAccepted={noticesAccepted} /> : showPanelAction ? confirm ? <div role="alertdialog" aria-labelledby="sd-update-confirm-title" className="sd-update-footer-confirm">
+          <p id="sd-update-confirm-title">确认升级并重启面板？</p>
+          <div className="sd-update-actions"><button type="button" className="sd-update-dismiss" onClick={() => setConfirm(false)}>取消</button><button type="button" className="sd-update-apply-button" disabled={!canApply || busy} onClick={() => { setConfirm(false); void data.applyUpdate(status?.noticeDigest) }}>确认升级</button></div>
+        </div> : <button type="button" className="sd-update-apply-button" disabled={!ready || !noticesAccepted || busy || environmentReady && !canApply} onClick={() => { if (!environmentReady) void data.runUpdateDryRun(surface.targetVersion); else setConfirm(true) }}>
+          {busy ? '正在检查升级环境…' : environmentReady ? '立即升级' : '检查并准备升级'}
+        </button> : active ? <span>升级进行中…</span> : null}
+      </footer>
+    </section>
+  </div>
 }

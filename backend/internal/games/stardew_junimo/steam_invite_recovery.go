@@ -14,6 +14,9 @@ import (
 // authorization. Disabled instances are intentionally not probed, and a
 // running server is never disturbed.
 func (d *Driver) RecoverInterruptedSteamInviteAuthorization(ctx context.Context, instance registry.Instance) error {
+	if err := rejectJunimo140GroupLease(instance.DataDir); err != nil {
+		return err
+	}
 	if !sjconfig.SteamInviteEnabled(instance.DataDir) {
 		return nil
 	}

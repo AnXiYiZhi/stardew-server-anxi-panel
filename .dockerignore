@@ -6,6 +6,8 @@
 .codex
 .tmp
 .tmp-*
+tmp/
+考公/
 .gocache
 output
 data

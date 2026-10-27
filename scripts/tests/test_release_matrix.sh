@@ -21,6 +21,14 @@ expect_failure() {
 expect_success --version 0.6.0 --previous-version 0.5.13 --oldest-version 0.3.2 --require-oldest-for-zero-patch
 expect_success --version 0.6.1 --previous-version 0.6.0 --oldest-version 0.3.2
 expect_success --version 0.7.0 --previous-version 0.6.1 --require-oldest-for-zero-patch
+expect_success --version 0.7.3 --previous-version 0.7.2 --oldest-version 0.3.2
+expect_failure --version 0.7.3 --previous-version 0.7.2
+expect_failure --version 0.7.3 --previous-version 0.7.2 --oldest-version 0.7.1
+expect_failure --version 0.7.3 --previous-version 0.7.1 --oldest-version 0.3.2
+expect_success --version 0.8.0 --previous-version 0.7.3 --require-oldest-for-zero-patch
+expect_failure --version 0.8.0 --previous-version 0.7.2 --require-oldest-for-zero-patch
+expect_failure --version 0.8.0 --previous-version 0.7.3 --oldest-version 0.7.2 --require-oldest-for-zero-patch
+expect_failure --version 0.8.0 --previous-version 0.7.3 --oldest-version 0.3.2 --require-oldest-for-zero-patch
 expect_failure --version 0.7.0 --previous-version 0.6.1 --oldest-version 0.3.2
 expect_failure --version 0.7.0 --previous-version 0.6.1 --oldest-version 0.6.0
 expect_failure --version 0.7.0 --previous-version 0.6.0 --oldest-version 0.3.2

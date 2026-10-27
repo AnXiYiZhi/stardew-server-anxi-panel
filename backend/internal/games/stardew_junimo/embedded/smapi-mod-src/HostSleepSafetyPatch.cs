@@ -22,6 +22,8 @@ internal sealed class HostSleepSafetyPatch
     private bool sleepCommitted;
     private bool bedValidatedForCurrentCall;
     private int sleepAttempts;
+    private bool dayTransitionStarted;
+    private bool upstreamSleepRequestManaged;
 
     private const int MaxSleepAttempts = 4;
 
@@ -64,6 +66,9 @@ internal sealed class HostSleepSafetyPatch
                 new[] { typeof(FarmHouse) },
                 null);
             warpingSleepField = type.GetField("_warpingSleep", BindingFlags.NonPublic | BindingFlags.Instance);
+            var sleepRequest = type.GetField("_hostSleepRequestedAt", BindingFlags.NonPublic | BindingFlags.Instance);
+            var sleepHostNow = type.GetMethod("SleepHostNow", BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+            upstreamSleepRequestManaged = sleepRequest?.FieldType == typeof(DateTime?) && sleepHostNow?.ReturnType == typeof(void);
             if (handleAutoSleep?.ReturnType != typeof(void)
                 || hostSleepInBed?.ReturnType != typeof(void)
                 || warpingSleepField?.FieldType != typeof(bool))
@@ -106,12 +111,16 @@ internal sealed class HostSleepSafetyPatch
     public void NotifyBedHealthy()
         => sleepBlocked = false;
 
+    public void NotifyDayEnding()
+        => dayTransitionStarted = true;
+
     public void Reset()
     {
         sleepBlocked = false;
         sleepCommitted = false;
         bedValidatedForCurrentCall = false;
         sleepAttempts = 0;
+        dayTransitionStarted = false;
     }
 
     private static bool GuardAutoSleepPrefix(object __instance)
@@ -119,6 +128,8 @@ internal sealed class HostSleepSafetyPatch
         if (active is null)
             return true;
         if (active.sleepBlocked)
+            return false;
+        if (active.dayTransitionStarted)
             return false;
         if (!active.sleepCommitted)
             return true;
@@ -180,7 +191,7 @@ internal sealed class HostSleepSafetyPatch
 
     private void ContinueCommittedSleep(object instance)
     {
-        if (sleepAttempts >= MaxSleepAttempts || !Context.IsWorldReady)
+        if (!HostSleepRetryPolicy.ShouldRetry(sleepAttempts, MaxSleepAttempts, Context.IsWorldReady, dayTransitionStarted, upstreamSleepRequestManaged))
             return;
         if (Game1.currentLocation is not FarmHouse farmHouse || !validateBed(farmHouse))
         {

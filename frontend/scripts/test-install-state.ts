@@ -180,6 +180,20 @@ assert.deepEqual(
 assert.equal(steamInvitePresentation(true, 'server_stopped', null, null).text, '服务器未运行')
 assert.equal(steamInvitePresentation(true, 'generating', null, null).text, '等待中…')
 assert.equal(steamInvitePresentation(true, 'ready', 'ANXI-CODE', null).copyable, true)
+// .140 keeps the universal S-code visible while Steam's relay is pending,
+// and keeps reading live signals after readiness so a withdrawal is visible.
+for (const status of ['connection_ready', 'steam_relay_pending', 'reconnecting', 'connection_starting', 'steam_session_down'] as const) {
+  assert.equal(shouldPollSteamInvite({ steamInviteEnabled: true, state: 'running' }, true, 'SABC123', status), true)
+  assert.equal(shouldPollSteamInvite({ steamInviteEnabled: true, state: 'running' }, true, null, status), true)
+  assert.equal(shouldPollSteamInvite({ steamInviteEnabled: true, state: 'stopped' }, true, 'SABC123', status), false)
+}
+assert.equal(shouldPollSteamInvite({ steamInviteEnabled: true, state: 'running' }, true, null, 'invite_unavailable'), true)
+assert.equal(steamInvitePresentation(true, 'steam_relay_pending', 'SABC123', null).text, 'SABC123（GOG 可加入，Steam 连接中…）')
+assert.equal(steamInvitePresentation(true, 'steam_relay_pending', 'SABC123', null).copyable, true)
+assert.equal(steamInvitePresentation(true, 'reconnecting', null, null).text, '连接恢复中…')
+assert.equal(steamInvitePresentation(true, 'steam_session_down', null, null).copyable, false)
+assert.equal(steamInvitePresentation(true, 'connection_ready', 'SABC123', null).text, 'SABC123')
+assert.equal(steamInvitePresentation(true, 'invite_unavailable', null, null).copyable, false)
 assert.equal(steamInvitePresentation(true, 'auth_unavailable', null, null).text, 'Auth 异常（直连仍可用）')
 assert.deepEqual(
   steamInvitePresentation(true, 'auth_unavailable', null, 'container starting', 'ready', 'starting', true),

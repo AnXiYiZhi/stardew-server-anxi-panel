@@ -22,6 +22,7 @@ import { usePanelUpdate } from './PanelUpdateProvider'
 import {
   isCurrentSteamInviteProjection,
   isCurrentSteamInviteRequest,
+  isLiveSteamInviteStatus,
   preserveSteamInviteProjection,
   shouldPollSteamInvite,
   shouldResumeSteamInviteAfterRuntimeReset,
@@ -66,7 +67,8 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   const [inviteCodeLoading, setInviteCodeLoading] = useState(false)
   const [publicIPRefreshing, setPublicIPRefreshing] = useState(false)
 
-  const invitePollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inviteSnapshotObservedRef = useRef(false)
+  const inviteReadRef = useRef<AbortController | null>(null)
   const delayedJobRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dashboardMountedRef = useRef(true)
   const dashboardAbortRef = useRef(new AbortController())
@@ -92,11 +94,14 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   }, [])
 
   const refreshInstanceState = useCallback(async (signal?: AbortSignal) => {
+    const sessionGeneration = currentSessionGeneration()
     const stateRequestGeneration = ++instanceStateRequestGenerationRef.current
     const inviteProjectionGeneration = ++inviteProjectionGenerationRef.current
     try {
       const s = await getStardewState(instanceId, signal ?? dashboardAbortRef.current.signal)
-      if (stateRequestGeneration !== instanceStateRequestGenerationRef.current) return
+      if (stateRequestGeneration !== instanceStateRequestGenerationRef.current
+        || !dashboardMountedRef.current || signal?.aborted
+        || sessionGeneration !== currentSessionGeneration()) return
 
       const previousRuntimeState = invitePollRuntimeStateRef.current
       const nextRuntimeActive = s.state === 'starting' || s.state === 'running'
@@ -126,6 +131,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       invitePollRuntimeStateRef.current = s.state
       setInstanceState(nextState)
       if (shouldResetRuntimeGeneration) {
+        inviteSnapshotObservedRef.current = false
         // runtime 代际独立于 invite projection：即使本次 /state 的邀请视图已被
         // 更新的 invite 请求取代，starting→running 仍必须获得一份新预算。
         invitePollAttemptsRef.current = 0
@@ -159,6 +165,13 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
         setInviteCodeError(null)
         return
       }
+      // A legacy payload only contains a code. It cannot overwrite the live
+      // .140 snapshot's relay/session state or stop its visibility-bound poll.
+      if (nextRuntimeActive && s.steamInviteAuthState === 'ready'
+        && isLiveSteamInviteStatus(invitePollLastStatusRef.current)) {
+        setInvitePollRequested(true)
+        return
+      }
       const recordedInviteCode = s.inviteCode?.trim() ?? ''
       const stateExposesInviteCode = s.state === 'running'
       if (!stateExposesInviteCode) {
@@ -171,6 +184,12 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       } else if (recordedInviteCode) {
         if (staleInviteCodeRef.current && recordedInviteCode === staleInviteCodeRef.current) {
           updateInviteCode(null)
+        } else if (!inviteSnapshotObservedRef.current) {
+          // /state only contains a cached code. Until an invite GET proves the
+          // protocol and readiness, keep the first visibility-bound read alive.
+          updateInviteCode(null)
+          setInviteCodeStatus('generating')
+          setInvitePollRequested(true)
         } else {
           inviteRequestGenerationRef.current += 1
           staleInviteCodeRef.current = null
@@ -327,7 +346,9 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
     setHealthError(null)
   }, [])
 
-  const refreshInviteCode = useCallback(async () => {
+  const refreshInviteCode = useCallback(async (signal?: AbortSignal) => {
+    if (!dashboardMountedRef.current || document.visibilityState !== 'visible' || signal?.aborted) return
+    if (inviteReadRef.current && !inviteReadRef.current.signal.aborted) return
     if (!steamInviteEnabledRef.current) {
       inviteRequestGenerationRef.current += 1
       invitePollBudgetExhaustedRef.current = false
@@ -339,17 +360,25 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       setInvitePollRequested(false)
       return
     }
-    if (invitePollBudgetExhaustedRef.current) return
+    if (invitePollBudgetExhaustedRef.current && !isLiveSteamInviteStatus(invitePollLastStatusRef.current)) return
     // 后端权威终态保持粘性；手动刷新和新 runtime 会先把 lastStatus 重置为
     // generating，因此仍能显式开启一次新的查询。
     if (invitePollLastStatusRef.current === 'auth_unavailable') return
 
+    const controller = new AbortController()
+    inviteReadRef.current = controller
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    const sessionGeneration = currentSessionGeneration()
     const inviteRequestGeneration = ++inviteRequestGenerationRef.current
     const inviteProjectionGeneration = ++inviteProjectionGenerationRef.current
     setInviteCodeLoading(true)
     setInviteCodeError(null)
     try {
-      const res = await getInviteCode(instanceId)
+      const res = await getInviteCode(instanceId, controller.signal)
+      if (controller.signal.aborted || !dashboardMountedRef.current
+        || sessionGeneration !== currentSessionGeneration()
+        || document.visibilityState !== 'visible') return
       if (!isCurrentSteamInviteRequest(
         inviteRequestGeneration,
         inviteRequestGenerationRef.current,
@@ -359,6 +388,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
         inviteProjectionGenerationRef.current,
       )) return
 
+      inviteSnapshotObservedRef.current = true
       if (!res.steamInviteEnabled || res.status === 'disabled') {
         // 该权威 disabled 响应同时使更早的 /state 与 invite 请求失效。
         inviteProjectionGenerationRef.current += 1
@@ -418,11 +448,12 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       invitePollAttemptsRef.current = 0
       invitePollBudgetExhaustedRef.current = false
       updateInviteCode(nextCode)
-      setInviteCodeStatus('ready')
-      setInvitePollRequested(false)
-      invitePollLastStatusRef.current = 'ready'
+      setInvitePollRequested(shouldPollSteamInvite(instanceStateRef.current, true, nextCode, res.status))
       return
     } catch (e) {
+      if (controller.signal.aborted || !dashboardMountedRef.current
+        || sessionGeneration !== currentSessionGeneration()
+        || document.visibilityState !== 'visible') return
       if (!isCurrentSteamInviteRequest(
         inviteRequestGeneration,
         inviteRequestGenerationRef.current,
@@ -449,6 +480,8 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       setInvitePollRequested(runtimeMayStillBeWarming)
       return
     } finally {
+      signal?.removeEventListener('abort', abort)
+      if (inviteReadRef.current === controller) inviteReadRef.current = null
       if (isCurrentSteamInviteRequest(
         inviteRequestGeneration,
         inviteRequestGenerationRef.current,
@@ -578,6 +611,19 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   useEffect(() => {
     dashboardMountedRef.current = true
     dashboardAbortRef.current = new AbortController()
+    inviteSnapshotObservedRef.current = false
+    invitePollLastStatusRef.current = null
+    inviteCodeRef.current = null
+    steamInviteEnabledRef.current = false
+    instanceStateRef.current = null
+    invitePollRuntimeStateRef.current = null
+    invitePollAttemptsRef.current = 0
+    invitePollBudgetExhaustedRef.current = false
+    staleInviteCodeRef.current = null
+    setInstanceState(null)
+    setInviteCode(null)
+    setInviteCodeStatus(null)
+    setInvitePollRequested(false)
     const init = async () => {
       setLoading(true)
       // 并发加载所有数据，单个失败不阻塞其他
@@ -592,6 +638,10 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
     }
     void init()
     void refreshPublicIP()
+    const pauseInviteRead = () => {
+      if (document.visibilityState !== 'visible') inviteReadRef.current?.abort()
+    }
+    document.addEventListener('visibilitychange', pauseInviteRead)
 
     // 每 30s 轮询实例状态和任务列表（任务列表兜底调度器触发的 job，SSE 只覆盖已知任务）
     const stopPolling = subscribeVisiblePoll(`dashboard:${currentSessionGeneration()}:${instanceId}`, 30_000,
@@ -604,8 +654,10 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       instanceStateRequestGenerationRef.current += 1
       inviteRequestGenerationRef.current += 1
       inviteProjectionGenerationRef.current += 1
+      inviteReadRef.current?.abort()
+      inviteReadRef.current = null
+      document.removeEventListener('visibilitychange', pauseInviteRead)
       stopPolling()
-      if (invitePollRef.current !== null) clearTimeout(invitePollRef.current)
       if (delayedJobRefreshRef.current !== null) clearTimeout(delayedJobRefreshRef.current)
       for (const es of jobStreamsRef.current.values()) {
         es.close()
@@ -679,8 +731,6 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
       setInviteCodeStatus('disabled')
       setInviteCodeError(null)
       setInvitePollRequested(false)
-    } else if (document.visibilityState === 'visible') {
-      void refreshInviteCode()
     }
     if (instanceState.state === 'running' || instanceState.state === 'starting') {
       if (document.visibilityState === 'visible') {
@@ -720,29 +770,22 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
   }, [instanceId, instanceState?.state, refreshPlayers])
 
   useEffect(() => {
-    if (invitePollRef.current !== null) {
-      clearTimeout(invitePollRef.current)
-      invitePollRef.current = null
-    }
-
-    const shouldPollInvite = shouldPollSteamInvite(
-      instanceState,
-      invitePollRequested,
-      inviteCode,
-      inviteCodeStatus,
-    )
-    if (!shouldPollInvite) return
-
-    let cancelled = false
-    const pollInviteCode = async () => {
-      if (document.visibilityState !== 'visible') return
-      await refreshInstanceState()
-      if (cancelled || !steamInviteEnabledRef.current) return
+    if (!steamInviteEnabled || (instanceState?.state !== 'running' && instanceState?.state !== 'starting')) return
+    // A cached /state must not suppress the first read or its resume listener.
+    // This subscription owns the single timer, in-flight read and visibility cancellation.
+    return subscribeVisiblePoll(`invite:${currentSessionGeneration()}:${instanceId}`, STEAM_INVITE_POLL_INTERVAL_MS, async signal => {
+      if (signal.aborted || document.visibilityState !== 'visible') return
+      if (inviteSnapshotObservedRef.current && !shouldPollSteamInvite(
+        instanceStateRef.current, true, inviteCodeRef.current, invitePollLastStatusRef.current,
+      )) return
+      await refreshInstanceState(signal)
+      if (signal.aborted || document.visibilityState !== 'visible' || !steamInviteEnabledRef.current) return
       const currentRuntimeState = instanceStateRef.current?.state
       if (currentRuntimeState !== 'starting' && currentRuntimeState !== 'running') return
-      if (steamInvitePollBudgetExhausted(invitePollAttemptsRef.current, STEAM_INVITE_POLL_MAX_ATTEMPTS)) {
+      if (!isLiveSteamInviteStatus(invitePollLastStatusRef.current)
+        && steamInvitePollBudgetExhausted(invitePollAttemptsRef.current, STEAM_INVITE_POLL_MAX_ATTEMPTS)) {
         invitePollBudgetExhaustedRef.current = true
-        if (inviteCodeStatus === null || inviteCodeStatus === 'generating' || inviteCodeStatus === 'ready') {
+        if (invitePollLastStatusRef.current === null || invitePollLastStatusRef.current === 'generating' || invitePollLastStatusRef.current === 'ready') {
           // 这里只改变展示终态，不覆盖最后一次请求状态：若 runtime 随后从
           // starting 进入 running，后端 generating 证据仍会开启新的运行代预算。
           setInviteCodeStatus('auth_unavailable')
@@ -750,11 +793,12 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
         setInvitePollRequested(false)
         return
       }
-      invitePollAttemptsRef.current += 1
-      await refreshInviteCode()
+      if (!isLiveSteamInviteStatus(invitePollLastStatusRef.current)) invitePollAttemptsRef.current += 1
+      await refreshInviteCode(signal)
       const pollStatus = invitePollLastStatusRef.current
-      if (cancelled) return
-      if (steamInvitePollBudgetExhausted(invitePollAttemptsRef.current, STEAM_INVITE_POLL_MAX_ATTEMPTS)) {
+      if (signal.aborted) return
+      if (!isLiveSteamInviteStatus(pollStatus)
+        && steamInvitePollBudgetExhausted(invitePollAttemptsRef.current, STEAM_INVITE_POLL_MAX_ATTEMPTS)) {
         if (pollStatus === null || pollStatus === 'generating') {
           invitePollBudgetExhaustedRef.current = true
           // 本地预算终态与后端权威 auth_unavailable 分开保存，避免前者阻断
@@ -764,48 +808,8 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
         }
         return
       }
-      if (pollStatus !== null && pollStatus !== 'generating') return
-      invitePollRef.current = window.setTimeout(() => {
-        void pollInviteCode()
-      }, STEAM_INVITE_POLL_INTERVAL_MS)
-    }
-
-    const scheduleInvite = () => {
-      if (cancelled || document.visibilityState !== 'visible') return
-      invitePollRef.current = window.setTimeout(() => {
-        void pollInviteCode()
-      }, STEAM_INVITE_POLL_INTERVAL_MS)
-    }
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') {
-        if (invitePollRef.current !== null) {
-          clearTimeout(invitePollRef.current)
-          invitePollRef.current = null
-        }
-        return
-      }
-      scheduleInvite()
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    scheduleInvite()
-
-    return () => {
-      cancelled = true
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (invitePollRef.current !== null) {
-        clearTimeout(invitePollRef.current)
-        invitePollRef.current = null
-      }
-    }
-  }, [
-    instanceState?.state,
-    steamInviteEnabled,
-    inviteCode,
-    inviteCodeStatus,
-    invitePollRequested,
-    refreshInstanceState,
-    refreshInviteCode,
-  ])
+    }, { data: () => undefined })
+  }, [instanceId, instanceState?.state, steamInviteEnabled, refreshInstanceState, refreshInviteCode])
 
   return {
     ...panelUpdate,
@@ -827,7 +831,7 @@ export function useStardewDashboardData(instanceId: string): StardewDashboardDat
     publicIPError,
     loading,
     playersLoading,
-    inviteCodeRefreshing: steamInviteEnabled && (invitePollRequested || inviteCodeLoading),
+    inviteCodeRefreshing: steamInviteEnabled && (inviteCodeLoading || (invitePollRequested && !isLiveSteamInviteStatus(inviteCodeStatus))),
     publicIPRefreshing,
     refreshAll,
     refreshInstanceState,

@@ -637,7 +637,7 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
 	baseExec := fake.execFunc
 	fake.execFunc = func(ctx context.Context, dir, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
-		if len(args) > 0 && args[0] == "tee" && strings.HasPrefix(stdin, "saves import Upload_1 --reload") {
+		if len(args) > 0 && args[0] == "timeout" && strings.HasPrefix(stdin, "saves import Upload_1 --reload") {
 			if err := writeGameloaderPointer(dataDir, "Upload_1"); err != nil {
 				return paneldocker.CommandResult{}, err
 			}
@@ -721,6 +721,11 @@ func TestValidateImportCapabilityVersionDLLAndFIFO(t *testing.T) {
 	}{
 		{"121", "1.5.0-preview.121", "1.5.0-preview.121", true, false},
 		{"125", "1.5.0-preview.125", "1.5.0-preview.125", true, true},
+		{"140", "1.5.0-preview.140", "1.5.0-preview.140", true, true},
+		{"140_with_125_dll", "1.5.0-preview.140", "1.5.0-preview.125", true, false},
+		{"125_with_140_dll", "1.5.0-preview.125", "1.5.0-preview.140", true, false},
+		{"140_fifo_missing", "1.5.0-preview.140", "1.5.0-preview.140", false, false},
+		{"141_unqualified", "1.5.0-preview.141", "1.5.0-preview.141", true, false},
 		{"126_not_yet_qualified", "1.5.0-preview.126", "1.5.0-preview.126", true, false},
 		{"old_dll", "1.5.0-preview.125", "1.5.0-preview.121", true, false},
 		{"fifo_missing", "1.5.0-preview.125", "1.5.0-preview.125", false, false},
@@ -735,8 +740,14 @@ func TestValidateImportCapabilityVersionDLLAndFIFO(t *testing.T) {
 }
 
 func TestPrepareImportRuntimeAssetsSynchronizesFreshInstanceBeforeValidation(t *testing.T) {
+	for _, version := range []string{TestedImageTag, "1.5.0-preview.140"} {
+		t.Run(version, func(t *testing.T) { testPrepareImportRuntimeAssetsSynchronizesVersion(t, version) })
+	}
+}
+
+func testPrepareImportRuntimeAssetsSynchronizesVersion(t *testing.T, version string) {
 	dataDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+TestedImageTag+"\nSERVER_IMAGE=sdvd/server:"+TestedImageTag+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+version+"\nSERVER_IMAGE=sdvd/server:"+version+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	extractor := &fakeDocker{}

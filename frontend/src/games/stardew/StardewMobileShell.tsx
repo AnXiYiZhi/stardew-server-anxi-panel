@@ -4,7 +4,7 @@ import { stateLabel } from '../../core/helpers'
 import { routeToPath } from './stardew-routes'
 import type { StardewRoute } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
-import { UpdateDetailsDialog } from './UpdateDetailsDialog'
+import { FullStackMaintenanceView } from './FullStackMaintenanceView'
 import { panelUpdateSurface } from './panel-update-machine'
 import { useStardewLifecycleActions } from './useStardewLifecycleActions'
 import './StardewMobileShell.css'
@@ -145,7 +145,7 @@ export function StardewMobileShell({ user, instanceId, onLogout, onUseDesktop, o
       <main className="sd-mshell-body">
         <div ref={mainScrollRef} className="sd-mshell-scroll" tabIndex={0} aria-label="面板主内容">
         <Suspense fallback={<MobilePageLoadingFallback />}>
-        {activeTab === 'overview' ? (
+        {dashboardData.instanceState?.maintenance ? <FullStackMaintenanceView user={user} maintenance={dashboardData.instanceState.maintenance} onNavigate={useDesktopRoute}/> : activeTab === 'overview' ? (
           <MobileHomePage
             user={user}
             instanceState={dashboardData.instanceState}
@@ -189,7 +189,6 @@ export function StardewMobileShell({ user, instanceId, onLogout, onUseDesktop, o
         </Suspense>
         </div>
       </main>
-      <UpdateDetailsDialog user={user} dashboardData={dashboardData} />
 
       <nav className="sd-mshell-tabbar" aria-label="移动端主导航">
         {MOBILE_TABS.map((tab) => (

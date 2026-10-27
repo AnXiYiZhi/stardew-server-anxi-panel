@@ -71,6 +71,13 @@ func ensureRuntimeContEnvFix(dataDir string, includeSteamAuth bool) (bool, error
 	if dataDir == "" {
 		return false, nil
 	}
+	contract, err := readConsoleRuntimeContract(dataDir)
+	if err != nil {
+		return false, err
+	}
+	if contract.fifo == junimo140InputFIFO {
+		return ensureJunimo140ComposeContract(dataDir, includeSteamAuth)
+	}
 	changed := false
 	for _, staticValue := range serverStaticInitValues {
 		target := filepath.Join(dataDir, filepath.FromSlash(staticValue.localPath))

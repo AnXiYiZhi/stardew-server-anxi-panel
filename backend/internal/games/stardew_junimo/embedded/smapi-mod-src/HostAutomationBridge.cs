@@ -18,6 +18,8 @@ internal sealed class HostAutomationBridge
     private FieldInfo? automationField;
     private FieldInfo? hiddenField;
     private MethodInfo? enableAutoModeMethod;
+    private MethodInfo? currentHostActivityMethod;
+    private bool hostActivityPolicyDetected;
     private object? service;
     private bool? lastAutomationEnabled;
     private bool? lastHostVisible;
@@ -31,6 +33,8 @@ internal sealed class HostAutomationBridge
     public bool Available { get; private set; }
 
     public string Detail { get; private set; } = "Not initialized.";
+
+    public bool HostActivityManaged => hostActivityPolicyDetected;
 
     public bool? AutomationEnabled
     {
@@ -84,6 +88,17 @@ internal sealed class HostAutomationBridge
             enableAutoModeMethod = ExactVoidMethod(type, "EnableAutoMode");
             var toggleAutoMode = ExactVoidMethod(type, "ToggleAutoMode");
             var toggleVisibility = ExactVoidMethod(type, "ToggleVisibility");
+            var activityCandidates = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)
+                .Where(method => method.Name == "CurrentHostActivity").ToArray();
+            hostActivityPolicyDetected = activityCandidates.Length > 0;
+            if (activityCandidates.Length == 1)
+            {
+                var candidate = activityCandidates[0];
+                if (candidate.IsStatic && candidate.GetParameters().Length == 0 && candidate.ReturnType.IsEnum
+                    && Enum.GetNames(candidate.ReturnType).SequenceEqual(new[] { "None", "Event", "FarmEvent", "Warp", "PassOut" })
+                    && Enum.GetValues(candidate.ReturnType).Cast<object>().Select(Convert.ToInt32).SequenceEqual(new[] { 0, 1, 2, 3, 4 }))
+                    currentHostActivityMethod = candidate;
+            }
             if (automationField?.FieldType != typeof(bool)
                 || hiddenField?.FieldType != typeof(bool)
                 || enableAutoModeMethod is null
@@ -115,6 +130,10 @@ internal sealed class HostAutomationBridge
 
             Available = true;
             Detail = "Installed.";
+            if (hostActivityPolicyDetected)
+                monitor.Log(currentHostActivityMethod is not null
+                    ? "[HostAutomationBridge] Upstream activity-aware pause policy owns idle, sleep and transition phases."
+                    : "[HostAutomationBridge] Unrecognized host-activity contract; force-pause is delegated upstream.", LogLevel.Info);
             monitor.Log(
                 "[HostAutomationBridge] F9 automation state and F10 visibility are bridged with exact JunimoServer signatures.",
                 LogLevel.Info);

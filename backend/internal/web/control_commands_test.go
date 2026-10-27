@@ -150,6 +150,54 @@ func TestSyncKeepsRunningResultWhileCommandFileExists(t *testing.T) {
 	}
 }
 
+func TestSyncControlCommandResultsKeepsSharedGroupSaveReceiptUntilLeaseReleased(t *testing.T) {
+	_, store, cleanup := newTestHandlerWithStore(t)
+	defer cleanup()
+	instance := ensureCommandSyncInstance(t, store)
+	id := "0123456789abcdef0123456789abcdef"
+	now := time.Now().UTC()
+	path := writeCommandResultFixture(t, instance.DataDir, sj.CommandOutcome{
+		CommandID: id, Status: sj.CommandStatusSucceeded, ErrorCode: "ok", CreatedAt: now, UpdatedAt: now,
+		Details: map[string]string{"event": "GameLoop.Saved", "saveId": "Shared_123"},
+	})
+	lease := filepath.Join(instance.DataDir, ".local-container", "junimo140-lease.json")
+	raw := []byte(`{"schemaVersion":1,"applyId":"apply_00112233445566778899aabb","primaryId":"a","planSha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}`)
+	if err := os.WriteFile(lease, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := syncControlCommandResults(context.Background(), store, instance, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
+		outcome, err := sj.GetCommandOutcome(instance.DataDir, id)
+		if err != nil || outcome.Status != sj.CommandStatusSucceeded || outcome.Details["event"] != "GameLoop.Saved" || outcome.Details["saveId"] != "Shared_123" {
+			t.Fatalf("history polling consumed the shared transaction receipt: %#v, %v", outcome, err)
+		}
+	}
+	if err := os.WriteFile(lease, []byte(`{"schemaVersion":99}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncControlCommandResults(context.Background(), store, instance, slog.Default()); err == nil {
+		t.Fatal("unreadable shared owner did not stop command cleanup")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("unreadable shared owner lost its receipt: %v", err)
+	}
+	if err := os.Remove(lease); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncControlCommandResults(context.Background(), store, instance, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("released receipt was not archived: %v", err)
+	}
+	persisted, err := store.GetControlCommand(context.Background(), id)
+	if err != nil || persisted.Status != "succeeded" {
+		t.Fatalf("released receipt history=%#v, err=%v", persisted, err)
+	}
+}
+
 func ensureCommandSyncInstance(t *testing.T, store *storage.Store) storage.Instance {
 	t.Helper()
 	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{ID: storage.DefaultInstanceID, DriverID: sj.DriverID, Name: "test", DataDir: t.TempDir()})

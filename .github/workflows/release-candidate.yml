@@ -15,9 +15,12 @@ on:
       - "scripts/run-release-gates.sh"
       - "scripts/validate-release-matrix.sh"
       - "scripts/compatibility_matrix.py"
+      - "scripts/candidate_acceptance.py"
+      - "scripts/panel_release_policy.py"
       - "scripts/tests/**"
       - ".github/workflows/release-candidate.yml"
       - ".github/workflows/release-after-candidate.yml"
+      - ".github/workflows/release-acceptance.yml"
       - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
@@ -76,6 +79,15 @@ jobs:
             frontend/package-lock.json
             website/package-lock.json
 
+      - name: Install pinned browser regression runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/panel-playwright" --no-save --package-lock=false playwright@1.62.1
+          node "$RUNNER_TEMP/panel-playwright/node_modules/playwright/cli.js" install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/panel-playwright/node_modules/playwright" >>"$GITHUB_ENV"
+          echo 'PLAYWRIGHT_CHANNEL=chromium' >>"$GITHUB_ENV"
+
       - name: Resolve candidate identity
         id: meta
         shell: bash
@@ -86,7 +98,7 @@ jobs:
           INPUT_OLDEST_VERSION: ${{ inputs.oldest_version }}
         run: |
           set -euo pipefail
-          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | python3 scripts/panel_release_policy.py newest)"
           latest_release="${latest_release#v}"
           if [[ ! "$latest_release" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "latest GitHub Release must be an exact stable semantic version" >&2
@@ -131,6 +143,9 @@ jobs:
             exit 1
           fi
           oldest="${INPUT_OLDEST_VERSION#v}"
+          if [[ "$version" == 0.7.3 && -z "$oldest" ]]; then
+            oldest=0.3.2
+          fi
           if [[ -n "$oldest" ]]; then
             if [[ ! "$oldest" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
               echo "oldest_version must be empty or an exact stable semantic version" >&2
@@ -147,10 +162,18 @@ jobs:
             exit 1
           fi
           short_sha="${GITHUB_SHA:0:12}"
-          build_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          build_date="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)"
           local_image="anxi-release-candidate:$version-$short_sha"
           candidate_ref="$GHCR_IMAGE:candidate-$version-$short_sha"
+          validation_ref="$GHCR_IMAGE:validation-$version-$short_sha"
           artifact_name="release-candidate-$version-$short_sha"
+          versions_json="$(gh api --paginate --slurp "users/$GITHUB_REPOSITORY_OWNER/packages/container/stardew-server-anxi-panel/versions?per_page=100")"
+          ref_exists="$(jq -r --arg tag "candidate-$version-$short_sha" --arg validation "validation-$version-$short_sha" 'any(.[][]; .metadata.container.tags | (index($tag) != null or index($validation) != null))' <<<"$versions_json")"
+          if [[ "$ref_exists" == true ]]; then
+            echo 'this version and commit already have an immutable candidate; resume its acceptance or promotion instead of rebuilding' >&2
+            exit 1
+          fi
+          [[ "$ref_exists" == false ]]
           {
             echo "version=$version"
             echo "previous=$previous"
@@ -160,6 +183,7 @@ jobs:
             echo "build_date=$build_date"
             echo "local_image=$local_image"
             echo "candidate_ref=$candidate_ref"
+            echo "validation_ref=$validation_ref"
             echo "artifact_name=$artifact_name"
           } >>"$GITHUB_OUTPUT"
 
@@ -192,7 +216,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/release-candidate.sh --version "${{ steps.meta.outputs.version }}" --previous-version "${{ steps.meta.outputs.oldest }}" --commit "$GITHUB_SHA" --build-date "${{ steps.meta.outputs.build_date }}" --image "${{ steps.meta.outputs.local_image }}" --metadata-output "$RUNNER_TEMP/candidate-oldest.json"
+          bash scripts/release-candidate.sh --reuse-image --version "${{ steps.meta.outputs.version }}" --previous-version "${{ steps.meta.outputs.oldest }}" --commit "$GITHUB_SHA" --build-date "${{ steps.meta.outputs.build_date }}" --image "${{ steps.meta.outputs.local_image }}" --metadata-output "$RUNNER_TEMP/candidate-oldest.json"
           if [[ "$(jq -r '.imageId' "$RUNNER_TEMP/candidate-oldest.json")" != "$(jq -r '.imageId' "$RUNNER_TEMP/candidate-local.json")" ]]; then
             echo "oldest-version gate did not validate the same immutable candidate image" >&2
             exit 1
@@ -205,28 +229,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push validated candidate and seal metadata
+      - name: Push immutable validation image and seal base proof
         id: seal
         shell: bash
         env:
           LOCAL_IMAGE: ${{ steps.meta.outputs.local_image }}
           CANDIDATE_REF: ${{ steps.meta.outputs.candidate_ref }}
+          VALIDATION_REF: ${{ steps.meta.outputs.validation_ref }}
           VERSION: ${{ steps.meta.outputs.version }}
           PREVIOUS_VERSION: ${{ steps.meta.outputs.previous }}
           OLDEST_VERSION: ${{ steps.meta.outputs.oldest }}
           BUILD_DATE: ${{ steps.meta.outputs.build_date }}
         run: |
           set -euo pipefail
-          docker tag "$LOCAL_IMAGE" "$CANDIDATE_REF"
-          docker push "$CANDIDATE_REF"
-          repository="${CANDIDATE_REF%:*}"
-          mapfile -t digests < <(docker image inspect "$CANDIDATE_REF" | jq -r --arg prefix "$repository@" '.[0].RepoDigests[]? | select(startswith($prefix)) | split("@")[1]' | sort -u)
+          docker tag "$LOCAL_IMAGE" "$VALIDATION_REF"
+          docker push "$VALIDATION_REF"
+          repository="${VALIDATION_REF%:*}"
+          mapfile -t digests < <(docker image inspect "$VALIDATION_REF" | jq -r --arg prefix "$repository@" '.[0].RepoDigests[]? | select(startswith($prefix)) | split("@")[1]' | sort -u)
           if [[ "${#digests[@]}" -ne 1 || ! "${digests[0]}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "unable to resolve one exact candidate digest" >&2
             exit 1
           fi
           digest="${digests[0]}"
-          jq --arg candidateRef "$CANDIDATE_REF" --arg digest "$digest" --arg workflowRunId "$GITHUB_RUN_ID" --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" --arg oldestTestedVersion "$OLDEST_VERSION" '. + {candidateRef:$candidateRef,digest:$digest,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,oldestTestedVersion:$oldestTestedVersion}' "$RUNNER_TEMP/candidate-local.json" >"$RUNNER_TEMP/candidate.json"
+          jq --arg candidateRef "$CANDIDATE_REF" --arg validationRef "$VALIDATION_REF" --arg digest "$digest" --arg workflowRunId "$GITHUB_RUN_ID" --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" --arg oldestTestedVersion "$OLDEST_VERSION" '. + {candidateRef:$candidateRef,validationRef:$validationRef,digest:$digest,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,oldestTestedVersion:$oldestTestedVersion}' "$RUNNER_TEMP/candidate-local.json" >"$RUNNER_TEMP/candidate.json"
           echo "digest=$digest" >>"$GITHUB_OUTPUT"
 
       - name: Upload immutable candidate proof

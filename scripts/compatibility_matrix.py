@@ -25,7 +25,7 @@ SMAPI_REQUEST_TIMEOUT_SECONDS = 120
 SMAPI_RETRY_ROUNDS = 3
 SMAPI_RETRY_BASE_SECONDS = 1
 REMOTE_COMMAND_RETRY_ROUNDS = 3
-STEAM_AUTH_HEALTH_CONTRACT_TAGS = {"1.5.0-anxi.2"}
+STEAM_AUTH_HEALTH_CONTRACT_TAGS = {"1.5.0-anxi.2", "1.5.0-preview.140-anxi.1"}
 
 
 class MatrixError(ValueError):
@@ -101,6 +101,22 @@ def validate(matrix: dict) -> None:
     require(auth["tag"] in STEAM_AUTH_HEALTH_CONTRACT_TAGS, "steamAuth tag lacks the reviewed pure /health contract")
     require(isinstance(auth.get("upstreamRef"), str) and auth["upstreamRef"].startswith("refs/tags/"), "steamAuth.upstreamRef must be an exact tag ref")
     require(REVISION_RE.fullmatch(str(auth.get("sourceRevision", ""))) is not None, "steamAuth.sourceRevision must be a full revision")
+
+    upgrade = matrix.get("fullStackUpgrade")
+    if upgrade is not None:
+        require(isinstance(upgrade, dict), "fullStackUpgrade must be an object")
+        require(VERSION_RE.fullmatch(str(upgrade.get("panelVersion", ""))) is not None, "fullStackUpgrade.panelVersion must be exact")
+        require(isinstance(upgrade.get("activate"), bool), "fullStackUpgrade.activate must be explicit")
+        validate_image_component("fullStackUpgrade.server", upgrade.get("server"), True)
+        validate_image_component("fullStackUpgrade.steamAuth", upgrade.get("steamAuth"), True)
+        server, upgrade_auth = upgrade["server"], upgrade["steamAuth"]
+        require(server["tag"] == "1.5.0-preview.140", "fullStackUpgrade requires Junimo .140")
+        require(set(server["digests"].values()) == {"sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db"}, "fullStackUpgrade server content differs from Junimo .140")
+        require(upgrade_auth["tag"] == "1.5.0-preview.140-anxi.1", "fullStackUpgrade requires matching SteamAuth")
+        require("sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518" not in upgrade_auth["digests"].values(), "legacy Auth content cannot be relabeled for .140")
+        require(set(upgrade_auth["digests"].values()) == {"sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6"}, "fullStackUpgrade Auth content differs from the reviewed .140 release")
+        require(upgrade_auth.get("upstreamRef") == "f318717ac06a780b6b21080b0263c16278d8e6e1", "fullStackUpgrade Auth must track exact Junimo .140 upstream")
+        require(upgrade_auth.get("sourceRevision") == "db3f7d53b8e7705b01bbf5a87633e07dabdd34a4", "fullStackUpgrade Auth sourceRevision must match the reviewed release")
 
     for name, app_id in (("game", "413150"), ("sdk", "1007")):
         component = matrix.get(name)
@@ -288,18 +304,27 @@ def download_smapi_archive_attempt(
 def verify_remote_artifacts(matrix: dict) -> None:
     validate(matrix)
     require(matrix["status"] == "recommended", "remote verification requires the embedded recommended manifest")
-    for name in ("server", "steamAuth"):
-        for image in matrix[name]["images"]:
-            if not inspect_remote_image(image, matrix[name]["digests"][image], required=required_remote_image(image)):
-                print(f"compatibility matrix warning: optional mirror unavailable: {image}", file=sys.stderr)
+    targets = [matrix]
+    if matrix.get("fullStackUpgrade") is not None:
+        targets.append(matrix["fullStackUpgrade"])
+    for target in targets:
+        for name in ("server", "steamAuth"):
+            for image in target[name]["images"]:
+                if not inspect_remote_image(image, target[name]["digests"][image], required=required_remote_image(image)):
+                    print(f"compatibility matrix warning: optional mirror unavailable: {image}", file=sys.stderr)
 
     download_smapi_archive(matrix["smapi"])
 
+    for target in targets:
+        verify_auth_source(target["steamAuth"])
+
+
+def verify_auth_source(auth: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="anxi-matrix-trace-") as directory:
         commands = (
             ["git", "init", "--quiet", directory],
-            ["git", "-C", directory, "fetch", "--quiet", "--no-tags", "--depth=500", "https://github.com/AnXiYiZhi/junimo-server-steam-service-cn.git", f"+{matrix['steamAuth']['sourceRevision']}:refs/verify/auth-source"],
-            ["git", "-C", directory, "fetch", "--quiet", "--no-tags", "--depth=1", "https://github.com/stardew-valley-dedicated-server/server.git", f"+{matrix['steamAuth']['upstreamRef']}:refs/verify/upstream"],
+            ["git", "-C", directory, "fetch", "--quiet", "--no-tags", "--depth=500", "https://github.com/AnXiYiZhi/junimo-server-steam-service-cn.git", f"+{auth['sourceRevision']}:refs/verify/auth-source"],
+            ["git", "-C", directory, "fetch", "--quiet", "--no-tags", "--depth=1", "https://github.com/stardew-valley-dedicated-server/server.git", f"+{auth['upstreamRef']}:refs/verify/upstream"],
         )
         for command in commands:
             run_traceability_command(command)
@@ -324,6 +349,15 @@ def panel_version_satisfies(current: str, minimum: str) -> bool:
     return left is not None and right is not None and left >= right
 
 
+def validate_panel_version(matrix: dict, version: str) -> None:
+    require(panel_version_satisfies(version, matrix["minimumPanelVersion"]), f"Panel {version} is below minimum {matrix['minimumPanelVersion']}")
+    upgrade = matrix.get("fullStackUpgrade")
+    if upgrade and upgrade["activate"]:
+        require(panel_version_satisfies(version, upgrade["panelVersion"]), f"Activated instance upgrade requires Panel {upgrade['panelVersion']} or newer; choose the intended minor version explicitly")
+    elif upgrade:
+        require(not panel_version_satisfies(version, upgrade["panelVersion"]), "Bridge package must precede its instance upgrade target; activate the intended minor release")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -344,7 +378,7 @@ def main() -> int:
         else:
             matrix = load(args.path)
             validate(matrix)
-            require(panel_version_satisfies(args.version, matrix["minimumPanelVersion"]), f"Panel {args.version} is below minimum {matrix['minimumPanelVersion']}")
+            validate_panel_version(matrix, args.version)
     except (OSError, json.JSONDecodeError, MatrixError) as exc:
         print(f"compatibility matrix error: {exc}", file=sys.stderr)
         return 1

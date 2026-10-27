@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "Usage: $0 --candidate-tar <path> --fixtures-tar <path> --candidate-image <ref> --version <x.y.z> --previous-version <x.y.z>" >&2
+  echo "Usage: $0 --candidate-tar <path> --fixtures-tar <path> --candidate-image <ref> --version <x.y.z> --previous-version <x.y.z> [--upgrade-only]" >&2
 }
 
 candidate_tar=""
@@ -10,6 +10,7 @@ fixtures_tar=""
 candidate_image=""
 version=""
 previous_version=""
+upgrade_only=0
 while (($# > 0)); do
   case "$1" in
     --candidate-tar)
@@ -31,6 +32,10 @@ while (($# > 0)); do
     --previous-version)
       previous_version="${2:-}"
       shift 2
+      ;;
+    --upgrade-only)
+      upgrade_only=1
+      shift
       ;;
     *)
       usage
@@ -128,6 +133,20 @@ previous_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$previous_version"
 previous_fixture_ref="$project/previous-fixture:$previous_version"
 steam_session_volume="stardew_steam-session"
 candidate_runtime_manifest="/workspace/backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json"
+full_stack_update=0
+if semver_at_least "$version" 0.8.0; then
+  if ! semver_at_least "$previous_version" 0.7.3; then
+    echo "candidate upgrade E2E: 0.8.0 requires the published 0.7.3 preparation release" >&2
+    exit 1
+  fi
+fi
+if [[ "$(jq -r '.fullStackUpgrade.panelVersion // empty' "$candidate_runtime_manifest")" == "$version" ]]; then
+  if [[ "$(jq -r '.fullStackUpgrade.activate // false' "$candidate_runtime_manifest")" != true ]]; then
+    echo "candidate upgrade E2E: declared full-stack release is not activated" >&2
+    exit 1
+  fi
+  full_stack_update=1
+fi
 legacy_expected_migrated_compose="$root/legacy-disabled-migrated-compose.yml"
 legacy_auth_image_snapshot_before="$root/legacy-disabled-auth-images.before"
 legacy_server_container_id=""
@@ -142,6 +161,11 @@ authorized_session_hash=""
 authorized_auth_container_id=""
 panel_port=18080
 compose_ready=0
+notice_digest=""
+dry_run_id=""
+previous_update_id=""
+accepted_update_id=""
+scope_operation_id=""
 
 remove_owned_session_volume() {
   local labels=""
@@ -228,6 +252,8 @@ curl --silent --show-error --fail --cacert "$tls_dir/ca.crt" --resolve ghcr.io:4
 
 docker network create --label "com.anxi-panel.test-owner=$owner" --subnet 172.31.250.0/24 "$network" >/dev/null
 
+python3 /workspace/scripts/tests/release_candidate_feed.py --root /workspace --version "$version" --output "$web_dir"
+
 cat >"$web_dir/nginx.conf" <<EOF
 events {}
 http {
@@ -238,10 +264,10 @@ http {
     ssl_certificate_key /certs/releases.key;
     default_type application/json;
     location = /repos/anxiyizhi/stardew-server-anxi-panel/releases/latest {
-      return 200 '{"tag_name":"v$version","html_url":"https://example.invalid/releases/v$version","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z"}';
+      alias /release-feed/latest.json;
     }
     location = /repos/anxiyizhi/stardew-server-anxi-panel/releases {
-      return 200 '[{"tag_name":"v$version","html_url":"https://example.invalid/releases/v$version","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z"}]';
+      alias /release-feed/releases.json;
     }
     location / { return 404; }
   }
@@ -259,7 +285,7 @@ http {
 }
 EOF
 
-docker run -d --name "$release_container" --label "com.anxi-panel.test-owner=$owner" --network "$network" --ip 172.31.250.10 --volume "$tls_dir:/certs:ro" --volume "$web_dir/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:alpine >/dev/null
+docker run -d --name "$release_container" --label "com.anxi-panel.test-owner=$owner" --network "$network" --ip 172.31.250.10 --volume "$tls_dir:/certs:ro" --volume "$web_dir:/release-feed:ro" --volume "$web_dir/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:alpine >/dev/null
 
 docker run --rm --entrypoint cat "$previous_ref" /etc/ssl/certs/ca-certificates.crt >"$tls_dir/ca-bundle.crt"
 cat "$tls_dir/ca.crt" >>"$tls_dir/ca-bundle.crt"
@@ -915,6 +941,8 @@ assert_upgraded_save_import_phase_a_boundaries() {
   local select_code=""
   local preimport_count=""
   local raw_platform_id="76561190000000456"
+  local phase_a_image="$project/save-import-runtime:$version"
+  local phase_a_image_dir="$root/save-import-runtime-image"
 
   echo "candidate upgrade E2E: testing exact target visibility and FIFO no-effect recovery"
   # The preceding controlled maintenance failure should already have stopped
@@ -926,7 +954,12 @@ assert_upgraded_save_import_phase_a_boundaries() {
     echo "candidate upgrade E2E: legacy stardew fixture resources remained before Phase A boundary tests" >&2
     exit 1
   fi
-  mkdir -p "$runtime_fixture" "$archive_root" "$hidden_saves"
+  mkdir -p "$runtime_fixture" "$archive_root" "$hidden_saves" "$phase_a_image_dir"
+  cat >"$phase_a_image_dir/Dockerfile" <<EOF
+FROM $candidate_image
+RUN apk add --no-cache coreutils=9.5-r2
+EOF
+  docker build --network default --tag "$phase_a_image" "$phase_a_image_dir" >/dev/null
   mkdir -p "$instance_dir/.local-container/mods/JunimoServer"
   mkdir -p "$instance_dir/.local-container/mods/StardewAnxiPanel.Control"
   mkdir -p "$instance_dir/.local-container/control"
@@ -937,7 +970,9 @@ assert_upgraded_save_import_phase_a_boundaries() {
   printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
   cp "$control_source/manifest.json" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/manifest.json"
   cp "$control_source/StardewAnxiPanel.Control.dll" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/StardewAnxiPanel.Control.dll"
-  printf '%s\n' '{"controlModVersion":"0.3.8","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}' >"$instance_dir/.local-container/control/options.json"
+  local phase_a_control_version=""
+  phase_a_control_version="$(jq -er '.Version' "$control_source/manifest.json")"
+  jq -n --arg control_version "$phase_a_control_version" '{controlModVersion:$control_version,loginChatPrivacyPatchAvailable:true,hostFarmhousePreservationPatchAvailable:true,hostAutomationBridgeAvailable:true,hostSleepSafetyPatchAvailable:true}' >"$instance_dir/.local-container/control/options.json"
   printf '%s\n' '<SaveGame><player><name>Existing</name></player><uniqueIDForThisGame>1</uniqueIDForThisGame></SaveGame>' >"$existing_main"
   printf '%s\n' '<Farmer><name>Existing</name></Farmer>' >"$existing_info"
   printf '%s\n' '{"SaveNameToLoad":"Existing_1"}' >"$active_pointer"
@@ -1004,7 +1039,7 @@ EOF
     cat >"$instance_compose" <<EOF
 services:
   server:
-    image: $candidate_image
+    image: $phase_a_image
     entrypoint: ["sh", "/fixture/fake-junimo.sh"]
     volumes:
       - type: bind
@@ -1253,10 +1288,11 @@ EOF
   printf 'release-candidate-runtime-repair-dll\n' >"$fixture_image_dir/JunimoServer/JunimoServer.dll"
   cat >"$fixture_image_dir/Dockerfile" <<'EOF'
 FROM alpine:3.20
+RUN apk add --no-cache coreutils=9.5-r2
 COPY bash /bin/bash
 COPY JunimoServer /data/Mods/JunimoServer
 EOF
-  docker build --network none --tag "$project/runtime-repair-server:$version" "$fixture_image_dir" >/dev/null
+  docker build --network default --tag "$project/runtime-repair-server:$version" "$fixture_image_dir" >/dev/null
   server_image_id="$(docker image inspect "$project/runtime-repair-server:$version" | jq -r '.[0].Id')"
   auth_image_id="$(docker image inspect alpine:3.20 | jq -r '.[0].Id')"
   docker tag "$server_image_id" "$server_ref"
@@ -1408,8 +1444,12 @@ cat >"$root/patch-image/Dockerfile" <<'EOF'
 FROM alpine:3.20
 COPY --chmod=755 steamcmd /usr/local/bin/steamcmd
 EOF
-docker build --network none --pull=false --tag "$project/patch-steamcmd:error" "$root/patch-image" >/dev/null
-assert_fresh_patch_features
+if ((full_stack_update == 0 && upgrade_only == 0)); then
+  docker build --network none --pull=false --tag "$project/patch-steamcmd:error" "$root/patch-image" >/dev/null
+  assert_fresh_patch_features
+else
+  echo "candidate upgrade E2E: fresh patch matrix is covered by the primary bridge candidate gate"
+fi
 wait_version "$previous_version" 120
 
 setup_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie-jar "$cookie_file" --header 'Content-Type: application/json' --data '{"username":"admin","password":"release-candidate-password","confirmPassword":"release-candidate-password"}' "http://127.0.0.1:$panel_port/api/setup/admin")"
@@ -1432,6 +1472,8 @@ post_update_check() {
     cat "$response_file" >&2
     return 1
   fi
+  notice_digest="$(jq -r '.noticeDigest // empty' "$response_file")"
+  cp "$response_file" "$root/update-check-accepted.json"
 }
 
 run_dry_run() {
@@ -1442,10 +1484,20 @@ run_dry_run() {
     cat "$response_file" >&2
     return 1
   fi
+  dry_run_id="$(jq -r '.id // empty' "$response_file")"
+  if [[ -z "$dry_run_id" ]]; then
+    echo "candidate upgrade E2E: accepted dry-run did not return its identity" >&2
+    return 1
+  fi
+  cp "$response_file" "$root/dry-run-accepted.json"
   deadline=$((SECONDS + 180))
   while ((SECONDS < deadline)); do
     if curl --silent --show-error --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/dry-run" >"$response_file" 2>/dev/null; then
       phase="$(jq -r '.phase // empty' "$response_file")"
+      if [[ "$(jq -r '.id // empty' "$response_file")" != "$dry_run_id" ]]; then
+        sleep 1
+        continue
+      fi
       if [[ "$phase" == succeeded ]]; then
         return 0
       fi
@@ -1461,13 +1513,113 @@ run_dry_run() {
   return 1
 }
 
+prepare_and_confirm_scope() {
+  local code phase deadline old_operation_id="" plan_sha payload
+  if curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/full-stack" >"$response_file" 2>/dev/null; then
+    old_operation_id="$(jq -r '.operationId // empty' "$response_file")"
+  fi
+  payload="$(jq -nc --arg target "$version" '{action:"prepare",targetVersion:$target}')"
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")"
+  cp "$response_file" "$root/scope-prepare-accepted.json"
+  scope_operation_id="$(jq -r '.operationId // empty' "$response_file")"
+  if [[ "$code" != 202 || ! "$scope_operation_id" =~ ^stack_[a-f0-9]{32}$ || "$scope_operation_id" == "$old_operation_id" ]]; then
+    echo "candidate upgrade E2E: full-stack prepare did not return one new accepted operation (HTTP $code)" >&2
+    return 1
+  fi
+  deadline=$((SECONDS + 180))
+  while ((SECONDS < deadline)); do
+    curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/full-stack" >"$response_file"
+    if [[ "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ]]; then
+      echo "candidate upgrade E2E: full-stack operation changed during preflight" >&2
+      return 1
+    fi
+    phase="$(jq -r '.phase // empty' "$response_file")"
+    if [[ "$phase" == awaiting_confirmation ]]; then
+      break
+    fi
+    if [[ "$phase" != preparing ]]; then
+      echo "candidate upgrade E2E: full-stack preflight ended in $phase" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  plan_sha="$(jq -r '.planSha256 // empty' "$response_file")"
+  if [[ "$phase" != awaiting_confirmation || ! "$plan_sha" =~ ^[a-f0-9]{64}$ ||
+    "$(jq -r '.authorizedAt // empty' "$response_file")" != "" ||
+    "$(jq '.groups | length' "$response_file")" != 0 ]]; then
+    echo "candidate upgrade E2E: expected an unauthorized exact empty scope for the uninstalled-game fixture" >&2
+    return 1
+  fi
+  cp "$response_file" "$root/scope-confirmation.json"
+  if [[ -z "$notice_digest" ]]; then
+    echo "candidate upgrade E2E: full-stack release did not expose its required notice digest" >&2
+    return 1
+  fi
+  payload="$(jq -nc --arg id "$scope_operation_id" --arg plan "$plan_sha" '{action:"confirm",operationId:$id,planSha256:$plan,confirm:true,noticeDigest:"invalid-notice"}')"
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")"
+  if [[ "$code" != 409 || "$(jq -r '.error.code // empty' "$response_file")" != update_precondition_failed ]]; then
+    echo "candidate upgrade E2E: a mismatched notice was not rejected before authorization" >&2
+    return 1
+  fi
+  curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/full-stack" >"$response_file"
+  if [[ "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ||
+    "$(jq -r '.authorizedAt // empty' "$response_file")" != "" || "$(jq -r '.phase' "$response_file")" != awaiting_confirmation ]]; then
+    echo "candidate upgrade E2E: rejected notice changed the pending authorization" >&2
+    return 1
+  fi
+  payload="$(jq -nc --arg id "$scope_operation_id" --arg plan "$plan_sha" --arg notice "$notice_digest" '{action:"confirm",operationId:$id,planSha256:$plan,confirm:true,noticeDigest:$notice}')"
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data "$payload" "http://127.0.0.1:$panel_port/api/system/update/full-stack")"
+  cp "$response_file" "$root/scope-confirm-accepted.json"
+  if [[ "$code" != 202 || "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ||
+    "$(jq -r '.authorizedAt // empty' "$response_file")" == "" ]]; then
+    echo "candidate upgrade E2E: exact scope confirmation was not accepted (HTTP $code); inspect this operation before any retry" >&2
+    return 1
+  fi
+}
+
+wait_full_stack_phase() {
+  local expected_phase="$1" deadline=$((SECONDS + 120)) phase=""
+  while ((SECONDS < deadline)); do
+    if curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/full-stack" >"$response_file" 2>/dev/null; then
+      if [[ "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ]]; then
+        echo "candidate upgrade E2E: observed a different full-stack operation" >&2
+        return 1
+      fi
+      phase="$(jq -r '.phase // empty' "$response_file")"
+      if [[ "$phase" == "$expected_phase" ]]; then
+        return 0
+      fi
+      case "$phase" in
+        succeeded|panel_failed_rolled_back|failed_safe|manual_action|preflight_failed|scope_changed)
+          echo "candidate upgrade E2E: full-stack operation ended in $phase, expected $expected_phase" >&2
+          return 1
+          ;;
+      esac
+    fi
+    sleep 1
+  done
+  echo "candidate upgrade E2E: full-stack operation did not reach $expected_phase" >&2
+  return 1
+}
+
 start_apply() {
   local code
+  previous_update_id=""
+  accepted_update_id=""
+  if curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/apply" >"$response_file" 2>/dev/null; then
+    previous_update_id="$(jq -r '.updateId // empty' "$response_file")"
+  fi
+  if ((full_stack_update == 1)); then
+    prepare_and_confirm_scope
+    return
+  fi
   set +e
   code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"confirmFullStack":true}' "http://127.0.0.1:$panel_port/api/system/update/apply")"
   local curl_status=$?
   set -e
   if ((curl_status == 0)) && [[ "$code" == 202 ]]; then
+    accepted_update_id="$(jq -r '.updateId // empty' "$response_file")"
+    cp "$response_file" "$root/apply-accepted.json"
     return 0
   fi
   if ((curl_status == 0)) && [[ "$code" == 400 ]]; then
@@ -1476,6 +1628,8 @@ start_apply() {
     curl_status=$?
     set -e
     if ((curl_status == 0)) && [[ "$code" == 202 ]]; then
+      accepted_update_id="$(jq -r '.updateId // empty' "$response_file")"
+      cp "$response_file" "$root/apply-accepted.json"
       return 0
     fi
   fi
@@ -1495,6 +1649,18 @@ wait_apply_phase() {
   deadline=$((SECONDS + timeout_seconds))
   while ((SECONDS < deadline)); do
     if curl --silent --show-error --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/apply" >"$response_file" 2>/dev/null; then
+      local observed_update_id
+      observed_update_id="$(jq -r '.updateId // empty' "$response_file")"
+      if [[ -z "$observed_update_id" || "$observed_update_id" == "$previous_update_id" ||
+        -n "$accepted_update_id" && "$observed_update_id" != "$accepted_update_id" ||
+        "$(jq -r '.toVersion // empty' "$response_file")" != "$version" ]]; then
+        sleep 1
+        continue
+      fi
+      if ((full_stack_update == 1)) && [[ "$(jq -r '.operationId // empty' "$response_file")" != "$scope_operation_id" ]]; then
+        sleep 1
+        continue
+      fi
       phase="$(jq -r '.phase // empty' "$response_file")"
       if [[ "$phase" == "$expected_phase" ]]; then
         return 0
@@ -2006,6 +2172,37 @@ if [[ "$(jq -r '.errorCode // empty' "$response_file")" != health_check_failed ]
 fi
 wait_version "$previous_version" 120
 
+if ((full_stack_update == 1)); then
+  # This is the real Docker Panel protocol matrix for a deployment with no
+  # installed games. The separate candidate-bound acceptance artifact must
+  # still prove the installed-game migration, session, data and invite paths.
+  wait_full_stack_phase panel_failed_rolled_back
+  [[ "$(sqlite3 "$data_dir/panel.db" 'PRAGMA integrity_check;')" == ok ]]
+  [[ -f "$data_dir/release-candidate-sentinel.txt" ]]
+  [[ "$(curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/setup/status" | jq -r '.initialized')" == true ]]
+  [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" == "$game_id_before" ]]
+  [[ "$(docker exec "$game_container" sha256sum /game/sentinel.txt | awk '{print $1}')" == "$game_hash_before" ]]
+  push_healthy_candidate
+  post_update_check
+  run_dry_run
+  start_apply
+  wait_version "$version" 300
+  wait_apply_phase succeeded 120
+  wait_full_stack_phase succeeded
+  assert_upgraded_frontend_contract
+  docker restart "$panel_container" >/dev/null
+  wait_version "$version" 120
+  wait_apply_phase succeeded 60
+  wait_full_stack_phase succeeded
+  [[ "$(sqlite3 "$data_dir/panel.db" 'PRAGMA integrity_check;')" == ok ]]
+  [[ -f "$data_dir/release-candidate-sentinel.txt" ]]
+  [[ "$(curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/setup/status" | jq -r '.initialized')" == true ]]
+  [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" == "$game_id_before" ]]
+  [[ "$(docker exec "$game_container" sha256sum /game/sentinel.txt | awk '{print $1}')" == "$game_hash_before" ]]
+  echo "candidate upgrade E2E: exact notice/scope Web authorization, unhealthy rollback, empty-scope completion, SQLite, session, non-target resources and restart passed; installed-game acceptance remains separately required"
+  exit 0
+fi
+
 echo "candidate upgrade E2E: preparing a running legacy instance with SteamCMD evidence and the old Auth-coupled runtime"
 prepare_legacy_disabled_runtime_fixture
 
@@ -2067,11 +2264,14 @@ if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_befor
   echo "candidate upgrade E2E: legacy Steam invite replay changed the non-target game resource" >&2
   exit 1
 fi
-assert_upgraded_world_management
-assert_patch_features
-assert_upgraded_mod_update_check
-assert_upgraded_legacy_junimo_repair
-assert_upgraded_stopped_compose_save_import_submission
-assert_upgraded_save_import_phase_a_boundaries
-
-echo "candidate upgrade E2E: previous release Web upgrade, rollback, unknown-holder fail-closed recovery, Steam invite migration, persistence, restart, Mod checks, legacy runtime repair, and save-import safety boundaries passed"
+if ((upgrade_only == 0)); then
+  assert_upgraded_world_management
+  assert_patch_features
+  assert_upgraded_mod_update_check
+  assert_upgraded_legacy_junimo_repair
+  assert_upgraded_stopped_compose_save_import_submission
+  assert_upgraded_save_import_phase_a_boundaries
+  echo "candidate upgrade E2E: previous release Web upgrade, rollback, unknown-holder fail-closed recovery, Steam invite migration, persistence, restart, Mod checks, legacy runtime repair, and save-import safety boundaries passed"
+else
+  echo "candidate upgrade E2E: affected oldest source passed Web upgrade, rollback, identity, persistence, restart and legacy intent checks against the existing exact candidate"
+fi

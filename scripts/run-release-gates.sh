@@ -54,6 +54,10 @@ changed_since_base() {
 echo "release gates: compatibility contracts"
 "$python_bin" scripts/compatibility_matrix.py validate backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
 "$python_bin" scripts/compatibility_matrix.py check-panel-version backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json --version "$version"
+"$python_bin" scripts/panel_release_policy.py validate --version "$version"
+"$python_bin" -m unittest discover -s scripts/tests -p 'test_panel_release_policy.py'
+"$python_bin" -m unittest discover -s scripts/tests -p 'test_release_candidate_feed.py'
+"$python_bin" -m unittest discover -s scripts/tests -p 'test_candidate_acceptance.py'
 "$python_bin" -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
 
 if changed_since_base backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json scripts/compatibility_matrix.py; then
@@ -69,6 +73,7 @@ bash scripts/tests/test_run_sh_swap.sh
 bash scripts/tests/test_migrate_fnos.sh
 bash scripts/tests/test_repair_junimo_upgrade.sh
 bash scripts/tests/test_release_matrix.sh
+bash scripts/tests/test_release_candidate_reuse.sh
 
 release_shell_files=(
   deploy/run.sh
@@ -84,6 +89,7 @@ release_shell_files=(
   scripts/tests/test_repair_junimo_upgrade.sh
   scripts/tests/test_release_candidate_upgrade.sh
   scripts/tests/test_release_matrix.sh
+  scripts/tests/test_release_candidate_reuse.sh
 )
 for shell_file in "${release_shell_files[@]}"; do
   bash -n "$shell_file"
@@ -127,6 +133,9 @@ echo "release gates: frontend regression and production build"
   npm run test:runtime-components
   npm run test:smapi-update
   npm run test:install-state
+  npm run test:steam-invite-lifecycle
+  npm run test:full-stack-lifecycle
+  npm run test:upgrade-entry
   npm run test:game-library
   npm run test:session-expiry
   npm run test:world-delete

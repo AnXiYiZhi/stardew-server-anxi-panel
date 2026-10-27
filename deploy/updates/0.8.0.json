@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "version": "0.8.0",
+  "minimumUpdaterVersion": "0.7.3",
+  "title": "v0.8.0 · Junimo .140 与实例升级",
+  "summary": "升级游戏与认证服务，保留现有世界和数据。",
+  "changes": [
+    "更新至 Junimo .140，并配套升级认证服务。",
+    "升级前自动保存和备份，完成后恢复原来运行的世界。",
+    "保留存档、Mod、配置和登录会话，可继续查看或恢复升级进度。"
+  ],
+  "notices": [
+    {
+      "level": "warning",
+      "title": "需要短暂停服",
+      "message": "在线玩家将断开连接。系统会先保存和备份，完成后恢复原来运行的世界。",
+      "requiresConfirmation": true
+    },
+    {
+      "level": "warning",
+      "title": "确认 Mod 兼容性",
+      "message": "现有 Mod 和配置会保留；部分第三方 Mod 可能需要更新，请提前确认兼容性。",
+      "requiresConfirmation": true
+    }
+  ],
+  "blocked": false
+}

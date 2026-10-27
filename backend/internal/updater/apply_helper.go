@@ -178,31 +178,47 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		if err := setPhase(PhasePulling, 30, "正在拉取精确版本的可信面板镜像"); err != nil {
 			return applyFailure{"state_write_failed", "无法更新升级状态"}
 		}
-		candidates, err := TrustedImageCandidates(to, opts.CurrentImage)
-		if err != nil {
-			return applyFailure{CodeImageNotAllowed, "无法生成可信镜像候选"}
-		}
-		for _, candidate := range candidates {
-			if err := ValidateTrustedImage(candidate); err != nil {
-				return applyFailure{CodeImageNotAllowed, "镜像候选未通过白名单"}
+		if status.PinnedTarget != nil {
+			pin := *status.PinnedTarget
+			if !pin.Valid() || pin.Version != to || !regexpFullStackOperation.MatchString(status.OperationID) {
+				return applyFailure{"full_stack_authorization_invalid", "全栈升级目标身份无效"}
 			}
-			pullCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
-			err := executor.Run(pullCtx, "pull", candidate)
-			cancel()
+			raw, err := executor.Output(ctx, "image", "inspect", pin.ImageID)
 			if err != nil {
-				continue
+				return applyFailure{CodeImagePullFailed, "已确认的 Panel 镜像不在本机，原 Panel 保持不变"}
 			}
-			digestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			digest, digestErr := executor.Output(digestCtx, "image", "inspect", "--format", "{{.Id}}", candidate)
-			cancel()
-			if digestErr != nil || !strings.Contains(digest, "sha256:") {
-				continue
+			observed, err := parsePinnedPanelTarget([]byte(raw), pin.Image, to)
+			if err != nil || observed != pin {
+				return applyFailure{"full_stack_target_changed", "Panel 镜像内容或 OCI 身份已变化"}
 			}
-			selected, selectedDigest = candidate, digest
-			break
-		}
-		if selected == "" {
-			return applyFailure{CodeImagePullFailed, "所有可信目标镜像均拉取失败"}
+			selected, selectedDigest = pin.ImageID, pin.ImageID
+		} else {
+			candidates, err := TrustedImageCandidates(to, opts.CurrentImage)
+			if err != nil {
+				return applyFailure{CodeImageNotAllowed, "无法生成可信镜像候选"}
+			}
+			for _, candidate := range candidates {
+				if err := ValidateTrustedImage(candidate); err != nil {
+					return applyFailure{CodeImageNotAllowed, "镜像候选未通过白名单"}
+				}
+				pullCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+				err := executor.Run(pullCtx, "pull", candidate)
+				cancel()
+				if err != nil {
+					continue
+				}
+				digestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				digest, digestErr := executor.Output(digestCtx, "image", "inspect", "--format", "{{.Id}}", candidate)
+				cancel()
+				if digestErr != nil || !strings.Contains(digest, "sha256:") {
+					continue
+				}
+				selected, selectedDigest = candidate, digest
+				break
+			}
+			if selected == "" {
+				return applyFailure{CodeImagePullFailed, "所有可信目标镜像均拉取失败"}
+			}
 		}
 		status.SelectedImage, status.SelectedDigest = selected, selectedDigest
 		if err := store.Write(status); err != nil {
@@ -223,7 +239,11 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		}
 		recreateAttempted = true
 		recreateCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-		err = executor.Run(recreateCtx, append(composeArgs, "up", "-d", "--pull", "always", "--force-recreate", "--no-deps", opts.ComposeService)...)
+		pullPolicy := "always"
+		if status.PinnedTarget != nil {
+			pullPolicy = "never"
+		}
+		err = executor.Run(recreateCtx, append(composeArgs, "up", "-d", "--pull", pullPolicy, "--force-recreate", "--no-deps", opts.ComposeService)...)
 		cancel()
 		if err != nil {
 			return applyFailure{CodeComposeRecreateFailed, "panel 服务重建失败"}
@@ -233,6 +253,12 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		}
 		if err := waitForPanel(ctx, executor, opts.CurrentContainer, to, opts.HealthTimeout, opts.PollInterval); err != nil {
 			return err
+		}
+		if status.PinnedTarget != nil {
+			actual, err := executor.Output(ctx, "inspect", "--format", "{{.Image}}", opts.CurrentContainer)
+			if err != nil || strings.TrimSpace(actual) != status.PinnedTarget.ImageID {
+				return applyFailure{"full_stack_target_changed", "新 Panel 容器未使用已确认的镜像内容"}
+			}
 		}
 		return nil
 	}()

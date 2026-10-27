@@ -1346,6 +1346,17 @@ func (s *server) handleInstanceInviteCode(w http.ResponseWriter, r *http.Request
 	type inviteCodeGetter interface {
 		GetInviteCode(ctx context.Context, instance registry.Instance) (string, error)
 	}
+	type inviteConnectionGetter interface {
+		GetInviteConnection(context.Context, registry.Instance) (registry.InviteCodeResult, error)
+	}
+	if connectionGetter, supported := driver.(inviteConnectionGetter); supported {
+		connection, err := connectionGetter.GetInviteConnection(r.Context(), makeRegistryInstance(instance))
+		if err != nil {
+			connection = registry.InviteCodeResult{SteamInviteEnabled: true, Status: steamInviteFailureStatus(instance, time.Now().UTC())}
+		}
+		writeJSON(w, http.StatusOK, connection)
+		return
+	}
 	getter, supported := driver.(inviteCodeGetter)
 	if !supported {
 		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持获取邀请码")

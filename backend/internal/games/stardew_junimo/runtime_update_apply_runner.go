@@ -490,7 +490,7 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Cont
 	} else if changed {
 		_, _ = job.Info(ctx, "已为旧实例补齐玩家加入保护运行环境。")
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.EffectiveRuntimeInspection(instance)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
 	}
@@ -701,8 +701,15 @@ func writeRuntimeTargetEnvAtomic(dataDir string, target sjconfig.RuntimeStackRec
 		return err
 	}
 	values := map[string]string{"IMAGE_VERSION": target.Server.Tag, "SERVER_IMAGE": selected.Server.Image, "SERVER_IMAGE_CANDIDATES": strings.Join(target.Server.TrustedCandidates, ",")}
-	if includeSteamAuth {
-		values["STEAM_SERVICE_IMAGE"] = selected.SteamAuth.Image
+	if includeSteamAuth || target.Server.Tag == "1.5.0-preview.140" {
+		authImage := selected.SteamAuth.Image
+		if !includeSteamAuth {
+			if !sjconfig.HasJunimo140SteamAuthTarget(target.SteamAuth) {
+				return errors.New("Junimo .140 requires a compatible deferred SteamAuth target")
+			}
+			authImage = target.SteamAuth.Image
+		}
+		values["STEAM_SERVICE_IMAGE"] = authImage
 		values["STEAM_SERVICE_IMAGE_CANDIDATES"] = strings.Join(target.SteamAuth.TrustedCandidates, ",")
 	}
 	if err := sjconfig.UpdateEnvFile(tmpName, values); err != nil {
@@ -861,7 +868,7 @@ func runtimeInfoContractReady(ctx context.Context, docker RuntimeUpdateApplyDock
 	if err != nil || offset < 0 {
 		return false
 	}
-	if _, err := docker.ComposeExecPipe(ctx, dataDir, "server", "info\n", "tee", "-a", serverInputFIFO); err != nil {
+	if _, err := writeServerInput(ctx, docker, dataDir, "info"); err != nil {
 		return false
 	}
 

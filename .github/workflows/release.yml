@@ -60,6 +60,7 @@ jobs:
           tag_contents="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
           tag_candidate_run_id=""
           tag_candidate_digest=""
+          tag_acceptance_run_id=""
           tag_candidate_run_count=0
           tag_candidate_digest_count=0
           while IFS= read -r line; do
@@ -69,6 +70,9 @@ jobs:
             elif [[ "$line" =~ ^Digest:\ (sha256:[0-9a-f]{64})$ ]]; then
               tag_candidate_digest="${BASH_REMATCH[1]}"
               tag_candidate_digest_count=$((tag_candidate_digest_count + 1))
+            elif [[ "$line" =~ ^Acceptance\ workflow:\ ([0-9]+)$ ]]; then
+              [[ -z "$tag_acceptance_run_id" ]]
+              tag_acceptance_run_id="${BASH_REMATCH[1]}"
             fi
           done <<<"$tag_contents"
           if ((tag_candidate_run_count != 1 || tag_candidate_digest_count != 1)); then
@@ -90,6 +94,7 @@ jobs:
             echo "artifact_name=$artifact_name"
             echo "tag_candidate_run_id=$tag_candidate_run_id"
             echo "tag_candidate_digest=$tag_candidate_digest"
+            echo "tag_acceptance_run_id=$tag_acceptance_run_id"
           } >>"$GITHUB_OUTPUT"
 
       - name: Download successful candidate proof
@@ -108,7 +113,7 @@ jobs:
           proof_dir="$RUNNER_TEMP/candidate-proof"
           mkdir -p "$proof_dir"
           run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TAG_CANDIDATE_RUN_ID")"
-          if ! jq -e --arg sha "$EXPECTED_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .path == ".github/workflows/release-candidate.yml"' <<<"$run_json" >/dev/null; then
+          if ! jq -e --arg sha "$EXPECTED_COMMIT" --arg repo "$GITHUB_REPOSITORY" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .head_repository.full_name == $repo and .path == ".github/workflows/release-candidate.yml"' <<<"$run_json" >/dev/null; then
             echo "annotated tag candidate workflow is not a successful release-candidate run for this exact main commit" >&2
             exit 1
           fi
@@ -139,7 +144,7 @@ jobs:
             jq '{schemaVersion,version,previousVersion,oldestTestedVersion,commit,workflowRunId,candidateRef,digest}' "$proof" >&2
             exit 1
           fi
-          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | python3 scripts/panel_release_policy.py newest)"
           latest_release="${latest_release#v}"
           if [[ "$previous" != "$latest_release" && "$version" != "$latest_release" ]]; then
             echo "candidate proof previous version does not match the current latest GitHub Release, and this is not an idempotent retry of the same release: $latest_release" >&2
@@ -153,6 +158,31 @@ jobs:
             echo "build_date=$(jq -r '.buildDate' "$proof")"
             echo "previous=$previous"
           } >>"$GITHUB_OUTPUT"
+
+      - name: Verify immutable real Docker acceptance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCEPTANCE_RUN_ID: ${{ steps.identity.outputs.tag_acceptance_run_id }}
+          EXPECTED_VERSION: ${{ steps.identity.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+          EXPECTED_SHORT_SHA: ${{ steps.identity.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          required="$(python3 -c 'import sys; from scripts.candidate_acceptance import requires; print(str(requires(sys.argv[1])).lower())' "$EXPECTED_VERSION")"
+          if [[ "$required" != true ]]; then
+            exit 0
+          fi
+          [[ "$ACCEPTANCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTANCE_RUN_ID")"
+          jq -e --arg sha "$EXPECTED_COMMIT" --arg repo "$GITHUB_REPOSITORY" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .head_repository.full_name == $repo and .path == ".github/workflows/release-acceptance.yml"' <<<"$run_json" >/dev/null
+          artifact_name="release-acceptance-$EXPECTED_VERSION-$EXPECTED_SHORT_SHA"
+          artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTANCE_RUN_ID/artifacts")"
+          jq -e --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and (.expired | not))] | length == 1' <<<"$artifacts_json" >/dev/null
+          acceptance_dir="$RUNNER_TEMP/specialist-proof"
+          mkdir -p "$acceptance_dir"
+          gh run download "$ACCEPTANCE_RUN_ID" --name "$artifact_name" --dir "$acceptance_dir"
+          python3 scripts/candidate_acceptance.py --candidate "$RUNNER_TEMP/candidate-proof/candidate.json" --acceptance "$acceptance_dir/acceptance.json" --output "$RUNNER_TEMP/verified-acceptance.json" --acceptance-run-id "$ACCEPTANCE_RUN_ID"
 
       - name: Verify registry promotion tool
         shell: bash
@@ -273,7 +303,7 @@ jobs:
             echo "origin/main changed after exact version promotion; refusing to move latest tags" >&2
             exit 1
           fi
-          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | python3 scripts/panel_release_policy.py newest)"
           latest_release="${latest_release#v}"
           if [[ "$latest_release" != "$PREVIOUS_VERSION" && "$latest_release" != "$VERSION" ]]; then
             echo "latest GitHub Release changed after proof validation; refusing to move latest tags: $latest_release" >&2
@@ -310,6 +340,10 @@ jobs:
           if [[ -z "${details//[[:space:]]/}" ]]; then
             details="- $subject"
           fi
+          public_notes="deploy/updates/${tag#v}.md"
+          if [[ -f "$public_notes" ]]; then
+            details="$(cat "$public_notes")"
+          fi
           previous_tag="$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)"
           notes_path="$RUNNER_TEMP/release-notes.md"
           {
@@ -321,6 +355,7 @@ jobs:
               printf '**完整提交记录**：https://github.com/%s/commits/%s\n' "$GITHUB_REPOSITORY" "$tag"
             fi
           } >"$notes_path"
+          python3 scripts/panel_release_policy.py notes --version "${tag#v}" --output "$notes_path"
           echo "path=$notes_path" >>"$GITHUB_OUTPUT"
 
       - name: Create GitHub release
@@ -329,6 +364,7 @@ jobs:
           tag_name: ${{ steps.identity.outputs.tag }}
           name: Stardew Server Anxi Panel ${{ steps.identity.outputs.version }}
           body_path: ${{ steps.notes.outputs.path }}
+          make_latest: ${{ steps.identity.outputs.version == '0.7.3' && 'true' || 'false' }}
           files: |
             deploy/run.sh
             deploy/migrate-fnos.sh

@@ -286,7 +286,7 @@ func TestImportPhaseAFIFOSuccessJournalLossStopsWithoutResubmitting(t *testing.T
 func (f *phaseATestFixture) interceptFIFO(effect func(command string) (paneldocker.CommandResult, error)) {
 	base := f.fake.execFunc
 	f.fake.execFunc = func(ctx context.Context, dir, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
-		if len(args) > 0 && args[0] == "tee" && strings.HasPrefix(stdin, "saves import ") {
+		if len(args) > 0 && args[0] == "timeout" && strings.HasPrefix(stdin, "saves import ") {
 			f.teeCalls++
 			return effect(strings.TrimSuffix(stdin, "\n"))
 		}

@@ -25,7 +25,10 @@ func TestPlayerReadAcceptsConcurrentControlRefresh(t *testing.T) {
 			if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 				t.Fatal(err)
 			}
-			d := newTestDriver(&fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, _ ...string) (paneldocker.CommandResult, error) {
+			d := newTestDriver(&fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, args ...string) (paneldocker.CommandResult, error) {
+				if args[0] == "wc" {
+					return paneldocker.CommandResult{Stdout: "0 " + serverOutputLog}, nil
+				}
 				if stdin == "info\n" {
 					updated := strings.Replace(raw, "01:00:00Z", "01:00:02.100Z", 1)
 					if changeSave {
@@ -58,8 +61,13 @@ func TestPlayerLimitCacheLeavesLiveSnapshotsFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	d := newTestDriver(&fakeConsoleDocker{execFunc: func(_ context.Context, _, _, _ string, _ ...string) (paneldocker.CommandResult, error) {
-		calls++
+	d := newTestDriver(&fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, args ...string) (paneldocker.CommandResult, error) {
+		if args[0] == "wc" {
+			return paneldocker.CommandResult{Stdout: "0 " + serverOutputLog}, nil
+		}
+		if stdin == "info\n" {
+			calls++
+		}
 		return paneldocker.CommandResult{Stdout: "Players: 1/4\nOnline players: host\n"}, nil
 	}})
 	instance := makeRunningInstance()
@@ -74,17 +82,17 @@ func TestPlayerLimitCacheLeavesLiveSnapshotsFresh(t *testing.T) {
 			t.Fatalf("stale snapshot: %+v %v", result, err)
 		}
 	}
-	if calls != 6 {
-		t.Fatalf("3 fresh snapshots executed %d commands; want 4+1+1", calls)
+	if calls != 1 {
+		t.Fatalf("3 fresh snapshots executed %d info commands; want one cached limit query", calls)
 	}
 	instance.UpdatedAt = "new-runtime-generation"
-	if d.cachedLiveServerMaxPlayers(context.Background(), instance) == nil || calls != 9 {
+	if d.cachedLiveServerMaxPlayers(context.Background(), instance) == nil || calls != 2 {
 		t.Fatal("runtime generation did not invalidate limit")
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("MAX_PLAYERS=8\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if d.cachedLiveServerMaxPlayers(context.Background(), instance) == nil || calls != 12 {
+	if d.cachedLiveServerMaxPlayers(context.Background(), instance) == nil || calls != 3 {
 		t.Fatal("config change did not invalidate limit")
 	}
 }

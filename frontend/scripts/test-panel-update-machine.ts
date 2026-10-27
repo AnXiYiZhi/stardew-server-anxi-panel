@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import type { PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus } from '../src/api.ts'
 import {
   canStartPanelUpdate,
+  hasGameUpgradeFlow,
   isPanelUpdateActive,
   isPanelUpdateTerminal,
   panelUpdatePhaseLabel,
@@ -14,6 +15,20 @@ const update: PanelUpdateStatus = {
   updateAvailable: true, releaseUrl: 'https://example.test/release', publishedAt: null, checkedAt: null,
   checkStatus: 'ok', checkError: '',
 }
+
+assert.equal(hasGameUpgradeFlow(null), false)
+assert.equal(hasGameUpgradeFlow({ version: '0.7.2' }), false)
+assert.equal(hasGameUpgradeFlow({ version: '0.7.3', runtimeUpgrade: { requiresScopeConfirmation: false, serverVersion: '1.5.0-preview.125', authVersion: '1.5.0-anxi.2' } }), false)
+assert.equal(hasGameUpgradeFlow({ version: '0.8.0', runtimeUpgrade: { requiresScopeConfirmation: true, serverVersion: '1.5.0-preview.140', authVersion: '1.5.0-anxi.3' } }), true)
+assert.equal(hasGameUpgradeFlow({ version: '0.7.3' }, { authorizedAt: '2026-10-25T00:00:00Z' }), true)
+const knownBridge = { version: '0.7.3', runtimeUpgrade: { requiresScopeConfirmation: false, targetPanelVersion: '0.8.0', serverVersion: '1.5.0-preview.140', authVersion: '1.5.0-anxi.3' } }
+assert.equal(hasGameUpgradeFlow(knownBridge), false)
+assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.7.4' }), false)
+assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.8.0' }), true)
+assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.8.1' }), false)
+assert.equal(hasGameUpgradeFlow({ ...knownBridge, version: '0.8.0', runtimeUpgrade: { ...knownBridge.runtimeUpgrade, requiresScopeConfirmation: true } }, { authorizedAt: '2026-10-25T00:00:00Z', phase: 'succeeded' }, { ...update, latestVersion: 'v0.8.1' }), false)
+assert.equal(hasGameUpgradeFlow({ ...knownBridge, version: '0.8.1', runtimeUpgrade: { ...knownBridge.runtimeUpgrade, requiresScopeConfirmation: true } }), true)
+assert.equal(hasGameUpgradeFlow(knownBridge, { authorizedAt: '2026-10-25T00:00:00Z' }, { ...update, latestVersion: 'v0.8.1' }), true)
 
 const apply = (phase: PanelUpdateApplyStatus['phase'], progress = 0): PanelUpdateApplyStatus => ({
   updateId: 'update-1', phase, progress, fromVersion: '0.1.14', toVersion: '0.1.15',

@@ -211,6 +211,12 @@ func installationTemplateEnv(dataDir, verifiedImage string) (map[string]string, 
 // locally available mirror. It never downloads or rewrites game-data and only
 // touches untouched save-required instances published by this provisioner.
 func (d *Driver) ConvergeProvisionedInstanceTemplate(ctx context.Context, template, target registry.Instance) (bool, error) {
+	if err := rejectJunimo140GroupLease(template.DataDir); err != nil {
+		return false, err
+	}
+	if err := rejectJunimo140GroupLease(target.DataDir); err != nil {
+		return false, err
+	}
 	if d.docker == nil || template.ID == "" || target.ID == "" || template.ID == target.ID ||
 		template.DriverID != DriverID || target.DriverID != DriverID ||
 		target.State != storage.InstanceStateSaveRequired || target.DriverPhase != "instance_ready" {

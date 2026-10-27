@@ -26,6 +26,7 @@ type ServiceOptions struct {
 	Now              func() time.Time
 	Database         DatabaseBackupper
 	DatabasePath     string
+	CurrentVersion   string
 }
 
 type DatabaseBackupper interface {
@@ -33,16 +34,17 @@ type DatabaseBackupper interface {
 }
 
 type Service struct {
-	docker       DockerRuntime
-	store        *StateStore
-	applyStore   *ApplyStateStore
-	detect       DetectOptions
-	logger       *slog.Logger
-	now          func() time.Time
-	mu           sync.Mutex
-	dataDir      string
-	databasePath string
-	database     DatabaseBackupper
+	docker         DockerRuntime
+	store          *StateStore
+	applyStore     *ApplyStateStore
+	detect         DetectOptions
+	logger         *slog.Logger
+	now            func() time.Time
+	mu             sync.Mutex
+	dataDir        string
+	databasePath   string
+	database       DatabaseBackupper
+	currentVersion string
 }
 
 func NewService(opts ServiceOptions) *Service {
@@ -71,11 +73,12 @@ func NewService(opts ServiceOptions) *Service {
 			HostInstallDir: opts.HostInstallDir, HostComposeFile: opts.HostComposeFile,
 			HostDataDir: opts.HostDataDir, ComposeProject: opts.ComposeProject,
 		},
-		logger:       logger,
-		now:          now,
-		dataDir:      dataDir,
-		databasePath: filepath.Clean(opts.DatabasePath),
-		database:     opts.Database,
+		logger:         logger,
+		now:            now,
+		dataDir:        dataDir,
+		databasePath:   filepath.Clean(opts.DatabasePath),
+		database:       opts.Database,
+		currentVersion: opts.CurrentVersion,
 	}
 }
 
@@ -139,9 +142,44 @@ func (s *Service) reconcileCompletedImageCleanupOnce(ctx context.Context, curren
 }
 
 func (s *Service) StartApply(ctx context.Context, currentVersion, latestVersion string) (ApplyStatus, error) {
+	return s.startApply(ctx, currentVersion, latestVersion, "", nil)
+}
+
+func (s *Service) StartApplyPinned(ctx context.Context, currentVersion string, target PanelTarget, operationID string) (ApplyStatus, error) {
+	if !target.Valid() || !regexpFullStackOperation.MatchString(operationID) {
+		return ApplyStatus{}, ValidationError{Code: "full_stack_authorization_invalid", Message: "全栈升级授权或目标身份无效"}
+	}
+	s.mu.Lock()
+	existing, existingErr := s.applyStore.Read()
+	s.mu.Unlock()
+	if existingErr == nil && existing.OperationID == operationID {
+		if existing.PinnedTarget == nil || !existing.PinnedTarget.SameContent(target) {
+			return ApplyStatus{}, ValidationError{Code: "full_stack_target_changed", Message: "同一授权不能替换 Panel 目标"}
+		}
+		return existing, nil
+	}
+	observed, err := s.PreparedPanelTarget(ctx, currentVersion, target.Version)
+	if err != nil || !observed.SameContent(target) {
+		return ApplyStatus{}, ValidationError{Code: "full_stack_target_changed", Message: "Panel 目标已变化，请重新预检并确认"}
+	}
+	return s.startApply(ctx, currentVersion, target.Version, operationID, &target)
+}
+
+func (s *Service) startApply(ctx context.Context, currentVersion, latestVersion, operationID string, pinned *PanelTarget) (ApplyStatus, error) {
+	if err := validateUpgradeTransition(currentVersion, latestVersion); err != nil {
+		return ApplyStatus{}, err
+	}
+	if s.currentVersion != "" {
+		if err := BridgeReady(s.dataDir, currentVersion); err != nil {
+			return ApplyStatus{}, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, err := s.applyStore.Read(); err == nil && IsActiveApplyPhase(existing.Phase) {
+		if operationID != "" && existing.OperationID == operationID && existing.PinnedTarget != nil && pinned != nil && existing.PinnedTarget.SameContent(*pinned) {
+			return existing, nil
+		}
 		return existing, ValidationError{Code: CodeUpdateInProgress, Message: "已有面板升级任务正在执行"}
 	}
 	comparison, err := CompareStableVersions(currentVersion, latestVersion)
@@ -155,6 +193,7 @@ func (s *Service) StartApply(ctx context.Context, currentVersion, latestVersion 
 	toVersion, _ := NormalizeTargetVersion(latestVersion)
 	now := s.now().UTC()
 	status := ApplyStatus{
+		OperationID: operationID, PinnedTarget: pinned,
 		UpdateID: newDryRunID(), Phase: PhaseChecking, Progress: 5,
 		FromVersion: fromVersion, ToVersion: toVersion, Logs: []LogEntry{}, StartedAt: now, UpdatedAt: now,
 	}
@@ -231,6 +270,14 @@ func (s *Service) Capability(ctx context.Context) Capability {
 func (s *Service) Status() (DryRunStatus, error) { return s.store.Read() }
 
 func (s *Service) StartDryRun(ctx context.Context, targetVersion string) (DryRunStatus, error) {
+	if s.currentVersion != "" {
+		if err := validateUpgradeTransition(s.currentVersion, targetVersion); err != nil {
+			return DryRunStatus{}, err
+		}
+		if err := BridgeReady(s.dataDir, s.currentVersion); err != nil {
+			return DryRunStatus{}, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, err := s.store.Read(); err == nil && (existing.Phase == "starting" || existing.Phase == "running") {

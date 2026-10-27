@@ -21,7 +21,7 @@ import { ModalPortal } from '../../core/ModalPortal'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
-import { UpdateDetailsDialog } from './UpdateDetailsDialog'
+import { FullStackMaintenanceView } from './FullStackMaintenanceView'
 import { classifyInstallationState } from './installation-state'
 import { panelUpdateSurface } from './panel-update-machine'
 import { calculateShellViewport, shouldAutoCollapseOpsRail } from './responsive-layout'
@@ -689,6 +689,7 @@ export function StardewPanel({
   }
 
   function renderPage() {
+    if(instanceState?.maintenance && route!=='jobs' && route!=='diagnostics') return <FullStackMaintenanceView user={user} maintenance={instanceState.maintenance} onNavigate={navigate}/>
     switch (route) {
       case 'overview':
         return <OverviewPage {...pageProps} />
@@ -944,7 +945,6 @@ export function StardewPanel({
           <Suspense fallback={<PageLoadingFallback />}>{renderPage()}</Suspense>
         </div>
       </main>
-      <UpdateDetailsDialog user={user} dashboardData={dashboardData} />
 
       {/* ── 右侧 OpsRail ────────────────────────────────────── */}
       <aside className="sd-opsrail" aria-label="任务状态">

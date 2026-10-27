@@ -59,6 +59,11 @@ func (s *server) handleSystemUpdateDryRun(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusBadRequest, "missing_field", "targetVersion 不能为空")
 			return
 		}
+		versionStatus := s.updateChecker.Status()
+		if err := versionStatus.ValidateAction(body.TargetVersion, "", false); err != nil {
+			writeError(w, http.StatusConflict, "update_precondition_failed", err.Error())
+			return
+		}
 		status, err := s.updater.StartDryRun(r.Context(), body.TargetVersion)
 		if validation, ok := updater.IsValidationError(err); ok {
 			writeError(w, http.StatusBadRequest, validation.Code, validation.Message)
@@ -93,7 +98,9 @@ func (s *server) handleSystemUpdateApply(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusOK, status)
 	case http.MethodPost:
 		var body struct {
-			ConfirmFullStack bool `json:"confirmFullStack"`
+			ConfirmFullStack bool   `json:"confirmFullStack"`
+			NoticeDigest     string `json:"noticeDigest,omitempty"`
+			TargetVersion    string `json:"targetVersion,omitempty"`
 		}
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 		decoder.DisallowUnknownFields()
@@ -105,12 +112,20 @@ func (s *server) handleSystemUpdateApply(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusBadRequest, "full_stack_confirmation_required", "必须确认 Panel 更新可能保存、备份并重启游戏实例")
 			return
 		}
-		versionStatus := s.updateChecker.Status()
+		target := strings.TrimSpace(body.TargetVersion)
+		if target == "" {
+			target = s.updateChecker.Status().LatestVersion
+		}
+		versionStatus := s.updateChecker.Check(r.Context())
+		if err := versionStatus.ValidateAction(target, body.NoticeDigest, true); err != nil {
+			writeError(w, http.StatusConflict, "update_precondition_failed", err.Error())
+			return
+		}
 		if !versionStatus.UpdateAvailable || strings.TrimSpace(versionStatus.LatestVersion) == "" {
 			writeError(w, http.StatusConflict, updater.CodeUpdateNotAvailable, "后端当前没有已确认的正式新版本")
 			return
 		}
-		status, err := s.updater.StartApply(r.Context(), versionStatus.CurrentVersion, versionStatus.LatestVersion)
+		status, err := s.updater.StartApply(r.Context(), versionStatus.CurrentVersion, target)
 		if validation, ok := updater.IsValidationError(err); ok {
 			httpStatus := http.StatusConflict
 			if validation.Code == updater.CodeInvalidTargetVersion {
@@ -134,6 +149,9 @@ func (s *server) enrichFullStackUpdateStatus(ctx context.Context, status *update
 	if status == nil {
 		return
 	}
+	if s.enrichAuthorizedFullStackStatus(status) {
+		return
+	}
 	if updater.IsActiveApplyPhase(status.Phase) {
 		status.FullStack = &updater.FullStackStatus{Phase: "waiting_panel", Progress: min(status.Progress*40/100, 40), RuntimeRequired: true, Result: "Panel 更新完成后将自动检查并补齐游戏运行栈。"}
 		return
@@ -146,6 +164,18 @@ func (s *server) enrichFullStackUpdateStatus(ctx context.Context, status *update
 	if err != nil {
 		status.FullStack = &updater.FullStackStatus{Phase: "failed_safe", Progress: 40, RuntimeRequired: true, ErrorCode: "instances_unavailable", Error: "新 Panel 已启动，但无法枚举游戏实例；运行栈尚未修改。"}
 		return
+	}
+	if driver, ok := s.fullStackDriver(); ok && driver.FullStackUpgradeAvailable() && driver.FullStackUpgradeAppliesToPanelVersion(s.config.Version, s.config.Version) {
+		needsConfirmation := false
+		for _, instance := range storedInstances {
+			if instance.DriverID == sj.DriverID && instance.State != storage.InstanceStateUninitialized && instance.State != storage.InstanceStateAdminCreated {
+				needsConfirmation = true
+			}
+		}
+		if needsConfirmation {
+			status.FullStack = &updater.FullStackStatus{Phase: "manual_action", RuntimeRequired: true, ErrorCode: "legacy_full_stack_confirmation_required", Result: "Panel 已更新；游戏迁移尚未获得精确范围授权。请刷新页面，在版本详情中预检并确认 Junimo .140 及共享世界范围后继续。原游戏运行选择保持。"}
+			return
+		}
 	}
 	var items []*updater.FullStackStatus
 	for _, stored := range storedInstances {

@@ -1,3 +1,13 @@
+# Junimo .125 / .140 版本边界（2026-10-15，本地适配中）
+
+Panel 当前推荐仍为 `.125`；固定目标为 commit `f318717ac06a780b6b21080b0263c16278d8e6e1`。目标 Mod 的生产匿名 GET 为 `/status`、`/health`、`/wait/health`、`/docs`、`/swagger/v1/swagger.json`，`/stats` 和 `/diagnostics/state` 在配置 key 后要求 Bearer。固定真实游戏加载后，status/health/stats/diagnostics 的缺失/错误/正确 key 及生产 test 路由共 15 项通过，证据 `runtime140-production-api.json`；完整目标栈升级仍未验收。
+
+`.140` 启动期的 phase responder 有独立边界：空卷实际对照中 `/status` 缺 key/错误 key 均为 401，正确 key 返回 200 和 `isOnline=false, phase=downloading`；正确 key 的 `/health` 仍为 503，不能当作 Mod/世界已就绪。证据为 `tmp/junimo140-20261015/startup-http-contracts.json`。主 Mod 接管端口以后才适用上述匿名 GET 列表。
+
+`.140` 的已识别 Panel Compose 迁移保留 API 端口号并将宿主地址绑定到 `127.0.0.1`；无法识别的自定义 API 绑定返回 `junimo140_compose_manual_required` 并保留原文件，避免公开 status 直接扩大实例信息暴露。Panel 自身 session/管理员权限仍独立执行。新增 `current.buildId/buildVerified` 仅表示 SMAPI 文件身份检查；邀请码非空、health、phase 或 HTTP 接受均不能证明 Steam relay、真实客户端或世界操作成功。
+
+Panel 已适配 `.140` 的 `sequence` 游标，内部统一为旧 version，wait/poll 要求新快照；冲突、负数或分数拒绝。原 Panel invite-code 接口新增可选 `connectionStatusCode/authReadiness` 和六个状态，详见 docs/06；从同一 `/status` 的通用 S-code、relay/Galaxy/Steam 信号归一化并校验一致性。真实 IP 模式 `galaxyLobbyState/authReadiness=null` 合法，auth 展示为 unknown，不证明 Steam 授权。桌面/手机 UI 的四状态流转使用夹具，Steam/GOG 真实联机尚未验证。
+
 # SAVE-IMPORT-E2E-RELEASE-1：导入回执发布状态（2026-07-16，真实 E2E 缺失）
 
 - Junimo `.125` 正式 `saves import` 仍没有 commandId，也没有新增正式 JSON import 回执；Panel 没有要求或修改上游，也没有使用 `/test/*`。

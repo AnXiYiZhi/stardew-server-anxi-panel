@@ -1252,13 +1252,17 @@ func validateImportStaticCapability(dataDir string) error {
 		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "Junimo import capability cannot be verified", Cause: err}
 	}
 	imageVersion := strings.TrimSpace(values["IMAGE_VERSION"])
-	if imageVersion != TestedImageTag {
-		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "Junimo .125 runtime is required for transactional import"}
+	if !supportsTransactionalImportVersion(imageVersion) {
+		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "Junimo runtime does not provide a supported transactional import contract"}
 	}
 	if err := validateExtractedJunimoServerMod(junimoServerModDir(dataDir), imageVersion); err != nil {
 		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "mounted JunimoServer mod does not match the image", Cause: err}
 	}
 	return nil
+}
+
+func supportsTransactionalImportVersion(version string) bool {
+	return version == TestedImageTag || version == "1.5.0-preview.140"
 }
 
 func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID, allowedOperationID string) error {
@@ -1519,10 +1523,10 @@ func (d *Driver) prepareImportRuntimeAssets(ctx context.Context, instance regist
 	if imageVersion == "" {
 		return &ImportTransactionError{Code: ImportErrorRuntimePrepare, Message: "Junimo import runtime version is not configured"}
 	}
-	if imageVersion != TestedImageTag {
-		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "Junimo .125 runtime is required for transactional import"}
+	if !supportsTransactionalImportVersion(imageVersion) {
+		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "Junimo runtime does not provide a supported transactional import contract"}
 	}
-	if err := validateExtractedJunimoServerMod(junimoServerModDir(instance.DataDir), TestedImageTag); err == nil {
+	if err := validateExtractedJunimoServerMod(junimoServerModDir(instance.DataDir), imageVersion); err == nil {
 		return nil
 	}
 	lifecycle, ok := d.docker.(LifecycleDockerService)

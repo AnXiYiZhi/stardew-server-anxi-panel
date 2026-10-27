@@ -291,17 +291,20 @@ func TestRunCommand_ServerStarting(t *testing.T) {
 
 // ── Command execution tests ──────────────────────────────────────────────────
 
-func TestRunCommand_ExecutesAttachCli(t *testing.T) {
+func TestRunCommand_ExecutesVerifiedFIFO(t *testing.T) {
 	var capturedStdin string
 	var capturedArgs []string
 
 	d := newTestDriver(&fakeConsoleDocker{
 		execFunc: func(_ context.Context, _, _, stdinData string, args ...string) (paneldocker.CommandResult, error) {
-			if len(args) > 0 && args[0] == "tee" {
+			if stdinData != "" {
 				capturedStdin = stdinData
 				capturedArgs = args
 			}
-			return paneldocker.CommandResult{Stdout: "Server info output", ExitCode: 0}, nil
+			if len(args) > 0 && args[0] == "wc" {
+				return paneldocker.CommandResult{Stdout: "128 " + serverOutputLog}, nil
+			}
+			return paneldocker.CommandResult{Stdout: "--- Server Info ---\nPlayers: 1/4", ExitCode: 0}, nil
 		},
 	})
 	instance := makeRunningInstance()
@@ -313,8 +316,8 @@ func TestRunCommand_ExecutesAttachCli(t *testing.T) {
 	if result.Command != "info" {
 		t.Errorf("expected command 'info', got %q", result.Command)
 	}
-	if result.Output != "Server info output" {
-		t.Errorf("expected output 'Server info output', got %q", result.Output)
+	if result.Output != "--- Server Info ---\nPlayers: 1/4" {
+		t.Errorf("expected server info receipt, got %q", result.Output)
 	}
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", result.ExitCode)
@@ -327,14 +330,20 @@ func TestRunCommand_ExecutesAttachCli(t *testing.T) {
 		t.Errorf("expected stdin 'info\\n', got %q", capturedStdin)
 	}
 	// Verify args write to Junimo's SMAPI input FIFO.
-	if len(capturedArgs) != 3 || capturedArgs[0] != "tee" || capturedArgs[1] != "-a" || capturedArgs[2] != serverInputFIFO {
-		t.Errorf("expected args ['tee', '-a', %q], got %v", serverInputFIFO, capturedArgs)
+	if strings.Join(capturedArgs, " ") != "timeout --kill-after=1s 5s dd of="+serverInputFIFO+" oflag=nonblock conv=nocreat status=none" {
+		t.Errorf("unexpected FIFO writer: %v", capturedArgs)
 	}
 }
 
 func TestRunCommand_HandlesNonZeroExit(t *testing.T) {
 	d := newTestDriver(&fakeConsoleDocker{
-		execFunc: func(_ context.Context, _, _, _ string, _ ...string) (paneldocker.CommandResult, error) {
+		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+			if args[0] == "wc" {
+				return paneldocker.CommandResult{Stdout: "128 " + serverOutputLog}, nil
+			}
+			if args[0] == "test" {
+				return paneldocker.CommandResult{}, nil
+			}
 			return paneldocker.CommandResult{
 				Stdout:   "partial output",
 				Stderr:   "some error",

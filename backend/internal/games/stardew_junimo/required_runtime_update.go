@@ -52,8 +52,18 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
 		return
 	}
+	if d.acceptsFullStackCompatibility(instance) {
+		return
+	}
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {
+		return
+	}
+	if manifest.Server.Tag == "1.5.0-preview.140" || InspectRuntimeStack(instance.DataDir, instance.State).Current.Server.Tag == "1.5.0-preview.140" && manifest.Server.Tag != "1.5.0-preview.140" {
+		// Scope authorization comes from the durable full-stack operation.
+		// Never save/stop from the legacy automatic path with an empty hash.
+		now := time.Now().UTC().Format(time.RFC3339)
+		_ = writeRequiredRuntimeUpdateStatus(instance.DataDir, RequiredRuntimeUpdateStatus{SchemaVersion: 1, PanelVersion: d.panelVersion, StackVersion: manifest.StackVersion, Phase: requiredRuntimePhaseManual, ErrorCode: "shared_group_confirmation_required", Error: "请在全栈升级入口预检并确认精确组件与共享世界范围。", UpdatedAt: now})
 		return
 	}
 	// This coordinator is started automatically during Panel bootstrap. Never
@@ -78,7 +88,7 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 			d.requiredRuntimeMu.Unlock()
 			return
 		}
-		if previous.Phase == requiredRuntimePhaseSucceeded && InspectManagedRuntimeStack(instance.DataDir, instance.State).Status == sjconfig.RuntimeStackStatusUpToDate {
+		if previous.Phase == requiredRuntimePhaseSucceeded && d.EffectiveRuntimeInspection(instance).Status == sjconfig.RuntimeStackStatusUpToDate {
 			d.requiredRuntimeMu.Unlock()
 			return
 		}
@@ -115,7 +125,7 @@ func (d *Driver) requireCurrentRuntimeStack(instance registry.Instance) error {
 	if instance.State == storage.InstanceStateUninitialized || instance.State == storage.InstanceStateAdminCreated {
 		return nil
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.EffectiveRuntimeInspection(instance)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
 		return nil
 	}
@@ -165,7 +175,7 @@ func (d *Driver) runRequiredRuntimeUpdate(ctx context.Context, instance registry
 		return instance
 	}
 	instance = refreshInstance()
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.EffectiveRuntimeInspection(instance)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
 		return set(requiredRuntimePhaseSucceeded, "", "", true)
 	}
@@ -179,7 +189,7 @@ func (d *Driver) runRequiredRuntimeUpdate(ctx context.Context, instance registry
 			return err
 		}
 		instance = refreshInstance()
-		inspection = InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		inspection = d.EffectiveRuntimeInspection(instance)
 	}
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		phase := requiredRuntimePhaseFailed
@@ -334,7 +344,7 @@ func (d *Driver) ReadRequiredRuntimeUpdateStatus(instance registry.Instance) (Re
 	if err != nil || apply.Phase != RuntimeUpdateApplySucceeded {
 		return status, nil
 	}
-	if InspectManagedRuntimeStack(instance.DataDir, instance.State).Status != sjconfig.RuntimeStackStatusUpToDate {
+	if d.EffectiveRuntimeInspection(instance).Status != sjconfig.RuntimeStackStatusUpToDate {
 		return status, nil
 	}
 

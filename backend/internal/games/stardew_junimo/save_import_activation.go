@@ -30,6 +30,31 @@ type JunimoRuntimeWorldState struct {
 	Version               *int64 `json:"version,omitempty"`
 }
 
+// .125 names its monotonic snapshot cursor version; .140 names it sequence.
+// Keep one internal cursor so durable import journals retain their format.
+func (state *JunimoRuntimeWorldState) UnmarshalJSON(raw []byte) error {
+	type wireState JunimoRuntimeWorldState
+	var decoded wireState
+	payload := struct {
+		*wireState
+		Sequence *int64 `json:"sequence"`
+	}{wireState: &decoded}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return err
+	}
+	if decoded.Version != nil && payload.Sequence != nil && *decoded.Version != *payload.Sequence {
+		return errors.New("Junimo status contains conflicting snapshot cursors")
+	}
+	if decoded.Version == nil {
+		decoded.Version = payload.Sequence
+	}
+	if decoded.Version != nil && *decoded.Version < 0 {
+		return errors.New("Junimo status contains an invalid snapshot cursor")
+	}
+	*state = JunimoRuntimeWorldState(decoded)
+	return nil
+}
+
 type ControlHostBedEvidence struct {
 	State             string     `json:"state,omitempty"`
 	Healthy           *bool      `json:"healthy,omitempty"`

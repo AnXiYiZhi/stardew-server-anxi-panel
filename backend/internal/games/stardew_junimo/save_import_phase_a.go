@@ -109,7 +109,7 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 	}
 	maintenanceLog(job, "Phase A pre-submit evidence and server-output offset captured; writing one import command to FIFO.")
 
-	writeResult, writeErr := lifecycle.ComposeExecPipe(ctx, instance.DataDir, "server", command+"\n", "tee", "-a", serverInputFIFO)
+	writeResult, writeErr := writeServerInput(ctx, lifecycle, instance.DataDir, command)
 	if writeErr != nil || writeResult.ExitCode != 0 {
 		if writeErr == nil {
 			writeErr = fmt.Errorf("FIFO writer exited with code %d", writeResult.ExitCode)

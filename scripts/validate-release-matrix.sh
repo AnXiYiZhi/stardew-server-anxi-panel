@@ -60,6 +60,20 @@ fi
 # They prevent a syntactically valid but incomplete proof from weakening a
 # matrix that was declared mandatory for a compatibility-changing release.
 case "$version" in
+  0.7.3)
+    if [[ "$previous_version" != "0.7.2" || "$oldest_version" != "0.3.2" ]]; then
+      echo "release matrix: 0.7.3 requires previous 0.7.2 and affected oldest 0.3.2" >&2
+      exit 1
+    fi
+    ;;
+  0.8.0)
+    # The 0.7.3 bridge is the oldest supported source and is also the
+    # previous release. Older Panels must upgrade to it before this gate.
+    if [[ "$previous_version" != "0.7.3" || -n "$oldest_version" ]]; then
+      echo "release matrix: 0.8.0 requires the 0.7.3 bridge; direct older upgrades are unsupported" >&2
+      exit 1
+    fi
+    ;;
   0.7.0)
     if [[ "$previous_version" != "0.6.1" || -n "$oldest_version" ]]; then
       echo "release matrix: 0.7.0 requires the approved 0.6.1 upgrade source" >&2
@@ -81,7 +95,7 @@ case "$version" in
 esac
 
 IFS=. read -r _ _ version_patch <<<"$version"
-if ((require_oldest_for_zero_patch == 1)) && [[ "$version_patch" == 0 && -z "$oldest_version" && "$version" != 0.7.0 ]]; then
+if ((require_oldest_for_zero_patch == 1)) && [[ "$version_patch" == 0 && -z "$oldest_version" && "$version" != 0.7.0 && "$version" != 0.8.0 ]]; then
   echo "release matrix: an affected oldest version is required for an explicit zero-patch release" >&2
   exit 1
 fi

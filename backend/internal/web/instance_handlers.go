@@ -38,6 +38,7 @@ type instanceResponse struct {
 }
 
 type instanceStateResponse struct {
+	Maintenance            *sj.FullStackMaintenance   `json:"maintenance,omitempty"`
 	InstanceID             string                     `json:"instanceId"`
 	DriverID               string                     `json:"driverId"`
 	Name                   string                     `json:"name"`
@@ -1152,7 +1153,26 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 	runtimeDiagnostic := buildRuntimeDiagnostic(instance, statusSource, playersSource)
 	runtimeDiagnostic.CommandProtocol = s.commandProtocolDiagnostics(ctx, instance)
 	var installationDiagnostic *sj.InstallationDiagnostic
+	var maintenance *sj.FullStackMaintenance
 	if driver, err := s.registry.Get(instance.DriverID); err == nil {
+		if provider, ok := driver.(interface {
+			InstanceFullStackMaintenance(string) *sj.FullStackMaintenance
+		}); ok {
+			maintenance = provider.InstanceFullStackMaintenance(instance.ID)
+		}
+		if provider, ok := driver.(interface {
+			EffectiveRuntimeInspection(registry.Instance) sjconfig.RuntimeStackInspection
+		}); ok {
+			stack := provider.EffectiveRuntimeInspection(makeRegistryInstance(instance))
+			runtimeDiagnostic.ExpectedControlMod = stack.Recommended.Control.Version
+			runtimeDiagnostic.ControlModMatches = runtimeDiagnostic.ControlModVersion != "" && runtimeDiagnostic.ControlModVersion == stack.Recommended.Control.Version
+			runtimeDiagnostic.JunimoStackVersion, runtimeDiagnostic.JunimoUpdateStatus = stack.Recommended.StackVersion, stack.Status
+			runtimeDiagnostic.JunimoUpdateCode, runtimeDiagnostic.JunimoUpdateReason = stack.Code, stack.Reason
+			runtimeDiagnostic.JunimoUpdateSupported = stack.Supported
+			runtimeDiagnostic.ExpectedServerVersion, runtimeDiagnostic.ServerVersion = stack.Recommended.Server.Tag, stack.Current.Server.Tag
+			runtimeDiagnostic.ExpectedSteamAuthVersion, runtimeDiagnostic.SteamAuthVersion = stack.Recommended.SteamAuth.Tag, stack.Current.SteamAuth.Tag
+			runtimeDiagnostic.JunimoVersionMatches = stack.Status == sjconfig.RuntimeStackStatusUpToDate
+		}
 		type installationDiagnosticProvider interface {
 			InstallationDiagnostic(context.Context, registry.Instance) sj.InstallationDiagnostic
 		}
@@ -1169,6 +1189,7 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 	steamInviteEnabled := sjconfig.SteamInviteEnabled(instance.DataDir)
 	inviteCode := visibleInviteCode(instance, steamInviteEnabled)
 	return instanceStateResponse{
+		Maintenance:            maintenance,
 		InstanceID:             instance.ID,
 		DriverID:               instance.DriverID,
 		Name:                   instance.Name,

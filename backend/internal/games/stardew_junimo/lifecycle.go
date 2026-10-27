@@ -553,6 +553,9 @@ func isNewGameRollbackRecoveryStage(stage NewGameTransactionState) bool {
 }
 
 func rejectUnfinishedNewGameOwner(dataDir string) error {
+	if err := rejectJunimo140GroupLease(dataDir); err != nil {
+		return err
+	}
 	record, err := pendingNewGameStartRequest(dataDir)
 	if err != nil {
 		return err
@@ -1787,6 +1790,10 @@ func (r *lifecycleRunner) refreshSteamAuthService(ctx context.Context, jobCtx *j
 }
 
 func (r *lifecycleRunner) markSteamAuthUsableFromInviteCode(jobCtx *jobs.Context) {
+	contract, err := readConsoleRuntimeContract(r.instance.DataDir)
+	if err != nil || contract.fifo == junimo140InputFIFO {
+		return // .140 code generation is independent of Steam session readiness.
+	}
 	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
 		return
 	}
@@ -2038,12 +2045,20 @@ func (r *lifecycleRunner) removeInviteCodeFile(ctx context.Context, jobCtx *jobs
 	}
 }
 
-// fetchInviteCode only reads /tmp/invite-code.txt from the server container.
+// Legacy runtimes read their code file; .140 reads the live API snapshot.
 // Never fall back to attach-cli here: it owns an interactive tmux client and
 // leaked processes when browser polling overlapped or disconnected.
 func (r *lifecycleRunner) fetchInviteCode(ctx context.Context) (string, error) {
 	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
 		return "", ErrSteamInviteDisabled
+	}
+	contract, err := readConsoleRuntimeContract(r.instance.DataDir)
+	if err != nil {
+		return "", err
+	}
+	if contract.fifo == junimo140InputFIFO {
+		connection, err := r.readJunimo140Connectivity(ctx)
+		return connection.InviteCode, err
 	}
 	execCtx, cancel := context.WithTimeout(ctx, inviteCodeTimeout)
 	defer cancel()
@@ -2078,7 +2093,8 @@ func (d *Driver) GetInviteCode(ctx context.Context, instance registry.Instance) 
 		instance:  stored,
 	}
 	code, err := d.getInviteCodeCached(ctx, runner)
-	if err == nil && code != "" {
+	contract, contractErr := readConsoleRuntimeContract(stored.DataDir)
+	if err == nil && code != "" && contractErr == nil && contract.fifo != junimo140InputFIFO {
 		_ = sjconfig.SetSteamAuthLoggedIn(stored.DataDir, true)
 	}
 	return code, err

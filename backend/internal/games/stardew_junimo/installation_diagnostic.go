@@ -54,6 +54,11 @@ func (d *Driver) InstallationDiagnostic(ctx context.Context, instance registry.I
 		CheckedAt:         time.Now().UTC().Format(time.RFC3339),
 	}
 	diagnostic.Control = inspectInstalledControl(instance.DataDir)
+	if d.acceptsFullStackCompatibility(instance) {
+		effective := d.EffectiveRuntimeInspection(instance)
+		diagnostic.Control.Static = "match"
+		diagnostic.Control.ExpectedVersion = effective.Recommended.Control.Version
+	}
 
 	if d.docker != nil {
 		if ps, err := d.docker.ComposePs(ctx, instance.DataDir); err == nil {

@@ -23,4 +23,10 @@ func TestRuntimeSMAPIDockerContractRejectsUnscopedInputs(t *testing.T) {
 	if err := client.RuntimeRemoveSMAPIStagingVolume(ctx, dir, "safe_project", "safe_project_game-data"); err == nil {
 		t.Fatal("production volume accepted for removal")
 	}
+	if err := client.RuntimeInstallImageSMAPI(ctx, dir, "safe_project_game-data", "sdvd/server:1.5.0-preview.140", "invalid"); err == nil || err.Error() != "invalid image-managed SMAPI install request" {
+		t.Fatal("image installer did not reject unscoped input before invoking Docker")
+	}
+	if err := client.RuntimeCommitImageSMAPIStamp(ctx, dir, "safe_project_game-data", "sdvd/server:1.5.0-preview.140", "invalid", "../../bad"); err == nil || err.Error() != "invalid image-managed SMAPI stamp request" {
+		t.Fatal("image stamp did not reject unscoped input before invoking Docker")
+	}
 }

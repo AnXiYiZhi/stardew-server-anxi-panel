@@ -6,14 +6,16 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type steamAppManifest struct {
-	AppID       string
-	BuildID     string
-	StateFlags  string
-	InstallDir  string
-	LastUpdated string
+	AppID           string
+	BuildID         string
+	StateFlags      string
+	InstallDir      string
+	LastUpdated     string
+	InstalledDepots map[string]string
 }
 
 type vdfValue struct {
@@ -24,13 +26,14 @@ type vdfValue struct {
 type vdfParser struct {
 	input []rune
 	pos   int
+	depth int
 }
 
 // parseSteamAppManifest parses the small Valve KeyValues subset used by ACF
 // app manifests. It tokenizes quoted strings/braces and handles escaped quoted
 // values; it intentionally does not use whole-file regular expressions.
 func parseSteamAppManifest(data []byte, expectedAppID string) (steamAppManifest, error) {
-	if len(data) == 0 || len(data) > 1024*1024 {
+	if len(data) == 0 || len(data) > 1024*1024 || !utf8.Valid(data) {
 		return steamAppManifest{}, errors.New("manifest is empty or too large")
 	}
 	p := &vdfParser{input: []rune(strings.TrimPrefix(string(data), "\ufeff"))}
@@ -68,11 +71,29 @@ func parseSteamAppManifest(data []byte, expectedAppID string) (steamAppManifest,
 	if manifest.LastUpdated != "" && !positiveDecimal(manifest.LastUpdated) {
 		return steamAppManifest{}, errors.New("LastUpdated is invalid")
 	}
+	if depots, ok := lookupVDF(appState.children, "InstalledDepots"); ok {
+		if depots.children == nil {
+			return steamAppManifest{}, errors.New("InstalledDepots must be an object")
+		}
+		manifest.InstalledDepots = make(map[string]string, len(depots.children))
+		for id, depot := range depots.children {
+			if !positiveDecimal(id) || depot.children == nil {
+				return steamAppManifest{}, errors.New("invalid installed depot")
+			}
+			manifest.InstalledDepots[id] = vdfText(depot.children, "manifest")
+		}
+	}
 	return manifest, nil
 }
 
 func (p *vdfParser) parseObject(requireClose bool) (map[string]vdfValue, error) {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > 64 {
+		return nil, errors.New("manifest nesting is too deep")
+	}
 	values := make(map[string]vdfValue)
+	seen := make(map[string]bool)
 	for {
 		p.skipSpace()
 		if p.pos >= len(p.input) {
@@ -110,6 +131,11 @@ func (p *vdfParser) parseObject(requireClose bool) (map[string]vdfValue, error) 
 				return nil, err
 			}
 		}
+		canonicalKey := strings.ToLower(key)
+		if seen[canonicalKey] {
+			return nil, errors.New("duplicate manifest field")
+		}
+		seen[canonicalKey] = true
 		values[key] = value
 	}
 }
