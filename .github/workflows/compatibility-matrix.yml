@@ -72,5 +72,5 @@ jobs:
       - name: Isolated Docker integration
         working-directory: backend
         run: |
-          go test -tags=integration ./internal/docker
-          go test -tags=integration ./internal/web -run '^TestResourceScopesRealDocker$' -count=1 -v
+          go test -tags=integration ./internal/docker -count=1
+          go test -tags=integration ./internal/web -run '^TestResourceScopes(RealDocker|Fixture)' -count=1 -v

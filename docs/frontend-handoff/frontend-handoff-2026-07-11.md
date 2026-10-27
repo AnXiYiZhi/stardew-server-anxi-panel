@@ -1,5 +1,6 @@
 ## 2026-10-27 正式发布接手增量
 
+- 资源CI前置修复同步新增发布契约回归：responsive-layout解析命令/flags验证9条真实Docker调用-count=1，并按Go测试父项验证两入口覆盖RealDocker+Fixture，不使用整行字符串硬绑定；响应式与4子项通过。须挂完整仓库以读取.github/backend，UI像素图标/昼夜/固定底栏没有变更。
 - 当前获授权按073→080发布，UI视觉沿用用户已确认方案。三条浏览器回归加入正式候选，channel按环境配置，CI固定Playwright 1.62.1/Chromium。
 - 正式候选须重新覆盖最新提示/范围确认和生产前端；同digest真实专项完成后封存才可发布。官网升级指引更新，各版首页/changelog按正式发布阶段应用。
 - 涉及frontend/scripts三夹具、run-release-gates与官网文档；待填写两版实际候选/发布/Pages结果及公开入口验证，详见docs09顶部。

@@ -103,10 +103,10 @@ echo "release gates: backend"
   go vet ./...
   go build ./...
   PANEL_RUN_DOCKER_UPDATE_TEST=1 go test ./internal/updater -run '^TestDockerIntegration' -count=1
-  go test -tags=integration ./internal/docker
+  go test -tags=integration ./internal/docker -count=1
   PANEL_PROVISION_DOCKER_TEST=1 go test ./internal/docker -run '^TestInstanceProvisionDockerOwnership$' -count=1 -v
   TEST_WORLD_DELETE_DOCKER=1 go test ./internal/web -run '^TestWorldDeleteDockerE2E$' -count=1 -v
-  go test -tags=integration ./internal/web -run '^TestResourceScopesRealDocker$' -count=1 -v
+  go test -tags=integration ./internal/web -run '^TestResourceScopes(RealDocker|Fixture)' -count=1 -v
 )
 
 if changed_since_base backend/internal/games/stardew_junimo scripts/compatibility_matrix.py; then

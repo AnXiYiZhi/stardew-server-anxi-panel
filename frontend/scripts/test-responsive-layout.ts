@@ -42,6 +42,46 @@ function assertSuccessfulWorkflowRun(step: string, path: string): void {
   }
 }
 
+function goFlagValues(args: string[], flag: string): string[] {
+  return args.flatMap((argument, index) => argument === flag ? [args[index + 1] ?? ''] : argument.startsWith(`${flag}=`) ? [argument.slice(flag.length + 1)] : [])
+}
+
+function realDockerTestInvocations(source: string): string[][] {
+  const commands: string[][] = []
+  for (const line of source.replace(/\\\n[ \t]*/g, ' ').split('\n')) {
+    if (line.trimStart().startsWith('#')) continue
+    const tokens = line.match(/(?:[^\s"'\\;&|]|\\.|"(?:\\.|[^"\\])*"|'[^']*')+|&&|\|\||[;&|]/g) ?? []
+    let command: string[] = []
+    for (const token of [...tokens, ';']) {
+      if (/^(?:&&|\|\||[;&|])$/.test(token)) {
+        if (command.length) commands.push(command)
+        command = []
+      } else {
+        command.push(token.replace(/(["'])(.*?)\1/g, '$2'))
+      }
+    }
+  }
+  return commands.flatMap((command) => {
+    const go = command.findIndex((token, index) => token === 'go' && command[index + 1] === 'test')
+    if (go < 0) return []
+    const args = command.slice(go + 2)
+    const integration = goFlagValues(args, '-tags').some((tags) => tags.split(/[\s,]+/).includes('integration'))
+    const dockerGuard = command.slice(0, go).some((token) => /^[A-Z0-9_]*DOCKER[A-Z0-9_]*=/.test(token))
+    const selectedRealTest = goFlagValues(args, '-run').some((pattern) => /Docker|E2E/.test(pattern))
+    return integration || dockerGuard || selectedRealTest || args.includes('./internal/docker') ? [args] : []
+  })
+}
+
+function assertUncachedDockerTests(source: string, minimum: number, name: string): number {
+  const calls = realDockerTestInvocations(source)
+  assert.ok(calls.length >= minimum, `${name}: expected at least ${minimum} real Docker test invocations, found ${calls.length}`)
+  for (const [index, args] of calls.entries()) {
+    const counts = goFlagValues(args, '-count')
+    assert.ok(counts.length > 0 && counts.every((count) => count === '1'), `${name}: real Docker invocation ${index + 1} must disable the Go test cache with -count=1 or -count 1`)
+  }
+  return calls.length
+}
+
 const installDownloadIcon = readFileSync(new URL('../public/assets/stardew/ui/install/icon_install_step_download_image2_regen.png', import.meta.url))
 assert.equal(installDownloadIcon.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'download icon must be PNG')
 assert.equal(installDownloadIcon.readUInt32BE(16), 72, 'download icon width')
@@ -218,6 +258,8 @@ const releaseUpgradeE2E = readTextFile(new URL('../../scripts/tests/test_release
 const releaseMatrixValidator = readTextFile(new URL('../../scripts/validate-release-matrix.sh', import.meta.url))
 const releaseMatrixTests = readTextFile(new URL('../../scripts/tests/test_release_matrix.sh', import.meta.url))
 const compatibilityWorkflow = readTextFile(new URL('../../.github/workflows/compatibility-matrix.yml', import.meta.url))
+const resourceScopesRealTests = readTextFile(new URL('../../backend/internal/web/resource_scopes_docker_integration_test.go', import.meta.url))
+const resourceScopesFixtureTests = readTextFile(new URL('../../backend/internal/web/resource_scopes_fixture_test.go', import.meta.url))
 
 assert.doesNotMatch(shellCss, /100(?:vw|vh|dvh)\s*\/\s*var\(--sd-design/)
 assert.doesNotMatch(shellCss, /--sd-ui-fluid-scale/)
@@ -607,6 +649,27 @@ assert.match(qaSource, /timeoutSeconds:\s*120/)
 assert.match(qaSource, /maxAttempts:\s*5/)
 assert.match(releaseGates, /npm run test:responsive-layout/)
 assert.match(compatibilityWorkflow, /npm run test:responsive-layout/)
+assert.equal(assertUncachedDockerTests("go test -tags='integration,extra' ./internal/example -count 1", 1, 'space-form count'), 1)
+assert.equal(assertUncachedDockerTests("PANEL_RUN_DOCKER_UPDATE_TEST=1 go test ./internal/updater -count=1", 1, 'environment-enabled Docker'), 1)
+assert.equal(assertUncachedDockerTests(["go test ./internal/web -run '^TestWorldDeleteDockerE2E$' ", '  -count=1'].join(String.fromCharCode(92, 10)), 1, 'continued Docker E2E command'), 1)
+assert.throws(() => assertUncachedDockerTests('go test ./...', 1, 'empty integration set'), /expected at least/)
+assert.throws(() => assertUncachedDockerTests('go test -tags integration ./internal/example', 1, 'cached integration'), /must disable/)
+assert.throws(() => assertUncachedDockerTests('go test -tags=integration ./internal/example -count=1 -count 0', 1, 'conflicting count'), /must disable/)
+assert.throws(() => assertUncachedDockerTests('go test -tags=integration ./internal/example -count=1 && go test ./internal/docker', 2, 'separate commands'), /must disable/)
+const gateDockerTests = assertUncachedDockerTests(releaseGates, 7, 'release gates')
+const compatibilityDockerTests = assertUncachedDockerTests(workflowStep(compatibilityWorkflow, 'Isolated Docker integration'), 2, 'compatibility integration')
+assert.ok(gateDockerTests + compatibilityDockerTests >= 9, 'all current real Docker invocations must execute against the current external state')
+const resourceScopeTestNames = [resourceScopesRealTests, resourceScopesFixtureTests].flatMap((source) => [...source.matchAll(/^func (TestResourceScopes(?:RealDocker|Fixture)[A-Za-z0-9_]*)\(/gm)].map((match) => match[1]))
+assert.ok(resourceScopeTestNames.includes('TestResourceScopesRealDocker'), 'resource scope coverage must include the real Docker test')
+assert.ok(resourceScopeTestNames.filter((name) => name.startsWith('TestResourceScopesFixture')).length >= 3, 'resource scope coverage must include the fixture preparation and diagnostic contracts')
+for (const [name, source] of [['release gates', releaseGates], ['compatibility integration', workflowStep(compatibilityWorkflow, 'Isolated Docker integration')]]) {
+  const resourceCommands = realDockerTestInvocations(source).filter((args) => args.includes('./internal/web') && goFlagValues(args, '-run').some((pattern) => pattern.includes('TestResourceScopes')))
+  assert.equal(resourceCommands.length, 1, `${name}: expected one resource scope test selection`)
+  const selections = goFlagValues(resourceCommands[0], '-run').map((pattern) => new RegExp(pattern))
+  for (const testName of resourceScopeTestNames) {
+    assert.ok(selections.some((selection) => selection.test(testName)), `${name}: resource scope selection must execute ${testName}`)
+  }
+}
 assert.match(releaseGates, /npm run test:new-game-idempotency/)
 assert.match(compatibilityWorkflow, /npm run test:new-game-idempotency/)
 assert.match(releaseGates, /npm run test:nexus-extension-idempotency/)

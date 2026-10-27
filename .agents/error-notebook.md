@@ -2,6 +2,7 @@
 
 ## 2026-10-27 正式发布工具记录
 
+- 真实Docker测试前置与结果缓存（GitHub/Linux）：`go test -tags=integration ./internal/docker` 被缓存为(cached)，随后资源夹具首ComposeUp退出1；旧测试仅t.Fatal(err)，丢弃CommandResult，日志不能证明旧runner具体底层原因。夹具固定alpine:3.20/pull_policy:never却未自行准备是独立可复现的前置缺陷。已给9条真实Docker调用-count=1、夹具有界inspect/pull/再inspect、保留原exit/timedOut/脱敏输出；空镜像DinD证实初始无镜像、pulled=true后业务断言及7场景通过。轻量门禁防缓存/空集合/漏选4父项，AGENTS提升外部状态不得缓存及夹具自备前置。未删业务断言，未把未知错误编造成registry故障。
 - 同类路径限制的多代理传播补充：Web回归子代理组合检索尾项误猜 `stardew_junimo/smapi.go`，rg退出2；独立库存确认真实 `smapi_mod.go` 后只用清单路径并先Test-Path。此前主链已发生路径错误，但该已生效限制没有显式传递到新子任务；已提升AGENTS，后续委派必须携带已确认检索根、先rg --files以及不得猜文件名的状态，主代理把同类新错误同步给仍检索的代理。
 - 跨仓库/路径复发（pwsh7）：将Panel的 `scripts/compatibility_matrix.py` 与Auth的AGENTS检索放在Auth workdir，首项rg退出2；官网审计另猜不存在的 `frontend/src/games/stardew/useStardewInstallation.ts`，同样退出2。两次均在写操作前停止，独立rg --files核对目录清单、Test-Path后只读真实路径继续。后续相对路径命令只涉及单一仓库，跨仓库使用独立exec_command，严格核对workdir；沿用AGENTS已有库存与单目录位置参数硬规则，不靠有效前项掩盖后项错误。
 - Python内联参数补充（Auth YAML检查）：在pwsh内的Python -c比较含单双引号的GitHub ref表达式时，反斜杠并非PowerShell转义，载荷被截断而SyntaxError，零文件操作。改为外部audit-auth-helper.py，通过实际文件完成YAML/master/权限与5文件UTF8-LF审计。含字典、YAML或复杂字符串的逻辑必须任务脚本；内联仅保留简单版本/模块探针，不继续猜多层引号。

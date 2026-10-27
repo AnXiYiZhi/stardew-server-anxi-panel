@@ -24,6 +24,13 @@ func TestResourceScopesRealDocker(t *testing.T) {
 	handler, store, root, cleanup := newDockerTestHandlerWithStore(t, fakeDockerService{})
 	defer cleanup()
 	cookie := setupDockerAdmin(t, handler)
+	prepareCtx, prepareCancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	pulled, prepareErr := prepareResourceScopesFixtureImage(prepareCtx, runResourceScopesFixtureCommand)
+	prepareCancel()
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	t.Logf("resource fixture image verified locally; pulled=%t", pulled)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	prefix := fmt.Sprintf("anxi-resource-%d", time.Now().UnixNano())
@@ -55,21 +62,21 @@ func TestResourceScopesRealDocker(t *testing.T) {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
-		compose := fmt.Sprintf("name: %s-%d\nservices:\n  server:\n    image: alpine:3.20\n    pull_policy: never\n    command: [sh, -c, 'dd if=/dev/zero of=/owned/data bs=4096 count=1 && exec sleep 600']\n    volumes: [owned:/owned, shared:/shared]\nvolumes:\n  owned:\n    external: true\n    name: %s\n  shared:\n    external: true\n    name: %s\n", prefix, i, volumes[i], volumes[2])
+		compose := fmt.Sprintf("name: %s-%d\nservices:\n  server:\n    image: %s\n    pull_policy: never\n    command: [sh, -c, 'dd if=/dev/zero of=/owned/data bs=4096 count=1 && exec sleep 600']\n    volumes: [owned:/owned, shared:/shared]\nvolumes:\n  owned:\n    external: true\n    name: %s\n  shared:\n    external: true\n    name: %s\n", prefix, i, resourceScopesFixtureImage, volumes[i], volumes[2])
 		if err := os.WriteFile(filepath.Join(dir, "compose.yml"), []byte(compose), 0600); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cleanupCancel()
-			if _, err := client.ComposeDown(cleanupCtx, dir); err != nil {
-				t.Errorf("cleanup fixture compose: %v", err)
+			if result, err := client.ComposeDown(cleanupCtx, dir); err != nil {
+				t.Error(resourceScopesFixtureCommandError("cleanup fixture compose", result, err))
 			}
 		})
-		if _, err := client.ComposeUp(ctx, dir); err != nil {
-			t.Fatal(err)
+		if result, err := client.ComposeUp(ctx, dir); err != nil {
+			t.Fatal(resourceScopesFixtureCommandError("start fixture compose", result, err))
 		}
-		plans[filepath.Base(dir)] = registry.ResourceStorage{Directories: []string{dir}, Volumes: []string{volumes[i]}, SharedVolumes: []string{volumes[2]}, ProbeImage: "alpine:3.20"}
+		plans[filepath.Base(dir)] = registry.ResourceStorage{Directories: []string{dir}, Volumes: []string{volumes[i]}, SharedVolumes: []string{volumes[2]}, ProbeImage: resourceScopesFixtureImage}
 	}
 	reg := registry.New()
 	if err := reg.Register(resourceTestDriver{GameDriver: sj.New(client, nil, nil, store), plans: plans}); err != nil {
@@ -113,8 +120,8 @@ func TestResourceScopesRealDocker(t *testing.T) {
 	if game.StorageUsedBytes == nil || a.Sample.StorageUsedBytes == nil || b.Sample.StorageUsedBytes == nil || *a.Sample.StorageUsedBytes < 4096 || *game.StorageUsedBytes != *a.Sample.StorageUsedBytes+*b.Sample.StorageUsedBytes {
 		t.Fatal("real volume storage or shared deduplication incorrect")
 	}
-	if _, err := client.ComposeDown(ctx, worldA); err != nil {
-		t.Fatal(err)
+	if result, err := client.ComposeDown(ctx, worldA); err != nil {
+		t.Fatal(resourceScopesFixtureCommandError("stop fixture world", result, err))
 	}
 	s.metricsCache = nil
 	afterA, afterB := readWorld("stardew"), readWorld("world-b")

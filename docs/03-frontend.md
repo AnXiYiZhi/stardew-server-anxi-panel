@@ -1,5 +1,6 @@
 ## 2026-10-27 正式候选前端验收准备
 
+- `test-responsive-layout.ts` 的发布契约现解析两条pipeline的真实Go测试命令，验证9条Docker调用显式禁缓存，拒绝缺失/冲突/空集合；并从资源Go源码枚举RealDocker和3个Fixture父项，要求两入口的run regex全部覆盖。轻量响应式与4子测试通过；测试需要完整仓库根（含.github与backend测试源），不只挂frontend目录。界面与主题未改。
 - 073/080已获顺序发布授权。保持透明像素入口、共用紧凑正文/固定底栏、暖昼/静夜主题及提示/范围确认；发布准备不更换视觉方案。
 - 候选门禁纳入upgrade-entry、full-stack-lifecycle、steam-invite-lifecycle三条真实浏览器夹具；CI固定Playwright 1.62.1及Chromium，浏览器channel可配置。本地Browser插件未提供，沿用Playwright。
 - 最新UI输入必须随正式候选重新构建，工程index-VNsdymw9和V4证明仅保留历史用途。官网升级指引先更新，各版本首页/变更记录在对应正式Release后上线。
