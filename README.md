@@ -62,7 +62,7 @@ Anxi Panel 是围绕 [JunimoServer](https://stardew-valley-dedicated-server.gith
 官方 GitHub Release 安装（推荐）：
 
 ```bash
-curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.0/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 ```
 
 > [!TIP]
@@ -71,7 +71,7 @@ curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/rele
 > GitHub Release 下载较慢时，可以使用国内加速地址：
 >
 > ```bash
-> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 > ```
 
 脚本会检查 Docker 环境、生成安全配置、选择可用镜像源并启动面板。部署完成后，在浏览器打开：
@@ -80,7 +80,7 @@ curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/rele
 http://你的服务器IP:8090
 ```
 
-当前正式版为 `v0.7.3`，`v0.8.0` 正在准备。080正式提升后，新装通过 Docker `latest` 直接安装080，游戏默认使用 Junimo `.140` 与正式配套 Auth `1.5.0-preview.140-anxi.1`。已有服务器先完成073准备，再从Web更新中心检查范围、阅读提醒并确认本次升级，由同一事务自动完成080 Panel和游戏组迁移。GitHub latest Release保持073，完整步骤见[更新面板与游戏实例](https://anxiyizhi.github.io/stardew-server-anxi-panel/maintain/update)。
+当前正式版为 `v0.8.0`。上方新装命令使用 v0.8.0 脚本和镜像，游戏默认采用 Junimo `.140` 与正式配套 Auth `1.5.0-preview.140-anxi.1`。`v0.7.2` 及更早版本先完成 `v0.7.3` 准备，再从 Web 更新中心检查范围、阅读提醒并确认升级，由同一事务完成 Panel v0.8.0 与游戏组升级。Docker Hub、阿里云 ACR、GHCR 的 Docker `latest` 均指向 v0.8.0；GitHub latest Release 保持 v0.7.3。完整步骤见[更新面板与游戏实例](https://anxiyizhi.github.io/stardew-server-anxi-panel/maintain/update)。
 
 然后按页面引导完成：
 

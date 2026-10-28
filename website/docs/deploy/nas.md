@@ -26,7 +26,7 @@ NAS 用户也优先推荐开启 SSH，并按 [一键脚本部署](/deploy/quick-
 ```yaml
 services:
   anxi-panel:
-    image: ${PANEL_IMAGE:-crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:latest}
+    image: ${PANEL_IMAGE:-crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:0.8.0}
     container_name: anxi-panel
     restart: unless-stopped
     ports:
@@ -80,9 +80,9 @@ http://NAS局域网IP:8090
 
 ## 已有服务器的升级顺序
 
-已有实例先升级到 `v0.7.3` 准备版。`v0.8.0` 正式提供后，在更新中心检查游戏组与世界范围，阅读停服与Mod提示并确认本次升级，由同一事务自动完成Panel与游戏组到080/.140的迁移。现有第三方 Mod 可能需要更新。
+`v0.7.2` 及更早版本先升级到 `v0.7.3` 准备版，再在 Web 更新中心选择 `v0.8.0`，检查游戏组与世界范围，阅读停服与 Mod 提示并确认本次升级，由同一事务完成 Panel 与游戏组到 v0.8.0/.140的迁移。现有第三方 Mod 可能需要更新。
 
-当前正式版为073，080正在准备。080正式提升后，新装配置中的 Docker `latest` 将安装080，游戏默认使用Junimo `.140`与正式Auth `1.5.0-preview.140-anxi.1`；GitHub latest Release保持073。已有服务器请保留现有数据挂载，通过Web更新中心依次升级。完整步骤见 [更新面板与游戏实例](/maintain/update)。
+上方新装配置固定使用 Panel `0.8.0`，游戏默认采用 Junimo `.140`与正式Auth `1.5.0-preview.140-anxi.1`。Docker `latest`同样指向080，GitHub latest Release保持073。已有服务器请保留现有数据挂载，通过Web更新中心依次升级。完整步骤见 [更新面板与游戏实例](/maintain/update)。
 
 ## 常见问题
 

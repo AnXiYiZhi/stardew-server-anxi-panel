@@ -14,7 +14,7 @@
 官方 GitHub Release 安装（推荐）：
 
 ```bash
-curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.0/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 ```
 
 > [!TIP]
@@ -23,7 +23,7 @@ curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/rele
 > GitHub Release 下载较慢时，可以使用国内加速地址：
 >
 > ```bash
-> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 > ```
 
 运行后会出现菜单，按提示一步步选择即可：安装 Docker/Compose（如缺失）、选择镜像源、启动面板。脚本会自动生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和数据目录 `~/.anxi-panel/data`。

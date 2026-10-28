@@ -115,7 +115,7 @@ pwd
 
 ```bash
 cd ~
-curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.0/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 ```
 
 ::: tip 国内加速脚本（HTTP）
@@ -123,7 +123,7 @@ GitHub Release 下载较慢时，可以在同一个 WSL2 Linux 终端使用国�
 
 ```bash
 cd ~
-curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 ```
 :::
 

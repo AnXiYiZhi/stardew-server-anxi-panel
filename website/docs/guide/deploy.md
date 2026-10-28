@@ -9,14 +9,14 @@ Windows 10/11 用户请先按 [Windows + Docker Desktop](/deploy/windows) 完成
 官方 GitHub Release 安装（推荐）：
 
 ```bash
-curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.0/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 ```
 
 ::: tip 国内加速脚本（HTTP）
 GitHub Release 下载较慢时，可以使用国内加速地址：
 
 ```bash
-curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.0 bash run.sh
 ```
 :::
 
@@ -40,7 +40,7 @@ curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash 
 [14] 退出
 ```
 
-已有服务器更新前先用菜单 `8` 更新脚本。旧版先完成 `v0.7.3` 升级准备；080正式提供后，在面板更新中心阅读提示、检查范围并确认本次升级，自动完成Panel与游戏组迁移。当前080正在准备，正式后新装默认使用080与Junimo `.140`/正式配套Auth。具体步骤见 [更新面板与游戏实例](/maintain/update)。
+当前正式版为 `v0.8.0`，上方新装命令使用 v0.8.0 脚本和镜像，游戏默认采用 Junimo `.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。已有服务器需要脚本更新时先用菜单 `8` 更新脚本；`v0.7.2` 及更早版本先完成 `v0.7.3` 准备，再在 Web 更新中心阅读提示、检查范围并确认 `v0.8.0` 升级，由同一事务完成 Panel 与游戏组迁移。三仓 Docker `latest` 指向 v0.8.0，GitHub latest Release 保持 v0.7.3。具体步骤见 [更新面板与游戏实例](/maintain/update)。
 
 建议先输入 `9` 回车，给内存较小的服务器开一个 2-4 GB 的 swap 虚拟内存，避免安装或运行过程中因为内存不够被系统杀掉进程：
 

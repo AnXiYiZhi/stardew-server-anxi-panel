@@ -6,13 +6,23 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.7.3（最新版本）
+## v0.8.0（最新版本）
+
+**新装默认使用 .140**：全新部署直接安装 v0.8.0，游戏运行栈采用 Junimo `1.5.0-preview.140`、正式 Auth `1.5.0-preview.140-anxi.1` 与配套 SMAPI `4.5.2`、Control `0.3.9`。按安装页完成游戏安装，需要 Steam 邀请码时再启用授权。
+
+**从 v0.7.3 确认全栈升级**：`v0.7.2` 及更早版本先升级到 `v0.7.3`。达到 v0.7.3 后，在 Web 更新中心阅读停服和第三方 Mod 提示、检查游戏组与世界范围，再确认本次升级；同一事务完成 Panel 更新与游戏组到 `.140` 的迁移，网页断线重连后继续显示原操作。
+
+**安装与数据保护更完整**：安装和重装加强游戏数据卷、SMAPI 组件完整性与恢复检查；删除世界时核对资源归属与引用，保护其它世界的数据。升级保留存档、Mod、配置、用户和认证会话，并保持各世界原先的运行选择；未启用邀请码的世界继续使用局域网/IP 直连。
+
+GitHub latest Release 保持 `v0.7.3`，供旧版先取得准备版本；Docker Hub、阿里云 ACR、GHCR 的 `0.8.0/latest` 对应同一不可变镜像。升级、备份与失败恢复见 [更新面板与游戏实例](/maintain/update)，用户可见说明见 [GitHub Release v0.8.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.0)，正式验收与镜像核验记录见 [发布记录](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/blob/main/docs/09-image-build.md)。
+
+## v0.7.3（升级准备版本）
 
 **先完成升级准备**：v0.7.2 及更早版本先升级到 v0.7.3，再从更新中心继续后续大版本。此步保留 Junimo .125 与 Auth 1.5.0-anxi.2 的组合，按兼容规则同步所需 Control 补丁。
 
 **统一更新中心**：游戏库、世界列表和实例内版本入口共用更新内容、重要提示、预检、进度和历史记录。更新中心跟随页面的暖昼/静夜主题，桌面与窄屏都可查看并确认升级。
 
-**为实例大更新准备**：后续 v0.8.0 正式提供后，先预检目标与世界范围，再由管理员确认停服和第三方 Mod 兼容提示。下载预检与执行授权分开，失败恢复与断线重连继续关联同一次操作。
+**为实例大更新准备**：此版预检后续升级目标与世界范围，将下载预检和执行授权分开；管理员阅读停服及第三方 Mod 提示后确认，失败恢复与断线重连持续关联同一次操作。
 
 GitHub latest Release 保持 v0.7.3，让旧版先取得准备版本；v0.7.3 及以后按正式 Release 列表选择满足前置条件的目标。Docker latest 另随正式镜像提升。操作顺序、备份和恢复方法见 [更新面板与游戏实例](/maintain/update)，完整说明见 [GitHub Release v0.7.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.3)。
 
