@@ -13,7 +13,8 @@
 - 交接前新检查（UTC `2026-10-28T04:40:18Z`）：C约66.98GiB、E约699.33GiB，原宿主两服务running/healthy；任务DinD仍为原cold-restored身份，但已于UTC04:25:35停止、exit255/OOM=false，19212测试端口拒绝连接。该时点与此前已通过的073发布证明分开记录，不能把历史running状态当当前事实，也不能据exit255推断根因。本次未start/restart；tmpfs来源必须先按冷检查点及原证据只读核查，再为080受控恢复，不能直接重启或假定数据仍在。安全receipt为`handoff080-runtime-status-20261028.safe.json`。
 - 全部原始证据保留于`E:/task-evidence/panel-release-20261027`；最终只写真正完成结果的`formal073-release-confirmed.json`为released=true，绑定三仓、OCI、正式冒烟、脚本与tag证据。既有候选、冷恢复及manifest引用文件保持不可变。
 - 用户最新安排：本对话只完成073发布记录和官网，核验上线后另开对话发布080。本轮不启用080、不dispatch080候选；当前manifest仍`activate=false`，默认`.125/Auth anxi.2`。080准备需从073真实现场追加073来源基线，显式`version=0.8.0, previous_version=0.7.3, oldest_version=""`，全新安装默认保持125/Auth2，受控目标迁移140/正式Auth140，GitHub latest保留073。不得使用历史V4或073的证明提升080。
-- 官网本次变更：首页/变更记录切到073、快速部署与FAQ写明先073再由Web更新中心继续升级；080公开发布内容留待其正式Release。官网本次workflow与线上核验结果在部署完成后补记。
+- 官网本次变更：首页/变更记录切到073、快速部署与FAQ写明先073再由Web更新中心继续升级；080公开发布内容留待其正式Release。main `3538b7f5e99f7f4de2ebe96e02096885a6eaf011` 的 [Pages40633876075](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40633876075) 成功，build24秒、deploy12秒；本地`npm run docs:build`及生成内容12项通过。线上首页、changelog、quick-start、FAQ、maintain/update五页均HTTP200，实际可见文案与href共28项通过，路由从当前HTML链接发现；另保留requirements导航中转原文。receipt `website073-live-3538b7f5-verified.safe.json` SHA256 `af0d2c418af098b9e28f38b4de30ebc5d7a5383df476cb1a3fcf5423993d90cb`，6份原始HTML及验证脚本保留于外部任务根。[官网](https://anxiyizhi.github.io/stardew-server-anxi-panel/)。
+- 收尾源码核验：同3538b7f5提交的 [compat40633876097](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40633876097) 全部成功（6分10秒），覆盖嵌入清单、后端、前端production build及隔离Docker integration；两处repo下载的仓库外mock、11项关键负向、Bash语法与ShellCheck另在本地通过，精确临时lint容器已归零。候选40633876074/自动tag40633880555因提交标记按设计skipped，本次没有创建074或080候选，也没有改变已发布073的tag/digest。后续仅补上线证据和错题本，不触发镜像重建。
 
 ## 2026-10-27 Panel 0.7.3 → 0.8.0 正式发布准备
 
