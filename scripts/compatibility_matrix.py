@@ -99,7 +99,14 @@ def validate(matrix: dict) -> None:
 
     auth = matrix["steamAuth"]
     require(auth["tag"] in STEAM_AUTH_HEALTH_CONTRACT_TAGS, "steamAuth tag lacks the reviewed pure /health contract")
-    require(isinstance(auth.get("upstreamRef"), str) and auth["upstreamRef"].startswith("refs/tags/"), "steamAuth.upstreamRef must be an exact tag ref")
+    if auth["tag"] == "1.5.0-preview.140-anxi.1":
+        require(matrix["server"]["tag"] == "1.5.0-preview.140", "default .140 Auth requires Junimo .140")
+        require(set(matrix["server"]["digests"].values()) == {"sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db"}, "default server content differs from Junimo .140")
+        require(set(auth["digests"].values()) == {"sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6"}, "default Auth content differs from the reviewed .140 release")
+        require(auth.get("upstreamRef") == "f318717ac06a780b6b21080b0263c16278d8e6e1", "default .140 Auth must track exact upstream revision")
+        require(auth.get("sourceRevision") == "db3f7d53b8e7705b01bbf5a87633e07dabdd34a4", "default .140 Auth sourceRevision must match the reviewed release")
+    else:
+        require(isinstance(auth.get("upstreamRef"), str) and auth["upstreamRef"].startswith("refs/tags/"), "steamAuth.upstreamRef must be an exact tag ref")
     require(REVISION_RE.fullmatch(str(auth.get("sourceRevision", ""))) is not None, "steamAuth.sourceRevision must be a full revision")
 
     upgrade = matrix.get("fullStackUpgrade")

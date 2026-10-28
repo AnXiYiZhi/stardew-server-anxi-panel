@@ -29,4 +29,10 @@ func TestRuntimeSMAPIDockerContractRejectsUnscopedInputs(t *testing.T) {
 	if err := client.RuntimeCommitImageSMAPIStamp(ctx, dir, "safe_project_game-data", "sdvd/server:1.5.0-preview.140", "invalid", "../../bad"); err == nil || err.Error() != "invalid image-managed SMAPI stamp request" {
 		t.Fatal("image stamp did not reject unscoped input before invoking Docker")
 	}
+	if _, err := client.RuntimeVolumeExists(ctx, dir, "game-data;bad"); err == nil || err.Error() != "invalid game-data volume name" {
+		t.Fatal("volume presence query did not reject an unscoped input before invoking Docker")
+	}
+	if err := client.RuntimeValidateUnusedSMAPIStaging(ctx, dir, "safe_project_game-data"); err == nil || err.Error() != "invalid image-managed SMAPI staging volume" {
+		t.Fatal("base installer accepted an ordinary game-data volume as owned staging")
+	}
 }

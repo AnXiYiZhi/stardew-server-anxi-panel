@@ -73,4 +73,5 @@ jobs:
         working-directory: backend
         run: |
           go test -tags=integration ./internal/docker -count=1
+          PANEL_INSTALL_DELETE_DOCKER_TEST=1 go test ./internal/docker -run '^TestInstallGameVolumeDeletionDocker$' -count=1 -v
           go test -tags=integration ./internal/web -run '^TestResourceScopes(RealDocker|Fixture)' -count=1 -v

@@ -36,7 +36,7 @@ type runtimeUpdateFakeDocker struct {
 }
 
 func newRuntimeUpdateFakeDocker(dataDir string) *runtimeUpdateFakeDocker {
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	f := &runtimeUpdateFakeDocker{
 		fakeDocker: &fakeDocker{psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}, {Service: "steam-auth", State: "running"}}}},
 		metadata: map[string]paneldocker.RuntimeImageMetadata{
@@ -165,7 +165,7 @@ func setupRuntimeUpdateDriver(t *testing.T, state string) (*Driver, *storage.Sto
 	}
 	instance := registry.Instance{ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: stored.DataDir, State: stored.State, DriverPhase: stored.DriverPhase, DriverPayload: stored.DriverPayload}
 	fake := newRuntimeUpdateFakeDocker(dataDir)
-	driver := New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+	driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store))
 	return driver, store, instance, fake
 }
 
@@ -214,7 +214,7 @@ func TestRuntimeUpdateDryRunSucceedsWithoutDestructiveCommandsAndPersists(t *tes
 			}
 		}
 	}
-	reconstructed := New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+	reconstructed := useLegacy125RuntimeFixture(New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store))
 	restored, err := reconstructed.RuntimeUpdateDryRunStatus(instance)
 	if err != nil || restored.DryRunID != status.DryRunID || restored.Phase != RuntimeUpdatePhaseSucceeded {
 		t.Fatalf("status not restored: %#v, %v", restored, err)
@@ -316,7 +316,7 @@ func TestRuntimeUpdateDryRunFailures(t *testing.T) {
 			f.composeValidateErr = errors.New("bad config with PASSWORD=secret")
 		}, "compose_target_validation_failed", RuntimeUpdatePhaseFailed},
 	}
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			driver, _, instance, fake := setupRuntimeUpdateDriver(t, storage.InstanceStateGameInstalled)

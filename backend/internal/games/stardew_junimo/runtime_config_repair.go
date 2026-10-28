@@ -92,7 +92,7 @@ func (d *Driver) repairKnownRuntimeStackConfig(instance registry.Instance) (Runt
 		return RuntimeStackConfigRepairResult{}, fmt.Errorf("write repaired runtime config: %w", err)
 	}
 
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.inspectRuntimeStack(instance)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable && inspection.Status != sjconfig.RuntimeStackStatusUpToDate {
 		if restoreErr := writeRuntimeEnvBytesAtomic(instance.DataDir, original); restoreErr != nil {
 			return RuntimeStackConfigRepairResult{}, fmt.Errorf("config repair verification failed (%s) and original config restore failed: %w", inspection.Code, restoreErr)

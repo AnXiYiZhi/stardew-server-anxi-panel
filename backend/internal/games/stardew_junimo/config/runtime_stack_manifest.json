@@ -1,45 +1,41 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.9",
+  "stackVersion": "junimo-1.5.0-preview.140_auth-1.5.0-preview.140-anxi.1_game-16826371_sdk-20939719_smapi-4.5.2-ec5447482be0_control-0.3.9",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
   "runtimeUpdatePolicy": "required",
   "server": {
-    "tag": "1.5.0-preview.125",
+    "tag": "1.5.0-preview.140",
     "images": [
-      "dockerproxy.net/sdvd/server:1.5.0-preview.125",
-      "docker.1ms.run/sdvd/server:1.5.0-preview.125",
-      "docker.1panel.live/sdvd/server:1.5.0-preview.125",
-      "docker.jiaxin.site/sdvd/server:1.5.0-preview.125",
-      "dockerproxy.link/sdvd/server:1.5.0-preview.125",
-      "sdvd/server:1.5.0-preview.125"
+      "dockerproxy.net/sdvd/server:1.5.0-preview.140",
+      "docker.1ms.run/sdvd/server:1.5.0-preview.140",
+      "docker.1panel.live/sdvd/server:1.5.0-preview.140",
+      "docker.jiaxin.site/sdvd/server:1.5.0-preview.140",
+      "dockerproxy.link/sdvd/server:1.5.0-preview.140",
+      "sdvd/server:1.5.0-preview.140"
     ],
     "digests": {
-      "dockerproxy.net/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
-      "docker.1ms.run/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
-      "docker.1panel.live/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
-      "docker.jiaxin.site/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
-      "dockerproxy.link/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
-      "sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6"
+      "dockerproxy.net/sdvd/server:1.5.0-preview.140": "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db",
+      "docker.1ms.run/sdvd/server:1.5.0-preview.140": "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db",
+      "docker.1panel.live/sdvd/server:1.5.0-preview.140": "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db",
+      "docker.jiaxin.site/sdvd/server:1.5.0-preview.140": "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db",
+      "dockerproxy.link/sdvd/server:1.5.0-preview.140": "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db",
+      "sdvd/server:1.5.0-preview.140": "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db"
     }
   },
   "steamAuth": {
-    "tag": "1.5.0-anxi.2",
-    "upstreamRef": "refs/tags/preview-1.5.0.121",
-    "sourceRevision": "a6cee498f91b318cfcacf035b05b0644bd16829a",
+    "tag": "1.5.0-preview.140-anxi.1",
+    "upstreamRef": "f318717ac06a780b6b21080b0263c16278d8e6e1",
+    "sourceRevision": "db3f7d53b8e7705b01bbf5a87633e07dabdd34a4",
     "images": [
-      "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
-      "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2",
-      "docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
-      "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
-      "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+      "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-preview.140-anxi.1",
+      "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1",
+      "anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1"
     ],
     "digests": {
-      "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
-      "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
-      "docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
-      "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
-      "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518"
+      "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-preview.140-anxi.1": "sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6",
+      "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1": "sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6",
+      "anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1": "sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6"
     }
   },
   "fullStackUpgrade": {
@@ -84,14 +80,18 @@
     "appId": "413150",
     "buildId": "16826371",
     "manifestVersion": "stardew-1.6.15-public-2024-12-22",
-    "notes": ["Stardew Valley public branch build verified for the Panel runtime matrix."],
+    "notes": [
+      "Stardew Valley public branch build verified for the Panel runtime matrix."
+    ],
     "estimatedDownloadBytes": 1500000000
   },
   "sdk": {
     "appId": "1007",
     "buildId": "20939719",
     "manifestVersion": "steamworks-sdk-redist-public-2025-12-08",
-    "notes": ["Steamworks SDK Redistributables public branch build verified for the Panel runtime matrix."],
+    "notes": [
+      "Steamworks SDK Redistributables public branch build verified for the Panel runtime matrix."
+    ],
     "estimatedDownloadBytes": 200000000
   },
   "smapi": {
@@ -106,7 +106,14 @@
     "archiveBytes": 41889142,
     "maxArchiveBytes": 104857600,
     "maxExtractBytes": 536870912,
-    "trustedHosts": ["gh.llkk.cc", "github.dpik.top", "ghfast.top", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+    "trustedHosts": [
+      "gh.llkk.cc",
+      "github.dpik.top",
+      "ghfast.top",
+      "github.com",
+      "objects.githubusercontent.com",
+      "release-assets.githubusercontent.com"
+    ]
   },
   "controlMod": {
     "version": "0.3.9",
@@ -115,6 +122,7 @@
   },
   "status": "recommended",
   "releaseNotes": [
+    "新建实例默认使用固定 Junimo .140 与正式配套 Auth；SMAPI 使用该镜像内置的 patched 构建并逐文件核验。既有世界仍须经更新中心确认精确范围后迁移。",
     "Control 0.3.9 通过 Junimo 角色归属生命周期释放 .140 角色，并在精确 GameLoop.Saved 前核验持久化；识别新版活动暂停与睡眠请求锁，禁止日切后的重复睡眠，保留 .125 和手动控制兼容。",
     "Control 0.3.8 在 Junimo 完成 !login 认证后、向其他客户端转发聊天前精确丢弃登录凭据消息；统一密码、角色独立密码、首次认领、失败次数、超时、隔离与传送继续复用原认证流程，补丁不可用时 Panel 启动门禁会停止服务器。",
     "Control 0.3.7 为面板新建存档增加事务绑定的农场山洞三态选择：可保留原版德米特里厄斯事件，或在首个存档内幂等启用果蝠洞/蘑菇洞；蘑菇设施、caveChoice 与事件 65 均由运行时和持久存档门禁复核。",

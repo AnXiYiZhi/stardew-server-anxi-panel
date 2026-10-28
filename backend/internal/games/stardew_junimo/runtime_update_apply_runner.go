@@ -494,7 +494,7 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Cont
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: "manifest_invalid", Message: "内置推荐运行组件清单无效或未测试。"}
 	}

@@ -95,6 +95,33 @@ func (c *Client) unusedSMAPIStaging(ctx context.Context, dir, volume string) err
 	return nil
 }
 
+// RuntimeValidateUnusedSMAPIStaging exposes the same ownership and no-holder
+// gate to the base installer before SteamCMD writes its first byte.
+func (c *Client) RuntimeValidateUnusedSMAPIStaging(ctx context.Context, dir, volume string) error {
+	return c.unusedSMAPIStaging(ctx, dir, volume)
+}
+
+// RuntimeVolumeExists distinguishes an absent volume from an inspect failure.
+// The exact-name filter cannot select another installation's volume.
+func (c *Client) RuntimeVolumeExists(ctx context.Context, dir, volume string) (bool, error) {
+	if !dockerVolumePattern.MatchString(volume) {
+		return false, errors.New("invalid game-data volume name")
+	}
+	result, err := c.run(ctx, "check exact game-data volume", dir, c.timeouts.Ps,
+		"volume", "ls", "--filter", "name=^"+regexp.QuoteMeta(volume)+"$", "--format", "{{.Name}}")
+	if err != nil {
+		return false, err
+	}
+	value := strings.TrimSpace(result.Stdout)
+	if value == "" {
+		return false, nil
+	}
+	if value != volume {
+		return false, errors.New("exact game-data volume query returned an unexpected identity")
+	}
+	return true, nil
+}
+
 // RuntimeInstallImageSMAPI operates only on an unused transaction-owned staging
 // volume. The installer is taken from the already verified immutable image ID.
 // The driver must verify the payload hashes before publishing its build stamp.

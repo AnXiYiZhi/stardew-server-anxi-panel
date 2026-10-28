@@ -414,7 +414,7 @@ func TestJunimoUpdatePermissionsAndSensitiveData(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("admin GET = %d: %s", response.Code, response.Body.String())
 	}
-	assertJSONField(t, response.Body.Bytes(), "status", "up_to_date")
+	assertJSONField(t, response.Body.Bytes(), "status", "update_available")
 	assertJSONField(t, response.Body.Bytes(), "serverRunning", false)
 	assertJSONField(t, response.Body.Bytes(), "steamAuthLoggedIn", true)
 	for _, secret := range []string{"do-not-leak-password", "do-not-leak-refresh-token", "do-not-leak-private-env", "STEAM_PASSWORD", "STEAM_REFRESH_TOKEN", "PRIVATE_ENV"} {
@@ -427,7 +427,7 @@ func TestJunimoUpdatePermissionsAndSensitiveData(t *testing.T) {
 	if state.Code != http.StatusOK {
 		t.Fatalf("ordinary user state = %d: %s", state.Code, state.Body.String())
 	}
-	if !strings.Contains(state.Body.String(), `"serverVersion":"1.5.0-preview.125"`) || !strings.Contains(state.Body.String(), `"junimoUpdateStatus":"up_to_date"`) {
+	if !strings.Contains(state.Body.String(), `"serverVersion":"1.5.0-preview.125"`) || !strings.Contains(state.Body.String(), `"junimoUpdateStatus":"update_available"`) {
 		t.Fatalf("ordinary state omitted necessary version status: %s", state.Body.String())
 	}
 	if strings.Contains(state.Body.String(), "sdvd/server") || strings.Contains(state.Body.String(), "junimo-steam-service-cn") {

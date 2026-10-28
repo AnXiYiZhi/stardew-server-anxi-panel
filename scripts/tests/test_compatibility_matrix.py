@@ -52,6 +52,23 @@ class CompatibilityMatrixTests(unittest.TestCase):
             with self.assertRaisesRegex(MATRIX.MatrixError, "runtimeUpdatePolicy"):
                 MATRIX.validate(value)
 
+    def test_default_140_pair_has_exact_reviewed_identity(self):
+        self.assertEqual("1.5.0-preview.140", self.base["server"]["tag"])
+        self.assertEqual("1.5.0-preview.140-anxi.1", self.base["steamAuth"]["tag"])
+        MATRIX.validate(self.base)
+        mutations = (
+            ("steamAuth", "upstreamRef", "refs/tags/preview-1.5.0.121"),
+            ("steamAuth", "sourceRevision", "a6cee498f91b318cfcacf035b05b0644bd16829a"),
+            ("steamAuth", "digests", {image: "sha256:" + "f" * 64 for image in self.base["steamAuth"]["images"]}),
+            ("server", "digests", {image: "sha256:" + "f" * 64 for image in self.base["server"]["images"]}),
+        )
+        for component, key, replacement in mutations:
+            with self.subTest(component=component, key=key):
+                value = copy.deepcopy(self.base)
+                value[component][key] = replacement
+                with self.assertRaises(MATRIX.MatrixError):
+                    MATRIX.validate(value)
+
     def test_explicit_upgrade_has_pinned_server_and_compatible_auth(self):
         value = copy.deepcopy(self.base)
         self.assertIn("fullStackUpgrade", value)

@@ -12,7 +12,7 @@ func TestBuiltInRuntimeStackManifestIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltInRuntimeStackManifest: %v", err)
 	}
-	if manifest.Server.Tag != "1.5.0-preview.125" || manifest.SteamAuth.Tag != "1.5.0-anxi.2" {
+	if manifest.Server.Tag != "1.5.0-preview.140" || manifest.SteamAuth.Tag != Junimo140SteamAuthTag {
 		t.Fatalf("unexpected tested pair: server=%q auth=%q", manifest.Server.Tag, manifest.SteamAuth.Tag)
 	}
 	if manifest.RuntimeUpdatePolicy != RuntimeUpdatePolicyRequired {

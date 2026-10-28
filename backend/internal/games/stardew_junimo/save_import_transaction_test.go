@@ -15,7 +15,6 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
-	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -580,14 +579,14 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+TestedImageTag+"\nAPI_PORT=5110\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	modDir := junimoServerModDir(dataDir)
 	if err := os.MkdirAll(modDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"`+TestedImageTag+`","UniqueID":"JunimoHost.Server"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(modDir, "JunimoServer.dll"), []byte("dll"), 0o600); err != nil {
@@ -596,7 +595,7 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 	if err := installSMAPIMod(dataDir); err != nil {
 		t.Fatal(err)
 	}
-	runtimeManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	runtimeManifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -652,7 +651,7 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 		return baseExec(ctx, dir, service, stdin, args...)
 	}
 	manager := jobs.NewManager(store, slog.Default())
-	driver := New(fake, slog.Default(), manager, store)
+	driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), manager, store))
 	op := NewImportOperationID()
 	job, err := driver.ImportSaveAndStart(context.Background(), registry.SaveImportRequest{
 		Instance: registry.Instance{ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: dataDir,

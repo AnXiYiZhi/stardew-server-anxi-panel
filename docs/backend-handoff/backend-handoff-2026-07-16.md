@@ -1,7 +1,9 @@
 ## 2026-10-28 0.8.0 正式候选接手增量
 
-- 本对话继续已授权的080正式发布：`runtime_stack_manifest.json`启用fullStackUpgrade，当前发行策略切080；默认新装125/Auth2/Control0.3.9保持，范围确认后的目标为140/正式Auth140。关联driver、Web确认、073准备记录和CLI协议沿用现有实现，目标Auth为db3f7d53…/digest4649205b…已有正式制品。
-- 当前任务DinD停机，先核对容量/身份/只读状态。以新attempt从已封存072故障回滚冷检查点受控恢复，再建立正式073来源和新增073基线；保留原072基线、全部旧outer和冻结文件。该恢复不初始化替换原数据，不冒称冷点是073终态，不重放旧073操作。
+- 新增 `junimo140_install.go`及安装journal `.local-container/install-game-volumes/<volume>.json`：create前固定目标/来源/镜像身份并绑定，失败续用原卷；复用既有unused/label保护和patched SMAPI核心哈希/标记读回。涉及driver/installer/config、`docker/runtime_smapi_image.go`和删除planner；125基础安装仍要求全栈范围确认，AuthOnly按实际运行栈选原配对，125/140事务导入均保留。新卷及历史owned来源卷由实例删除清单枚举，foreign holder和其它世界引用继续阻止共享卷删除。后续须保留journal精确身份，不能以失败重试重置下载卷或放宽归属。
+- 当前开发证据为2340通过/9条件跳过、19包最终无失败，vet/build0；独立空DinD新装/保留来源两种删除关系、foreign holder在plan/apply保护和精确资源归零实际通过。后续正式CI仍从干净同步main完整复验，再由新080精确镜像执行fresh游戏和073 Web专项；不能把开发二进制或073来源证明当候选镜像验收。出处及SHA见docs09。
+- 本对话继续已授权的080正式发布：默认新装与受控升级统一采用140/正式Auth140/Control0.3.9，`runtime_stack_manifest.json`启用fullStackUpgrade，当前发行策略切080。已有服务器先完成073准备，再从Web更新中心确认一次本次范围，由driver在同一事务内完成Panel和游戏组迁移；新装来源走独立初始化。关联Web确认、073准备记录和CLI协议保持，Auth为db3f7d53…/digest4649205b…已有正式制品。
+- 当前隔离来源已完成新attempt恢复及独立单次真实Web升级到正式073。使用 `daemon080.json`/`private-browser-session080.json`与 `source073-ready080-compact.safe.json`；正式073 exact digest/bridge、125/Auth2/Control0.3.9及实际加载、有效邀请码、原072与新增073两套世界/账户比较均通过，旧192文件SHA全同。新072恢复closure与073来源ready分开封存，原072基线、全部旧outer和冻结文件保留；精确SHA见docs09。
 - 新候选必须干净同步main，显式080/previous073/oldest空；073为最老来源，072直升继续拒绝。当前本候选验收尚待执行：自动门禁、真实073 Web正常升级/同候选unhealthy回滚、140/Auth及有效邀请码、数据/Mod/备份维护、Panel重启与UI/CLI。完成后封存同digest再正式提升；GitHub latest保持073，Docker latest提升080。完整矩阵和待回填实际run/digest/资源结果见docs09。
 
 ## 2026-10-28 0.7.3 正式发布接手
@@ -9,8 +11,8 @@
 - 073 已正式完成：commit `9a0309407618b12037945094c4c3b6591640c81b`，digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`；candidate `40475934168`、compat `40475934184`、acceptance `40548614707`、release `40551398256` 成功。annotated tag `v0.7.3` 保持不变，三仓073/latest六引用一致，OCI、正式镜像health/version与四份Release资产字节均通过核验，GitHub latest=`v0.7.3`。
 - 本版后端/发布关联文件包括 updatecheck 发行策略、updater/bridge、启动前置守卫、Web升级handlers、runtime manifest、deploy策略与release workflows；原候选已覆盖此前事务修复入口和异步Prepare等待修复。当前073 `activate=false`、fresh125/Auth2/Control0.3.9不变。代码门禁、072/032真实Web升级回滚及精确digest真实世界专项均已完成；专项18检查/192绑定文件，原1档/3角色、用户、Mod/配置、专用会话、非目标资源及Panel重启完整。
 - tag自动任务 `40548742682` 因checkout前下载缺少 `--repo` 失败；本地等价核验同run/SHA/digest、原始artifacts、矩阵、干净同步main和tag不存在后，仅推送一次annotated tag，由push自动触发正式提升，dispatch为0。后续下载必须显式repo，并保留真实失败及恢复证据；收尾工作流修复不回改073 tag或重建已发布镜像。
-- Docker Desktop数据盘已按授权迁至 `E:/DockerDesktopData`，原两个宿主服务恢复且身份/版本不变；原任务现场经过一致性冷归档、权限/文件/数据库验证后恢复，073正常升级、维护、重启/UI均基于该原现场。旧outer与独立回滚VHD仍保留，禁止为080重建或初始化它。新outer `pr-20261027-dind`，Panel `http://127.0.0.1:19212`，内层Docker `tcp://127.0.0.1:19211`；精确身份从现有daemon证明读取，不抄旧ID。
-- 080由新对话继续：先读取 `formal073-release-confirmed.json` 与外部 `OPERATIONS.md`，按既有工具新增073基线，保留072原基线和所有已封存字节。仅在新候选明确080后启用目标140/Auth140，最低/最老来源073，保留072跳级拒绝；fresh保持125/Auth2，GitHub latest保留073。必须完成同一候选的真实Web故障回滚和正常迁移、有效邀请码、数据/Mod/备份、重启与UI，再封存提升。完整run/digest/故障/清理记录见docs09；本对话仅收尾073记录和官网，不执行080发布。
+- Docker Desktop数据盘已按授权迁至 `E:/DockerDesktopData`，原两个宿主服务身份/版本和健康保持；073已发布专项的归档、升级、维护、重启/UI证据完整保留。080的新恢复与正式073来源现已另外完成，全部旧outer和独立回滚VHD保留。当前canonical为 `pr-20261027-dind`，Panel `http://127.0.0.1:19212`、内层Docker `tcp://127.0.0.1:19211`；当前精确身份从 `daemon080.json`及其ready证明读取。
+- 080继续使用该正式073来源与新增基线，保留072原基线及全部封存字节。新装默认140/正式Auth140；已有服务器先073，再从更新中心确认本次范围自动升级080及游戏组。最低/最老来源073，072跳级拒绝，GitHub latest保持073。新候选完成真实新装、Web故障回滚/正常迁移、有效邀请码、数据/Mod/备份、重启/UI后再封存提升；实际run/digest/故障/清理记录见docs09。
 
 以下为发布前历史交接，当前状态以上节为准。
 

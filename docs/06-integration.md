@@ -1,7 +1,8 @@
 ## 2026-10-28 0.8.0 正式联调准备
 
-- 本轮启用080目标清单及发行策略，来源固定正式073；`version=0.8.0, previous_version=0.7.3, oldest_version=""`，072直升及缺073准备记录继续拒绝。全新安装默认125/Auth2，受控目标140/正式Auth `1.5.0-preview.140-anxi.1`。GitHub latest保留073，073及以后从正式列表选择080，Docker latest随正式同digest提升。
-- 隔离现场以新attempt恢复已封存的072故障回滚冷检查点，再受控到正式073并追加073基线；原072基线、旧outer及冻结证据保留。后续真实Web prepare/confirm必须保存本次HTTP状态与operation/plan，单次确认后只读观察终态与生产Prepare收敛，不以Panel健康代替实例完成，也不重放旧操作。
+- 安装请求字段保持现有协议；省略imageTag的新装采用140/正式Auth140，安装job及详情仍按202和`{job:...}`保存原ID/终态。旧125授权固定原Auth2且基础安装不能替代范围迁移。新增owned卷journal、镜像patched SMAPI及删除共享保护开发回归和独立Docker删除通过；精确候选上的全新游戏安装、Web升级/回滚与UI仍待执行。
+- 本轮080默认清单与受控目标统一为140/正式Auth `1.5.0-preview.140-anxi.1`。全新安装使用独立新装来源；已有服务器固定先到正式073，再从Web更新中心确认本次范围，由同一事务升级Panel和游戏组。候选 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，072直升及既有安装缺073准备记录继续拒绝。GitHub latest保留073，073及以后从正式列表选择080，Docker latest在正式同digest提升后指向080。
+- 隔离来源已用新attempt恢复072冷检查点，再以独立单次真实Web升级到正式073；新来源的exact digest、bridge、125/Auth2/Control0.3.9、有效邀请码和两套世界/账户基线已只读核验，旧outer及192份封存字节保持。后续080 prepare/confirm继续保存本次HTTP状态与operation/plan，单次确认后观察终态及生产Prepare明确收敛。实际source073Ready与closure见docs09。
 - 本候选尚待验证：真实073→080、同候选unhealthy回滚073、提示/范围与CLI边界、140/Auth140及有效非空邀请码、两套数据基线、用户/专用会话/非目标资源、维护/导出/备份恢复、Panel重启和真实UI。维护任务详情保持 `{"job": ...}` 契约；原始证据最小投影并绑定候选完整SHA/digest。完整门禁、结果及封存入口见docs09。
 
 ## 2026-10-28 0.7.3 正式联调发布完成
@@ -9,7 +10,7 @@
 - `v0.7.3` 已正式发布：commit `9a0309407618b12037945094c4c3b6591640c81b`，唯一digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。candidate `40475934168`、compat `40475934184`、acceptance `40548614707`、release `40551398256` 成功；三仓073/latest六引用与OCI元数据一致，正式health/version和四个Release脚本字节已核验。
 - 发行body/targetVersion/noticeDigest、dry-run/apply与full-stack确认协议已在本版候选完成自动回归；072和最老032通过真实Web正常升级及unhealthy回滚。原072真实世界专项按同一候选先故障回滚、再单次正常升级073，期望断线重连与终态恢复通过；原1档/3角色、用户、Mod/配置、专用Auth会话、非目标资源保持，备份恢复/ZIP、有效邀请码、Panel重启和实际UI通过。封存18检查/192文件，不包含公开敏感账号、邀请码或存档标识。
 - 073持久准备记录已随原数据保留，运行栈升级开关仍false，fresh125/Auth2/Control0.3.9。自动tag `40548742682` 的checkout前下载缺repo失败已保留；全部等价run/SHA/digest与main守卫核验后只推送一次annotated tag，push触发正式提升，无重复dispatch。073 tag和镜像内容保持不变。
-- 按用户要求在记录/官网收尾后开新对话继续080：上一/最老来源均073，072直升拒绝，使用新的干净同步main候选；从正式073新增基线后验证同一候选的unhealthy恢复、真实Web范围确认/140/Auth140迁移、数据维护、重启及双主题UI。fresh保持125/Auth2，GitHub latest保留073。现有073确认在 `E:/task-evidence/panel-release-20261027/formal073-release-confirmed.json`，详细矩阵和资源保留见docs09，尚未形成080正式候选或发布证明。
+- 080使用新干净同步main候选，上一/最老来源均073，072直升拒绝；正式073来源与新增基线现已核验。新装默认140/正式Auth140，已有服务器从073确认范围后自动完成080及游戏组迁移，另验证同候选unhealthy恢复、数据维护、重启与双主题UI。GitHub latest保留073；073正式确认及本次来源证明位于 `E:/task-evidence/panel-release-20261027`，完整矩阵和资源记录见docs09。
 
 以下为发布前历史联调记录，当前状态以上节为准。
 

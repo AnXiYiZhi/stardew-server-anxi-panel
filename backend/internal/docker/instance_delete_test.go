@@ -1,9 +1,28 @@
 package docker
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestWorldDeletionRetainedInstallVolumesRemainScoped(t *testing.T) {
+	project := "test-world"
+	staging := project + "_anxi-smapi-update-" + strings.Repeat("a", 24)
+	for _, name := range []string{project + "_game-data", staging} {
+		if !installationRetainedVolumeOwned(project, name) {
+			t.Fatal("same-world installation volume rejected")
+		}
+	}
+	client := NewClient(Options{DockerPath: "docker-that-must-not-run"})
+	for _, name := range []string{"other-world_game-data", "shared-steamcmd", "other-world_anxi-smapi-update-" + strings.Repeat("a", 24)} {
+		_, err := client.PlanInstanceDeletionWithRetainedGameVolumes(context.Background(), "/data/instances", project, "/data/instances/"+project, staging, []string{name})
+		if err == nil || err.Error() != "retained installation volume is outside the world namespace" {
+			t.Fatal("foreign retained source reached Docker deletion discovery")
+		}
+	}
+}
 
 func TestWorldDeletionReferenceAndIdentityGuards(t *testing.T) {
 	var target deletionContainer

@@ -93,7 +93,7 @@ type RuntimeComponentsPreflight struct {
 }
 
 func (d *Driver) InspectRuntimeComponents(ctx context.Context, instance registry.Instance) (RuntimeComponentsInspection, error) {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil {
 		return RuntimeComponentsInspection{}, fmt.Errorf("load runtime component matrix: %w", err)
 	}
@@ -127,7 +127,7 @@ func (d *Driver) InspectRuntimeComponents(ctx context.Context, instance registry
 		result.Reason = "实例目录无法安全映射到 game-data volume。"
 		return result, nil
 	}
-	stack := InspectRuntimeStack(instance.DataDir, instance.State)
+	stack := d.inspectRuntimeStack(instance)
 	image := stack.Current.Server.Image
 	if strings.TrimSpace(image) == "" {
 		image = manifest.Server.Image
@@ -288,7 +288,7 @@ func (d *Driver) RunRuntimeComponentsPreflight(ctx context.Context, instance reg
 		return finishError("unsupported/docker_contract", "当前 Docker driver 不支持只读预检。")
 	}
 	project := strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir)))
-	stack := InspectRuntimeStack(instance.DataDir, instance.State)
+	stack := d.inspectRuntimeStack(instance)
 	image := stack.Current.Server.Image
 	if image == "" {
 		image = sjconfig.DefaultServerImage
@@ -346,7 +346,7 @@ func (d *Driver) RunRuntimeComponentsPreflight(ctx context.Context, instance reg
 func (d *Driver) RuntimeComponentsPreflight(instance registry.Instance) (RuntimeComponentsPreflight, error) {
 	data, err := os.ReadFile(runtimeComponentsPreflightPath(instance.DataDir))
 	if errors.Is(err, os.ErrNotExist) {
-		manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
+		manifest, manifestErr := d.runtimeStackManifest()
 		if manifestErr != nil {
 			return RuntimeComponentsPreflight{}, manifestErr
 		}

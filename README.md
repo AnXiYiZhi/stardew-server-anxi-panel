@@ -80,6 +80,8 @@ curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/rele
 http://你的服务器IP:8090
 ```
 
+当前正式版为 `v0.7.3`，`v0.8.0` 正在准备。080正式提升后，新装通过 Docker `latest` 直接安装080，游戏默认使用 Junimo `.140` 与正式配套 Auth `1.5.0-preview.140-anxi.1`。已有服务器先完成073准备，再从Web更新中心检查范围、阅读提醒并确认本次升级，由同一事务自动完成080 Panel和游戏组迁移。GitHub latest Release保持073，完整步骤见[更新面板与游戏实例](https://anxiyizhi.github.io/stardew-server-anxi-panel/maintain/update)。
+
 然后按页面引导完成：
 
 1. 创建第一个管理员账号。

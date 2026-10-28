@@ -9,6 +9,24 @@ const Junimo140SteamAuthTag = "1.5.0-preview.140-anxi.1"
 
 const Junimo140ServerDigest = "sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db"
 
+// A rolled-back .125 world keeps its original reviewed Auth protocol even
+// after the Panel's fresh-install default advances to .140.
+func Junimo125SteamAuthTarget() RuntimeStackManifestComponent {
+	images := []string{
+		"docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2",
+		"docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+	}
+	digests := map[string]string{}
+	for _, image := range images {
+		digests[image] = "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518"
+	}
+	return RuntimeStackManifestComponent{Tag: "1.5.0-anxi.2", UpstreamRef: "refs/tags/preview-1.5.0.121", SourceRevision: "a6cee498f91b318cfcacf035b05b0644bd16829a",
+		Images: images, Image: images[0], TrustedCandidates: append([]string{}, images...), Digests: digests}
+}
+
 // The explicit migration target is separate from the default installation
 // matrix. A bridge release omits it and cannot offer a game migration.
 type RuntimeStackUpgradeTarget struct {

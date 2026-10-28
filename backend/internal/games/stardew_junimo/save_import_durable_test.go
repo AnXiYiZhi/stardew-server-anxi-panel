@@ -55,7 +55,7 @@ func prepareDurableTestFixture(t *testing.T, hostHandling string) *durableTestFi
 	r.fixture.store.mu.Unlock()
 	r.fixture.instance.DriverPhase = importMaintenancePhase
 	r.fixture.instance.DriverPayload = maintenancePayload
-	d := New(r.fixture.fake, nil, nil, r.fixture.store)
+	d := useLegacy125RuntimeFixture(New(r.fixture.fake, nil, nil, r.fixture.store))
 	if err := d.runImportActivation(context.Background(), r.fixture.instance, r.fixture.op, nil, activationTestOptions()); err != nil {
 		t.Fatal(err)
 	}

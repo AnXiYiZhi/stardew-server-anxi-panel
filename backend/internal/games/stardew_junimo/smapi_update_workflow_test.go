@@ -42,7 +42,7 @@ func (f *smapiWorkflowFakeDocker) call(value string) {
 }
 
 func (f *smapiWorkflowFakeDocker) RuntimeReadContentManifests(context.Context, string, string, string) (paneldocker.RuntimeContentRead, error) {
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	acf := func(appID, buildID, installDir string) []byte {
 		return []byte(`"AppState" { "appid" "` + appID + `" "buildid" "` + buildID + `" "StateFlags" "4" "installdir" "` + installDir + `" }`)
 	}
@@ -91,7 +91,7 @@ func (f *smapiWorkflowFakeDocker) ComposeUp(ctx context.Context, dir string) (pa
 	}
 	f.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}, {Service: "steam-auth", State: "running", Status: "Up"}}}
 	if !f.controlFailure || !f.stagingActive() {
-		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+		manifest, _ := legacy125RuntimeManifest()
 		control := filepath.Join(f.dataDir, ".local-container", "control")
 		_ = os.MkdirAll(control, 0o700)
 		_ = os.WriteFile(filepath.Join(control, "options.json"), []byte(readyControlRuntimeOptions(manifest.Control.Version)), 0o600)
@@ -107,7 +107,7 @@ func (f *smapiWorkflowFakeDocker) ComposeRecreateServices(ctx context.Context, d
 	}
 	f.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}, {Service: "steam-auth", State: "running", Status: "Up"}}}
 	if !f.controlFailure || !f.stagingActive() {
-		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+		manifest, _ := legacy125RuntimeManifest()
 		control := filepath.Join(f.dataDir, ".local-container", "control")
 		_ = os.MkdirAll(control, 0o700)
 		_ = os.WriteFile(filepath.Join(control, "options.json"), []byte(readyControlRuntimeOptions(manifest.Control.Version)), 0o600)
@@ -289,7 +289,7 @@ func (f *smapiWorkflowFakeDocker) ComposeLogs(context.Context, string, paneldock
 func setupSMAPIWorkflowDriver(t *testing.T, state string) (*Driver, registry.Instance, *smapiWorkflowFakeDocker) {
 	t.Helper()
 	base, store, instance, applyFake := setupRuntimeApplyDriver(t, state)
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func setupSMAPIWorkflowDriver(t *testing.T, state string) (*Driver, registry.Ins
 		t.Fatal(err)
 	}
 	fake := &smapiWorkflowFakeDocker{runtimeApplyFakeDocker: applyFake, dataDir: instance.DataDir}
-	driver := New(fake, base.logger, jobs.NewManager(store, base.logger), store)
+	driver := useLegacy125RuntimeFixture(New(fake, base.logger, jobs.NewManager(store, base.logger), store))
 	driver.runtimeUpdatePollInterval = time.Millisecond
 	driver.runtimeUpdateAuthTimeout = 25 * time.Millisecond
 	driver.runtimeUpdateServerTimeout = 25 * time.Millisecond
@@ -319,7 +319,7 @@ func setupSMAPIWorkflowDriver(t *testing.T, state string) (*Driver, registry.Ins
 
 func withFakeSMAPIArchive(t *testing.T, dataDir string) {
 	t.Helper()
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	archive := filepath.Join(t.TempDir(), "SMAPI-"+manifest.SMAPI.Version+"-installer.zip")
 	if err := os.WriteFile(archive, []byte("controlled test archive"), 0o600); err != nil {
 		t.Fatal(err)

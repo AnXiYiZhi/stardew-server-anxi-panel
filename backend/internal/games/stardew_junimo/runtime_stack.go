@@ -26,11 +26,15 @@ func InspectRuntimeStack(dataDir, state string) sjconfig.RuntimeStackInspection 
 // detection) intentionally keep their original component boundary.
 func InspectManagedRuntimeStack(dataDir, state string) sjconfig.RuntimeStackInspection {
 	inspection := InspectRuntimeStack(dataDir, state)
-	if inspection.Status != sjconfig.RuntimeStackStatusUpToDate || !runtimeContentInstalled(state) {
-		return inspection
-	}
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
+		return inspection
+	}
+	return inspectManagedRuntimeControl(dataDir, state, inspection, manifest)
+}
+
+func inspectManagedRuntimeControl(dataDir, state string, inspection sjconfig.RuntimeStackInspection, manifest sjconfig.RuntimeStackManifest) sjconfig.RuntimeStackInspection {
+	if inspection.Status != sjconfig.RuntimeStackStatusUpToDate || !runtimeContentInstalled(state) {
 		return inspection
 	}
 	manifestData, manifestErr := os.ReadFile(filepath.Join(smapiModDir(dataDir), "manifest.json"))

@@ -21,6 +21,10 @@ type instanceDeletionDocker interface {
 	ApplyInstanceDeletion(context.Context, string, paneldocker.DeletionPlan) error
 }
 
+type installationVolumeDeletionDocker interface {
+	PlanInstanceDeletionWithRetainedGameVolumes(context.Context, string, string, string, string, []string) (paneldocker.DeletionPlan, error)
+}
+
 type instanceDeletionStore interface {
 	GetInstanceDeletion(context.Context, string) (storage.InstanceDeletion, error)
 	ListInstances(context.Context) ([]storage.Instance, error)
@@ -212,7 +216,19 @@ func (d *Driver) DeleteInstance(ctx context.Context, instance registry.Instance,
 				}
 			}
 		}
-		plan, e = engine.PlanInstanceDeletion(ctx, root, instance.ID, hostDir, volume)
+		retained, e := retainedInstallGameVolumes(target, instance.ID)
+		if e != nil {
+			return deletionError("安装卷归属记录无法核验，已停止删除。")
+		}
+		if len(retained) > 0 {
+			planner, supported := engine.(installationVolumeDeletionDocker)
+			if !supported {
+				return deletionError("Docker driver 无法安全核验保留的安装卷。")
+			}
+			plan, e = planner.PlanInstanceDeletionWithRetainedGameVolumes(ctx, root, instance.ID, hostDir, volume, retained)
+		} else {
+			plan, e = engine.PlanInstanceDeletion(ctx, root, instance.ID, hostDir, volume)
+		}
 		if e != nil {
 			return deletionError("资源归属或停止状态无法确认，请检查世界容器、共享挂载和 Docker 后重试。")
 		}

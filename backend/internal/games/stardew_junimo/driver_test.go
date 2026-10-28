@@ -81,6 +81,80 @@ type fakeDocker struct {
 	stoppedServices             []string
 	restartedServices           []string
 	recreatedServices           []string
+	installVolumes              map[string]bool
+	installVolumeCreates        int
+	installVolumeClones         int
+	installVolumeCreateError    error
+	installVolumeOwnershipError error
+	imageSMAPIReads             int
+	imageSMAPICoreMismatch      bool
+}
+
+func (f *fakeDocker) RuntimeImageInspect(_ context.Context, _ string, ref string) (paneldocker.RuntimeImageMetadata, error) {
+	digest := junimo140Digest
+	if strings.Contains(ref, "junimo-steam-service-cn") {
+		digest = "sha256:4649205b292a89dee5073614408bc7fdbbe01886a597beb38d24e906ddba20f6"
+		if strings.HasSuffix(ref, ":1.5.0-anxi.2") {
+			digest = "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518"
+		}
+	}
+	return paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("f", 64), Digest: digest}, nil
+}
+
+func (f *fakeDocker) RuntimeVolumeExists(_ context.Context, _ string, volume string) (bool, error) {
+	return f.installVolumes[volume], nil
+}
+
+func (f *fakeDocker) RuntimeCreateSMAPIStagingVolume(_ context.Context, _ string, _ string, volume string) error {
+	if f.installVolumes == nil {
+		f.installVolumes = map[string]bool{}
+	}
+	f.installVolumeCreates++
+	f.installVolumes[volume] = true
+	return f.installVolumeCreateError
+}
+
+func (f *fakeDocker) RuntimeValidateUnusedSMAPIStaging(_ context.Context, _ string, volume string) error {
+	if !f.installVolumes[volume] {
+		return errors.New("test installation volume is absent")
+	}
+	return f.installVolumeOwnershipError
+}
+
+func (f *fakeDocker) RuntimeClonePinnedJunimo140Game(context.Context, string, string, string, string, string) error {
+	f.installVolumeClones++
+	return nil
+}
+
+func (f *fakeDocker) RuntimeReadPinnedSMAPIMetadata(context.Context, string, string, string, string) (paneldocker.RuntimeSMAPIMetadata, error) {
+	f.imageSMAPIReads++
+	metadata := paneldocker.RuntimeSMAPIMetadata{Present: true, RequiredFiles: true, BuildID: junimo140SMAPIBuildID, ImageBuildID: junimo140SMAPIBuildID, CoreHashes: map[string]string{}}
+	if !f.imageSMAPICoreMismatch {
+		for name, hash := range junimo140SMAPICoreHashes {
+			metadata.CoreHashes[name] = hash
+		}
+	}
+	return metadata, nil
+}
+
+func (f *fakeDocker) RuntimeInstallImageSMAPI(context.Context, string, string, string, string) error {
+	return errors.New("unexpected image SMAPI installation in cached-runtime fixture")
+}
+
+func (f *fakeDocker) RuntimeCommitImageSMAPIStamp(context.Context, string, string, string, string, string) error {
+	return errors.New("unexpected image SMAPI stamp in cached-runtime fixture")
+}
+
+func (f *fakeDocker) RuntimeReadJunimo140GameEvidence(context.Context, string, string, string, string, string) ([]byte, error) {
+	return nil, errors.New("test game integrity evidence unavailable")
+}
+
+func (f *fakeDocker) RuntimeVerifyJunimo140GameFiles(context.Context, string, string, string, string, string, map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+	return paneldocker.RuntimeGameFileStats{}, errors.New("test game integrity evidence unavailable")
+}
+
+func (f *fakeDocker) RuntimeCommitJunimo140GameMarkers(context.Context, string, string, string, string, paneldocker.RuntimeGameDownloadMarker, paneldocker.RuntimeGameDownloadMarker) error {
+	return errors.New("unexpected game marker mutation in cached-runtime fixture")
 }
 
 func (f *fakeDocker) RecommendedSMAPIArchive(_ context.Context, dataDir string, manifest sjconfig.RuntimeStackManifest) (string, error) {
@@ -92,6 +166,25 @@ func (f *fakeDocker) RecommendedSMAPIArchive(_ context.Context, dataDir string, 
 		return "", err
 	}
 	return path, nil
+}
+
+func writeFresh140InstallFixtureEnv(path string, values map[string]string) error {
+	existing, err := sjconfig.ReadEnvFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	defaults := sjconfig.EmptyEnvTemplate()
+	defaults["IMAGE_VERSION"] = TestedImageTag
+	updates := map[string]string{}
+	for key, value := range defaults {
+		if _, present := existing[key]; !present {
+			updates[key] = value
+		}
+	}
+	for key, value := range values {
+		updates[key] = value
+	}
+	return sjconfig.UpdateEnvFile(path, updates)
 }
 
 func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
@@ -481,10 +574,10 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 		"game-data:/data/game",
 		"${INSTANCE_HOST_DATA_DIR}/.local-container/saves:/config/xdg/config/StardewValley",
 		"${INSTANCE_HOST_DATA_DIR}/.local-container/settings:/data/settings",
-		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro",
-		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-env/DBUS_SESSION_BUS_ADDRESS:/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS:ro",
-		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-groups/cinit/id:/etc/cont-groups.d/cinit/id:ro",
-		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-users/root/home:/etc/cont-users.d/root/home:ro",
+		`SDVD_COMPOSE_REV: "4"`,
+		`USER_ID: "${USER_ID:-1000}"`,
+		`GROUP_ID: "${GROUP_ID:-1000}"`,
+		`"127.0.0.1:${API_PORT:-8080}:8080/tcp"`,
 	} {
 		if !strings.Contains(composeText, want) {
 			t.Errorf("docker-compose.yml missing %q", want)
@@ -503,19 +596,8 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 	if strings.Contains(envText, "JUNIMO_IMAGE_TAG") {
 		t.Fatal(".env should not contain JUNIMO_IMAGE_TAG")
 	}
-	for _, staticValue := range []serverStaticInitValue{
-		{serverContEnvDir + "/APP_NAME", "/etc/cont-env.d/APP_NAME", "DockerApp"},
-		{serverContEnvDir + "/DBUS_SESSION_BUS_ADDRESS", "/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/dbus.base"},
-		{serverContGroupsDir + "/cinit/id", "/etc/cont-groups.d/cinit/id", "72"},
-		{serverContUsersDir + "/root/home", "/etc/cont-users.d/root/home", "/root"},
-	} {
-		script, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(staticValue.localPath)))
-		if err != nil {
-			t.Fatalf("%s static init fix script not created: %v", staticValue.localPath, err)
-		}
-		if string(script) != serverStaticInitScript(staticValue.value) {
-			t.Fatalf("unexpected %s static init script:\n%s", staticValue.localPath, script)
-		}
+	if strings.Contains(composeText, ":/etc/cont-env.d/") || strings.Contains(composeText, ":/etc/cont-users.d/") || strings.Contains(composeText, ":/etc/cont-groups.d/") {
+		t.Fatal("fresh .140 Compose must use its native UID/GID contract")
 	}
 }
 
@@ -622,15 +704,16 @@ func TestDriverPrepareMigratesMissingEnvInviteIntentOnlyFromStrongEvidence(t *te
 			dataDir := t.TempDir()
 			tc.instance.ID = "legacy"
 			tc.instance.DataDir = dataDir
-			if err := New(nil, nil, nil, nil).Prepare(context.Background(), tc.instance); err != nil {
-				t.Fatalf("Prepare: %v", err)
+			err := New(nil, nil, nil, nil).Prepare(context.Background(), tc.instance)
+			var guard *RuntimeUpdateValidationError
+			if !errors.As(err, &guard) || guard.Code != "shared_group_confirmation_required" {
+				t.Fatalf("missing legacy configuration must require recovery before selecting a new default: %v", err)
 			}
-			fields, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
-			if err != nil {
-				t.Fatal(err)
+			if _, err := os.Stat(filepath.Join(dataDir, ".env")); !os.IsNotExist(err) {
+				t.Fatal("missing legacy configuration was replaced by a fresh .140 environment")
 			}
-			if fields["STEAM_INVITE_ENABLED"] != tc.wantEnabled || fields["STEAM_INVITE_AUTH_STATE"] != tc.wantState || fields["STEAM_AUTH_COMPLETED"] != tc.wantAuth {
-				t.Fatalf("missing-env legacy migration = %#v", fields)
+			if legacyInstanceHadAuthorizedSteamInvite(tc.instance) != (tc.wantEnabled == "true") {
+				t.Fatal("legacy authorization evidence changed while preserving missing runtime configuration")
 			}
 		})
 	}
@@ -2388,12 +2471,12 @@ func TestServerImageRefsDoesNotMixExistingCandidatesFromAnotherTag(t *testing.T)
 	}
 	refs := serverImageRefs(envVals, TestedImageTag)
 	want := []string{
-		"dockerproxy.net/sdvd/server:1.5.0-preview.125",
-		"docker.1ms.run/sdvd/server:1.5.0-preview.125",
-		"docker.1panel.live/sdvd/server:1.5.0-preview.125",
-		"docker.jiaxin.site/sdvd/server:1.5.0-preview.125",
-		"dockerproxy.link/sdvd/server:1.5.0-preview.125",
-		"sdvd/server:1.5.0-preview.125",
+		"dockerproxy.net/sdvd/server:1.5.0-preview.140",
+		"docker.1ms.run/sdvd/server:1.5.0-preview.140",
+		"docker.1panel.live/sdvd/server:1.5.0-preview.140",
+		"docker.jiaxin.site/sdvd/server:1.5.0-preview.140",
+		"dockerproxy.link/sdvd/server:1.5.0-preview.140",
+		"sdvd/server:1.5.0-preview.140",
 	}
 	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
 		t.Fatalf("expected server image candidates %q, got %q", strings.Join(want, ","), got)
@@ -2407,11 +2490,9 @@ func TestSteamServiceImageRefsPrependsDefaultCandidatesToExistingSingleCandidate
 	}
 	refs := steamServiceImageRefs(envVals)
 	want := []string{
-		"docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
-		"crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2",
-		"docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
-		"ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
-		"anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-preview.140-anxi.1",
+		"ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1",
+		"anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1",
 	}
 	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
 		t.Fatalf("expected steam service image candidates %q, got %q", strings.Join(want, ","), got)
@@ -2535,6 +2616,9 @@ func TestDriverInstallResumesSteamCMDAndFallsBackWhenCachedAuthorizationIsMissin
 		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
+	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+		t.Fatal(err)
+	}
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -2653,6 +2737,9 @@ func TestDriverInstallCancelsCachedSteamCMDGuardPromptAndImmediatelyFallsBackToF
 				},
 			}
 			driver := New(fake, slog.Default(), manager, store)
+			if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+				t.Fatal(err)
+			}
 			job, err := driver.Install(context.Background(), registry.InstallRequest{
 				Instance:      registry.Instance{ID: instance.ID},
 				SteamUsername: "steam-user",
@@ -2765,6 +2852,9 @@ func TestDriverInstallClassifiesCombinedSteamCMDInvalidPasswordLineAsCredentials
 		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
+	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+		t.Fatal(err)
+	}
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -2865,6 +2955,9 @@ func TestDriverInstallSkipsSteamAuthOnceCompletedFlagIsSet(t *testing.T) {
 		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
+	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+		t.Fatal(err)
+	}
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -2930,6 +3023,9 @@ func TestDriverInstallRetryKeepsSteamCMDPrimary(t *testing.T) {
 	}
 	driver := New(fake, slog.Default(), manager, store)
 	// reuseCredentials retry remains on the SteamCMD primary installation path.
+	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+		t.Fatal(err)
+	}
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -3002,6 +3098,9 @@ func TestDriverInstallRepairUsesCachedLoginAndAnonymousSDK(t *testing.T) {
 		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
+	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+		t.Fatal(err)
+	}
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -3087,6 +3186,9 @@ func TestDriverInstallRepairUsesMigratedSteamCMDAuthorizationImmediately(t *test
 		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
+	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
+		t.Fatal(err)
+	}
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",

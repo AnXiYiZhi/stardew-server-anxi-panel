@@ -46,7 +46,7 @@ function goFlagValues(args: string[], flag: string): string[] {
   return args.flatMap((argument, index) => argument === flag ? [args[index + 1] ?? ''] : argument.startsWith(`${flag}=`) ? [argument.slice(flag.length + 1)] : [])
 }
 
-function realDockerTestInvocations(source: string): string[][] {
+function realDockerTestInvocations(source: string, requiredEnvironment?: string): string[][] {
   const commands: string[][] = []
   for (const line of source.replace(/\\\n[ \t]*/g, ' ').split('\n')) {
     if (line.trimStart().startsWith('#')) continue
@@ -64,6 +64,7 @@ function realDockerTestInvocations(source: string): string[][] {
   return commands.flatMap((command) => {
     const go = command.findIndex((token, index) => token === 'go' && command[index + 1] === 'test')
     if (go < 0) return []
+    if (requiredEnvironment && !command.slice(0, go).includes(requiredEnvironment)) return []
     const args = command.slice(go + 2)
     const integration = goFlagValues(args, '-tags').some((tags) => tags.split(/[\s,]+/).includes('integration'))
     const dockerGuard = command.slice(0, go).some((token) => /^[A-Z0-9_]*DOCKER[A-Z0-9_]*=/.test(token))
@@ -656,13 +657,16 @@ assert.throws(() => assertUncachedDockerTests('go test ./...', 1, 'empty integra
 assert.throws(() => assertUncachedDockerTests('go test -tags integration ./internal/example', 1, 'cached integration'), /must disable/)
 assert.throws(() => assertUncachedDockerTests('go test -tags=integration ./internal/example -count=1 -count 0', 1, 'conflicting count'), /must disable/)
 assert.throws(() => assertUncachedDockerTests('go test -tags=integration ./internal/example -count=1 && go test ./internal/docker', 2, 'separate commands'), /must disable/)
-const gateDockerTests = assertUncachedDockerTests(releaseGates, 7, 'release gates')
-const compatibilityDockerTests = assertUncachedDockerTests(workflowStep(compatibilityWorkflow, 'Isolated Docker integration'), 2, 'compatibility integration')
-assert.ok(gateDockerTests + compatibilityDockerTests >= 9, 'all current real Docker invocations must execute against the current external state')
+const gateDockerTests = assertUncachedDockerTests(releaseGates, 8, 'release gates')
+const compatibilityDockerTests = assertUncachedDockerTests(workflowStep(compatibilityWorkflow, 'Isolated Docker integration'), 3, 'compatibility integration')
+assert.ok(gateDockerTests + compatibilityDockerTests >= 11, 'all current real Docker invocations must execute against the current external state')
+assert.equal(realDockerTestInvocations("go test ./internal/docker -run '^TestInstallGameVolumeDeletionDocker$' -count=1", 'PANEL_INSTALL_DELETE_DOCKER_TEST=1').length, 0, 'installation deletion regression must be explicitly enabled')
 const resourceScopeTestNames = [resourceScopesRealTests, resourceScopesFixtureTests].flatMap((source) => [...source.matchAll(/^func (TestResourceScopes(?:RealDocker|Fixture)[A-Za-z0-9_]*)\(/gm)].map((match) => match[1]))
 assert.ok(resourceScopeTestNames.includes('TestResourceScopesRealDocker'), 'resource scope coverage must include the real Docker test')
 assert.ok(resourceScopeTestNames.filter((name) => name.startsWith('TestResourceScopesFixture')).length >= 3, 'resource scope coverage must include the fixture preparation and diagnostic contracts')
 for (const [name, source] of [['release gates', releaseGates], ['compatibility integration', workflowStep(compatibilityWorkflow, 'Isolated Docker integration')]]) {
+  const installDeletionCommands = realDockerTestInvocations(source, 'PANEL_INSTALL_DELETE_DOCKER_TEST=1').filter((args) => args.includes('./internal/docker') && goFlagValues(args, '-run').some((pattern) => new RegExp(pattern).test('TestInstallGameVolumeDeletionDocker')))
+  assert.equal(installDeletionCommands.length, 1, `${name}: installation volume deletion regression must be enabled and selected`)
   const resourceCommands = realDockerTestInvocations(source).filter((args) => args.includes('./internal/web') && goFlagValues(args, '-run').some((pattern) => pattern.includes('TestResourceScopes')))
   assert.equal(resourceCommands.length, 1, `${name}: expected one resource scope test selection`)
   const selections = goFlagValues(resourceCommands[0], '-run').map((pattern) => new RegExp(pattern))

@@ -89,4 +89,28 @@ PANEL_VERSION_WAS_SET=""
 update_panel
 force_update_panel
 
+choose_image_source_interactive() { :; }
+ensure_files() { :; }
+compose_cmd() { :; }
+resolve_panel_image() { [[ "$1" == "$fixture_expected_pull" ]]; }
+PANEL_HOST_DATA_DIR="$tmp_dir/fresh-data"
+mkdir -p "$PANEL_HOST_DATA_DIR/updater"
+FAKE_INSTALLED_VERSION=""
+PANEL_VERSION=latest
+fixture_expected_pull=true
+start_panel
+
+touch "$PANEL_HOST_DATA_DIR/panel.db"
+fixture_expected_pull=false
+start_panel
+rm "$PANEL_HOST_DATA_DIR/panel.db"
+touch "$PANEL_HOST_DATA_DIR/updater/apply-status.json"
+start_panel
+rm "$PANEL_HOST_DATA_DIR/updater/apply-status.json"
+FAKE_INSTALLED_VERSION=0.7.3
+start_panel
+FAKE_INSTALLED_VERSION=""
+PANEL_VERSION=0.8.0
+start_panel
+
 echo "run.sh update target tests passed"

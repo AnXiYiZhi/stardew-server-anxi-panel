@@ -112,6 +112,9 @@ func (f fakeDockerService) RuntimeImageInspect(_ context.Context, _, image strin
 			digest = expected
 		}
 	}
+	if expected := sjconfig.Junimo125SteamAuthTarget().Digests[image]; expected != "" {
+		digest = expected
+	}
 	return paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("a", 64), Digest: digest}, nil
 }
 

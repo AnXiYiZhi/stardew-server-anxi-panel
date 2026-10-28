@@ -34,11 +34,13 @@ Windows 用户完成后访问 `http://localhost:8090`。建议把 `~/.anxi-panel
 
 无论使用哪个脚本下载入口，面板镜像仍由脚本自动从阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR 或 Docker Hub 候选源拉取。
 
-固定版本安装：
+需要指定面板端口时：
 
 ```bash
-PANEL_VERSION=0.7.3 PANEL_PORT=8090 bash run.sh install
+PANEL_PORT=8090 bash run.sh install
 ```
+
+新装默认使用正式 Docker `latest`。当前正式版为 `v0.7.3`；`v0.8.0` 正在准备，正式提升后新装将直接使用080，游戏默认配套 Junimo `.140` / Auth `1.5.0-preview.140-anxi.1`。GitHub latest Release保留073，脚本下载入口与新装镜像版本分别按各自来源处理。
 
 ## 脚本菜单功能
 
@@ -46,7 +48,7 @@ PANEL_VERSION=0.7.3 PANEL_PORT=8090 bash run.sh install
 
 ## 更新面板
 
-已有服务器优先从 Web 检查更新。`v0.7.2` 及更早版本先完成 `v0.7.3` 升级准备；达到073后，在游戏库、世界列表或实例版本入口打开“更新中心”，阅读提示并确认后续升级。
+已有服务器优先从 Web 检查更新。`v0.7.2` 及更早版本先完成 `v0.7.3` 升级准备；达到073后，在游戏库、世界列表或实例版本入口打开“更新中心”。080正式提供后，阅读停服/Mod提示、检查世界范围并确认本次升级，Panel与游戏组会自动完成080/.140迁移。
 
 旧版本需要从命令行更新时，先更新脚本，再明确选择准备版本：
 

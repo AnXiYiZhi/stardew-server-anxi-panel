@@ -125,7 +125,7 @@ func (d *Driver) RunSMAPIUpdateDryRun(ctx context.Context, instance registry.Ins
 		return fail(inspection.Code, inspection.Reason)
 	}
 	add("smapi_status", "ok", "SMAPI 实际安装产物已读取，目标只来自 Panel 内置推荐清单。")
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) || validateSMAPIManifestURL(manifest.SMAPI.DownloadURL, manifest) != nil {
 		return fail("invalid_manifest", "SMAPI 推荐清单无效。")
 	}
@@ -135,7 +135,7 @@ func (d *Driver) RunSMAPIUpdateDryRun(ctx context.Context, instance registry.Ins
 		return fail("incompatible_game", "Stardew 或 Steamworks SDK 不匹配推荐前置矩阵。")
 	}
 	add("game_sdk", "ok", "Stardew 与 Steamworks SDK buildid 精确匹配推荐矩阵。")
-	stack := InspectRuntimeStack(instance.DataDir, instance.State)
+	stack := d.inspectRuntimeStack(instance)
 	if stack.Status != sjconfig.RuntimeStackStatusUpToDate {
 		return fail("incompatible_junimo", "已启用的 Junimo 运行组件不匹配推荐前置矩阵。")
 	}
@@ -170,7 +170,7 @@ func (d *Driver) RunSMAPIUpdateDryRun(ctx context.Context, instance registry.Ins
 func (d *Driver) SMAPIUpdateDryRunStatus(instance registry.Instance) (SMAPIUpdateStatus, error) {
 	status, err := readSMAPIUpdateStatus(instance.DataDir, "dry-run-status.json")
 	if errors.Is(err, os.ErrNotExist) {
-		manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
+		manifest, manifestErr := d.runtimeStackManifest()
 		if manifestErr != nil {
 			return SMAPIUpdateStatus{}, manifestErr
 		}
@@ -183,7 +183,7 @@ func (d *Driver) StartSMAPIUpdateApply(ctx context.Context, instance registry.In
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return SMAPIUpdateStatus{}, err
 	}
-	manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, manifestErr := d.runtimeStackManifest()
 	if manifestErr != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
 		return SMAPIUpdateStatus{}, &RuntimeUpdateValidationError{Code: "matrix_not_recommended", Message: "内置兼容矩阵不是 recommended，禁止 SMAPI 升级。"}
 	}
@@ -247,7 +247,7 @@ func (d *Driver) StartSMAPIUpdateApply(ctx context.Context, instance registry.In
 func (d *Driver) SMAPIUpdateApplyStatus(instance registry.Instance) (SMAPIUpdateStatus, error) {
 	status, err := readSMAPIUpdateStatus(instance.DataDir, "apply-status.json")
 	if errors.Is(err, os.ErrNotExist) {
-		manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
+		manifest, manifestErr := d.runtimeStackManifest()
 		if manifestErr != nil {
 			return SMAPIUpdateStatus{}, manifestErr
 		}
@@ -340,7 +340,7 @@ func (d *Driver) RecoverSMAPIUpdateApply(ctx context.Context, instance registry.
 }
 
 func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, instance registry.Instance, status SMAPIUpdateStatus) (runErr error) {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil {
 		return err
 	}
@@ -503,7 +503,7 @@ func (d *Driver) verifySMAPIUpdatedStack(ctx context.Context, dockerWorkflow SMA
 }
 
 func (d *Driver) verifySMAPIRollbackStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, instance registry.Instance, volume, expectedVersion string) error {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil {
 		return err
 	}

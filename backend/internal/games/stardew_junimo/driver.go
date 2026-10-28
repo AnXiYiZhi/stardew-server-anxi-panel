@@ -33,7 +33,7 @@ const (
 	// Server image: sdvd/server:<tag>. The steam-auth sidecar is patched separately
 	// through DefaultSteamServiceImage because slow Steam networks need connection/auth retries.
 	// Update this constant (and bump panel version) after testing a new JunimoServer release.
-	TestedImageTag = "1.5.0-preview.125"
+	TestedImageTag = "1.5.0-preview.140"
 
 	// DefaultSteamServiceImage is the patched steam-auth sidecar used by new instances.
 	// It should match https://github.com/AnXiYiZhi/junimo-server-steam-service-cn.
@@ -134,6 +134,7 @@ type Driver struct {
 	guardChans map[string]chan string
 
 	runtimeUpdateMu                  sync.Mutex
+	runtimeManifestProvider          func() (sjconfig.RuntimeStackManifest, error)
 	fullStackMu                      sync.Mutex
 	fullStackRunning                 bool
 	inviteCodeMu                     sync.Mutex
@@ -292,6 +293,13 @@ func (d *Driver) prepareLocked(ctx context.Context, instance registry.Instance) 
 	// resumes it; bootstrap must not repair or rewrite anything underneath it.
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return err
+	}
+	if instance.State != "" && runtimeContentInstalled(instance.State) && TestedImageTag == "1.5.0-preview.140" {
+		if _, err := os.Stat(filepath.Join(instance.DataDir, ".env")); os.IsNotExist(err) {
+			return &RuntimeUpdateValidationError{Code: "shared_group_confirmation_required", Message: "已有世界缺少运行配置，请先恢复原配置并在更新中心确认升级范围。"}
+		} else if err != nil {
+			return err
+		}
 	}
 	// A live import runner owns both its journal and the private maintenance
 	// runtime. Prepare must never race that runner's crash-window recovery or its
@@ -511,6 +519,23 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	if !req.AuthLoginOnly {
+		if err := validateBaseInstallRuntime(instance, manifest.Server.Tag); err != nil {
+			return nil, err
+		}
+		if runtimeContentInstalled(instance.State) {
+			if d.docker == nil {
+				return nil, &RuntimeUpdateValidationError{Code: "server_state_unknown", Message: "无法确认现有服务器已停止，暂不能修复游戏文件。"}
+			}
+			ps, err := d.docker.ComposePsStrict(ctx, instance.DataDir)
+			if err != nil {
+				return nil, &RuntimeUpdateValidationError{Code: "server_state_unknown", Message: "无法确认现有服务器已停止，暂不能修复游戏文件。"}
+			}
+			if serverServiceUp(ps.Services) {
+				return nil, &RuntimeUpdateValidationError{Code: "server_running", Message: "服务器容器仍在运行，请先停止服务器。"}
+			}
+		}
 	}
 	username := strings.TrimSpace(req.SteamUsername)
 	password := req.SteamPassword

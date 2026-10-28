@@ -741,8 +741,15 @@ print_access_info() {
 start_panel() {
   check_prerequisites
   choose_image_source_interactive
+  local force_pull=false data_dir installed
+  data_dir="$(read_env_value PANEL_HOST_DATA_DIR)"
+  data_dir="${data_dir:-$PANEL_HOST_DATA_DIR}"
+  installed="$(installed_panel_version || true)"
+  if [[ "$PANEL_VERSION" == latest && -z "$installed" && ! -f "$data_dir/panel.db" && ! -e "$data_dir/updater/apply-status.json" ]]; then
+    force_pull=true
+  fi
   ensure_files
-  resolve_panel_image false
+  resolve_panel_image "$force_pull"
   cyan "正在启动面板..."
   compose_cmd up -d
   print_access_info

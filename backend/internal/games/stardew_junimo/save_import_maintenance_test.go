@@ -330,7 +330,7 @@ func TestRunImportMaintenanceRecordsStrictPreflightFailureInAuthoritativeDataDir
 	fake := &fakeConsoleDocker{composePsStrictFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
 		return paneldocker.ComposePsResult{}, errors.New("strict probe failed")
 	}}
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := driver.runImportMaintenance(context.Background(), registry.Instance{
 		ID: "stardew", DriverID: DriverID, DataDir: staleDir, State: storage.InstanceStateGameInstalled,
 	}, op, nil, defaultImportMaintenanceOptions())
@@ -489,7 +489,7 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 			return paneldocker.CommandResult{Stdout: "128 /tmp/server-output.log\n"}, nil
 		}
 		if joined == "cat /data/Mods/JunimoServer/manifest.json" {
-			version := TestedImageTag
+			version := "1.5.0-preview.125"
 			if cfg.versionMismatch {
 				version = "1.5.0-preview.124"
 			}
@@ -551,7 +551,7 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 func TestImportMaintenanceWaitsForEvidenceBaseline(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{diagnosticsFailures: 2})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	if err := d.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond}); err != nil {
 		t.Fatal(err)
@@ -582,7 +582,7 @@ func TestImportMaintenanceScopesOptionalSteamAuthService(t *testing.T) {
 				t.Fatalf("set Steam invite intent: %v", err)
 			}
 			fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-			driver := New(fake, nil, nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 				importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond}); err != nil {
 				t.Fatalf("runImportMaintenance: %v", err)
@@ -623,7 +623,7 @@ func TestImportMaintenanceRollbackUsesFrozenEnabledScopeAfterEnvChanges(t *testi
 		record.mu.Unlock()
 		return nil
 	}
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond}); err == nil {
 		t.Fatal("injected startup failure unexpectedly succeeded")
@@ -647,7 +647,7 @@ func TestImportMaintenanceMalformedInviteIntentDoesNotStartRuntime(t *testing.T)
 		t.Fatal(err)
 	}
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -688,7 +688,7 @@ func TestImportMaintenanceAcceptsFirstUploadBootstrapWorld(t *testing.T) {
 		t.Fatalf("bootstrap journal=%+v err=%v", j, err)
 	}
 	fake, _ := newMaintenanceFake(maintenanceFakeConfig{})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond}); err != nil {
 		t.Fatal(err)
@@ -753,7 +753,7 @@ func TestImportMaintenanceAllowedOfflineStateMatrix(t *testing.T) {
 			dataDir, op, instance, store := prepareMaintenanceFixture(t)
 			setMaintenanceFixtureState(store, &instance, state, "original "+state, "phase_"+state, `{"kept":"`+state+`"}`)
 			fake, _ := newMaintenanceFake(maintenanceFakeConfig{})
-			driver := New(fake, nil, nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 				importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond}); err != nil {
 				t.Fatal(err)
@@ -773,7 +773,7 @@ func TestImportMaintenanceRejectsRunningComposeBeforeStartup(t *testing.T) {
 	fake.composePsFunc = func(context.Context, string) (paneldocker.ComposePsResult, error) {
 		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}}}, nil
 	}
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -795,7 +795,7 @@ func TestImportMaintenanceRejectsRunningComposeBeforeStartup(t *testing.T) {
 func TestImportMaintenanceWaitsUntilJunimoCanReadStagedTarget(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{savesProbeFailures: 2})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	if err := d.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond}); err != nil {
 		t.Fatal(err)
@@ -831,14 +831,14 @@ func TestSaveInfoReadinessOutputMustNameExactTarget(t *testing.T) {
 func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance, *importMaintenanceStore) {
 	t.Helper()
 	dataDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+TestedImageTag+"\nAPI_PORT=5110\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	modDir := junimoServerModDir(dataDir)
 	if err := os.MkdirAll(modDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"`+TestedImageTag+`","UniqueID":"JunimoHost.Server"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(modDir, "JunimoServer.dll"), []byte("dll"), 0o600); err != nil {
@@ -847,7 +847,7 @@ func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance,
 	if err := installSMAPIMod(dataDir); err != nil {
 		t.Fatal(err)
 	}
-	runtimeManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	runtimeManifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -932,7 +932,7 @@ func prepareCompletedMaintenanceFixture(t *testing.T) (string, string, registry.
 func TestImportMaintenanceRuntimeReadyBaselineAndSafety(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := d.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond})
 	if err != nil {
@@ -986,7 +986,7 @@ func TestImportMaintenanceFailuresStopAndRestore(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dataDir, op, instance, store := prepareMaintenanceFixture(t)
 			fake, record := newMaintenanceFake(tc.cfg)
-			d := New(fake, nil, nil, store)
+			d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			err := d.runImportMaintenance(context.Background(), instance, op, nil,
 				importMaintenanceOptions{ReadyTimeout: 250 * time.Millisecond, PollInterval: time.Millisecond})
 			typed, ok := AsImportTransactionError(err)
@@ -1029,7 +1029,7 @@ func TestImportMaintenanceGameInstalledFailuresRestoreExactSnapshot(t *testing.T
 			setMaintenanceFixtureState(store, &instance, storage.InstanceStateGameInstalled,
 				"exact game-installed message", "game_installed", originalPayload)
 			fake, record := newMaintenanceFake(tc.cfg)
-			driver := New(fake, nil, nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			ctx := context.Background()
 			if tc.cancel {
 				canceled, cancel := context.WithCancel(ctx)
@@ -1094,7 +1094,7 @@ func TestImportMaintenanceFailureRestoresAllOfflineStatesAndMessageTriState(t *t
 				instance.DriverPhase = phase
 				instance.DriverPayload = payload
 				fake, _ := newMaintenanceFake(maintenanceFakeConfig{composeUpError: true})
-				driver := New(fake, nil, nil, store)
+				driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 				if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 					importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond}); err == nil {
 					t.Fatal("maintenance failure fixture unexpectedly succeeded")
@@ -1115,7 +1115,7 @@ func TestImportMaintenanceStateWriteFailurePreventsComposeUp(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	store.updateErr = errors.New("injected state write failure")
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -1140,7 +1140,7 @@ func TestImportMaintenanceStartedJournalFailurePreventsComposeUpAndRestoresSnaps
 	original := store.instance
 	store.mu.Unlock()
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	writes := 0
 	driver.importJournalWrite = func(dir string, journal ImportJournal) error {
 		writes++
@@ -1182,7 +1182,7 @@ func TestImportMaintenanceAmbiguousStopErrorWithStrictStoppedProofRestoresSnapsh
 	fake, _ := newMaintenanceFake(maintenanceFakeConfig{
 		composeUpError: true, composeDownErrorAfterStop: true,
 	})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond, StopTimeout: 50 * time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -1208,7 +1208,7 @@ func TestImportMaintenancePanicAfterRuntimeMayStartStopsAndRestoresSnapshot(t *t
 	original := store.instance
 	store.mu.Unlock()
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{panicDuringComposeUp: true})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	var panicValue any
 	func() {
 		defer func() { panicValue = recover() }()
@@ -1261,7 +1261,7 @@ func TestImportMaintenanceRollbackRequiresDownStrictProbeAndFlagPersistence(t *t
 				}
 			}
 			fake, _ := newMaintenanceFake(tc.cfg)
-			driver := New(fake, nil, nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			if tc.failJournalWrite > 0 {
 				writes := 0
 				driver.importJournalWrite = func(dir string, journal ImportJournal) error {
@@ -1295,7 +1295,7 @@ func TestImportMaintenanceRollbackRequiresDownStrictProbeAndFlagPersistence(t *t
 func TestRecordMaintenanceFailureJournalErrorIsRecoveryRequired(t *testing.T) {
 	dataDir, op, _, store := prepareMaintenanceFixture(t)
 	injected := errors.New("injected LastError journal failure")
-	driver := New(&fakeConsoleDocker{}, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(&fakeConsoleDocker{}, nil, nil, store))
 	driver.importJournalWrite = func(string, ImportJournal) error { return injected }
 	err := driver.recordMaintenanceFailure(dataDir, op, ImportErrorMaintenanceReady, "primary readiness failure", errors.New("primary"))
 	typed, ok := AsImportTransactionError(err)
@@ -1338,7 +1338,7 @@ func TestRecoverInterruptedImportMaintenanceCrashWindows(t *testing.T) {
 			}
 			fake, record := newMaintenanceFake(maintenanceFakeConfig{})
 			record.started = tc.started
-			driver := New(fake, nil, nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			recoveries, err := RecoverImportTransactions(dataDir)
 			if err != nil || len(recoveries) != 1 || recoveries[0].State != tc.recoveryState {
 				t.Fatalf("recoveries=%+v err=%v", recoveries, err)
@@ -1417,7 +1417,7 @@ func TestPrepareOrphanedImportMaintenanceStopsConservativeScope(t *testing.T) {
 				record.mu.Unlock()
 				return nil
 			}
-			driver := New(fake, nil, nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 			err := driver.Prepare(context.Background(), instance)
 			typed, ok := AsImportTransactionError(err)
 			if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1477,7 +1477,7 @@ func TestPrepareMalformedCompletedMaintenanceOwnerStopsConservativeScope(t *test
 				record.mu.Unlock()
 				return nil
 			}
-			driver := New(fake, slog.Default(), nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), nil, store))
 			err := driver.Prepare(context.Background(), instance)
 			typed, ok := AsImportTransactionError(err)
 			if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1538,7 +1538,7 @@ func TestPrepareMultipleLegacyCompletedMaintenanceOwnersStopsConservativeScope(t
 		record.mu.Unlock()
 		return nil
 	}
-	driver := New(fake, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), nil, store))
 	err = driver.Prepare(context.Background(), instance)
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1615,7 +1615,7 @@ func TestPrepareDoesNotRecoverCompletedJournalWhileImportRunnerIsActive(t *testi
 		stopCalls++
 		return nil
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), manager, store))
 	instance := registry.Instance{
 		ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: stored.DataDir,
 		State: stored.State, StateMessage: stored.StateMessage.String, DriverPhase: stored.DriverPhase, DriverPayload: stored.DriverPayload,
@@ -1702,7 +1702,7 @@ func TestCompletedMaintenanceStatePublicationRejectsMalformedOwner(t *testing.T)
 			store.instance.DriverPayload = payload
 			store.mu.Unlock()
 
-			driver := New(nil, slog.Default(), nil, store)
+			driver := useLegacy125RuntimeFixture(New(nil, slog.Default(), nil, store))
 			err := driver.markCompletedImportRuntimeRunning(instance, operationID, false)
 			typed, ok := AsImportTransactionError(err)
 			if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1725,7 +1725,7 @@ func TestCompletedMaintenanceStatePublicationRejectsInvalidOperationIDArgument(t
 	store.instance.DriverPhase = importMaintenancePhase
 	store.instance.DriverPayload = `{}`
 	store.mu.Unlock()
-	driver := New(nil, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(nil, slog.Default(), nil, store))
 	err := driver.markCompletedImportRuntimeRunning(instance, "not-an-operation", false)
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1781,7 +1781,7 @@ func TestPrepareRecoversCompletedMaintenanceCommitWithFrozenRuntimeScope(t *test
 		stopCalls++
 		return nil
 	}
-	driver := New(fake, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), nil, store))
 	if err := driver.Prepare(context.Background(), instance); err != nil {
 		t.Fatalf("Prepare completed maintenance recovery: %v", err)
 	}
@@ -1825,7 +1825,7 @@ func TestPrepareCompletedMaintenanceVerificationFailureDoesNotStopCommittedRunti
 				stopCalls++
 				return nil
 			}
-			driver := New(fake, slog.Default(), nil, store)
+			driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), nil, store))
 			err := driver.Prepare(context.Background(), instance)
 			typed, ok := AsImportTransactionError(err)
 			if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1864,7 +1864,7 @@ func TestPrepareCompletedMaintenanceStateUpdateFailureRetriesWithoutStop(t *test
 		stopCalls++
 		return nil
 	}
-	driver := New(fake, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, slog.Default(), nil, store))
 	err := driver.Prepare(context.Background(), instance)
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1911,7 +1911,7 @@ func TestCompletedMaintenanceStateUpdateFailureIsRetryable(t *testing.T) {
 	store.instance.DriverPayload = `{"save_import_operation_id":"` + operationID + `"}`
 	store.updateErr = errors.New("injected completed state update failure")
 	store.mu.Unlock()
-	driver := New(nil, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(nil, slog.Default(), nil, store))
 	err = driver.markCompletedImportRuntimeRunning(instance, operationID, false)
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -1954,7 +1954,7 @@ func TestCompletedMaintenanceEnabledStatePublicationIsIdempotent(t *testing.T) {
 	store.mu.Lock()
 	store.instance.DriverPayload = `{"kept":true,"save_import_operation_id":"` + operationID + `"}`
 	store.mu.Unlock()
-	driver := New(nil, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(nil, slog.Default(), nil, store))
 	if err := driver.markCompletedImportRuntimeRunning(instance, operationID, true); err != nil {
 		t.Fatalf("first publication: %v", err)
 	}
@@ -1989,7 +1989,7 @@ func TestCompletedMaintenanceStatePublicationDoesNotOverwriteOtherPhase(t *testi
 	store.instance.DriverPayload = `{}`
 	original := store.instance
 	store.mu.Unlock()
-	driver := New(nil, slog.Default(), nil, store)
+	driver := useLegacy125RuntimeFixture(New(nil, slog.Default(), nil, store))
 	err := driver.markCompletedImportRuntimeRunning(instance, operationID, false)
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorRecoveryRequired {
@@ -2035,7 +2035,7 @@ func TestRecoverInterruptedSnapshotPendingRequiresFrozenAuthStopped(t *testing.T
 		record.mu.Unlock()
 		return nil
 	}
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	recoveries, err := RecoverImportTransactions(dataDir)
 	if err != nil || len(recoveries) != 1 || recoveries[0].State != importRecoveryMaintenanceRestoreSnapshot {
 		t.Fatalf("recoveries=%+v err=%v", recoveries, err)
@@ -2082,7 +2082,7 @@ func TestRecoverInterruptedImportMaintenanceAmbiguousFIFOStaysManual(t *testing.
 	}
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
 	record.started = true
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	recoveries, err := RecoverImportTransactions(dataDir)
 	if err != nil || len(recoveries) != 1 || recoveries[0].State != "manual_required" {
 		t.Fatalf("recoveries=%+v err=%v", recoveries, err)
@@ -2106,7 +2106,7 @@ func TestImportMaintenanceRestoreFailureSurfacesRecoveryRequired(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	store.restoreErr = errors.New("injected exact restore failure")
 	fake, _ := newMaintenanceFake(maintenanceFakeConfig{composeUpError: true})
-	driver := New(fake, nil, nil, store)
+	driver := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -2122,7 +2122,7 @@ func TestImportMaintenanceRestoreFailureSurfacesRecoveryRequired(t *testing.T) {
 func TestImportMaintenanceCancellationStopsRuntime(t *testing.T) {
 	_, op, instance, store := prepareMaintenanceFixture(t)
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{neverRunning: true})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err := d.runImportMaintenance(ctx, instance, op, nil, importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
@@ -2143,7 +2143,7 @@ func TestImportMaintenanceStaticDLLMismatchDoesNotStartContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := d.runImportMaintenance(context.Background(), instance, op, nil, importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorUnsupported {
@@ -2162,7 +2162,7 @@ func TestImportMaintenanceControlMismatchStopsRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := d.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -2182,7 +2182,7 @@ func TestImportMaintenanceMissingActivePointerDoesNotStartContainer(t *testing.T
 		t.Fatal(err)
 	}
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	err := d.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
@@ -2203,7 +2203,7 @@ func TestReconcileStatePreservesImportMaintenanceStoppedState(t *testing.T) {
 	fake.composePsFunc = func(context.Context, string) (paneldocker.ComposePsResult, error) {
 		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}}}, nil
 	}
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	got, err := d.ReconcileState(context.Background(), store.instance)
 	if err != nil || got.State != storage.InstanceStateStopped || got.DriverPhase != importMaintenancePhase {
 		t.Fatalf("got=%+v err=%v", got, err)
@@ -2217,7 +2217,7 @@ func TestImportMaintenanceDoesNotExposeInviteCode(t *testing.T) {
 	}
 	store.instance.DriverPhase = importMaintenancePhase
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
-	d := New(fake, nil, nil, store)
+	d := useLegacy125RuntimeFixture(New(fake, nil, nil, store))
 	_, err := d.GetInviteCode(context.Background(), instance)
 	typed, ok := AsImportTransactionError(err)
 	if !ok || typed.Code != ImportErrorBusy {

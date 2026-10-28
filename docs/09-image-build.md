@@ -3,20 +3,25 @@
 ## 2026-10-28 0.8.0 正式候选执行准备
 
 - 本对话按既有授权继续080正式发布及对应官网上线，直接使用main，不建立分支/worktree。当前正式版仍为073；本节为080准备与待验收清单，不宣称候选或发布已完成。
-- 本版变更清单：启用 `runtime_stack_manifest.json` 的 `fullStackUpgrade.activate=true`，将 `deploy/updates/0.8.0.json` 用作当前发行策略；复用073已发布的更新中心、提示摘要/精确范围确认、持久准备记录和driver协调器，受控迁移 Junimo `1.5.0-preview.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。全新安装默认保留 Junimo `.125` / Auth `1.5.0-anxi.2` / SMAPI `4.5.2` / Control `0.3.9`。Auth固定来源db3f7d53…、digest4649205b…，已有正式制品不重建。
+- 本版变更清单：080新装默认与受控升级目标统一为 Junimo `1.5.0-preview.140` / 正式 Auth `1.5.0-preview.140-anxi.1` / SMAPI `4.5.2` / Control `0.3.9`，运行栈清单启用 `fullStackUpgrade.activate=true`，`deploy/updates/0.8.0.json`用作当前发行策略。已有服务器先完成073准备，再由Web更新中心展示提示摘要与精确范围；管理员确认一次本次范围后，driver协调器通过同一事务完成Panel和游戏组升级。新装使用独立来源记录。Auth固定来源db3f7d53…、digest4649205b…，已有正式制品不重建。
 - 受影响链路：正式073更新检查/发行内容→目标预取与世界范围→管理员提示确认→Panel替换与SQLite保护→游戏组保存/备份/停服/140与Auth迁移/恢复→有效邀请码→维护与重启。另覆盖072跳级与CLI交接、全新安装、非目标资源、候选封存/正式提升和正式后官网。
-- 现场恢复独立于080候选验收：任务DinD停机且三持久来源为tmpfs，先核对Docker、宿主容量、精确身份和只读状态；从 `consistent-fixture-checkpoint-9a030940-01` 的072故障回滚场景使用新attempt受控恢复，再建立正式073来源并追加073基线。原072基线、旧outer、冻结输入与既有073证明全部保留；该冷检查点不是073终态，不直接start后假定数据存在，不重放历史操作。
+- 现场恢复已完成：`approved-cold-restore-attempt-080-01`从 `consistent-fixture-checkpoint-9a030940-01` 的072故障回滚场景受控恢复；原操作202接受ID与当前 `failed_rolled_back/health_check_failed`精确一致，实际125/Auth2/Control0.3.8与原072清单/DLL/加载日志一致，数据、邀请码、隔离与宿主两服务均通过。新closure `fixture-restore-080-20261028/cold-restore080-completed.safe.json` SHA256 `8f01cc5cea7244aa6f0dd97ec0d2e673fa08ae57401f3005bf1ec29b27176d87`，绑定375份证据/23份源码，明确是072恢复证明。
+- 正式073来源也已建立：新observer `source073-recovery-20261028-01`以独立单次真实Web apply完成073，exit0且无存活observer；新accepted ID与终态一致。正式073精确commit/digest及bridge、125/Auth2/Control0.3.9的hash与实际加载、SQLite零活跃任务、有效邀请码、原072与新增073世界/账户比较、非目标资源与宿主两服务均通过。当前镜像以实际完整枚举得到11项，与冷源11项同集合，净增删为空；source数量不作为固定约束。`source073-ready080-compact.safe.json` SHA256 `55c970f8a6b179afe976dffe73b615f8497b4e5422c082bff907814fc7ac435a`为18706B/92引用、14必需roles的实际来源证明；完整扩展原件保留，compact仅压缩重复引用且全部事实逐值一致。原192份manifest及逐文件SHA再次核验全同，全部旧outer与原始证据保留。
 - 候选前提交带 `[manual-release-candidate]`，抑制自动递增074；仅从干净且与origin/main精确同步的新输入显式dispatch `version=0.8.0, previous_version=0.7.3, oldest_version=""`。073同时为上一正式版与最老支持来源，072直升拒绝。固定完整commit/UTC日期/唯一候选身份，正式仅提升其精确digest。
 
 | 080专项 | 正常路径与关键边界 | 权限、恢复、数据与清理 |
 | --- | --- | --- |
-| 全新安装 | health/version、未初始化、默认125/Auth2、Panel重启 | 新装来源记录合法；既有安装缺073记录启动拒绝 |
+| 全新安装 | health/version、未初始化、默认140/正式Auth140、Panel重启；首次游戏准备/安装、实际组件身份与有效邀请码 | 新装来源记录合法；既有安装缺073记录启动拒绝；脚本新装使用正式Docker latest，验证存在旧缓存时仍取得本版 |
+| 安装与重装恢复 | 固定镜像patched SMAPI核心哈希/标记，create前journal与同卷续装；新装和保留旧source的删除路径 | 自动回归覆盖unknown create、丢卷拒绝、旧125 AuthOnly配对与范围阻断；真实Docker验证foreign holder在plan/apply均阻止共享删除，产品Apply只删除本世界owned资源并保留外部sentinel |
 | 真实Web升级 | 正式073检查、目标/提示、精确世界范围、单次管理员确认、预期断线重连、实例Prepare明确收敛 | 072直升、过期/重复确认和范围变化由自动回归及边界专项覆盖；同候选unhealthy得到failed_rolled_back/health_check_failed并恢复073 |
 | 运行栈与长期数据 | 140/正式Auth140/Control实际身份、有效非空邀请码，保留原072和新增073两套基线 | 存档/角色、Mod文件配置/启停/导出、备份恢复/导出、用户/专用会话、非目标容器/卷、原运行选择与维护后资源清理 |
 | 重启、UI与CLI | 升级得到的080 Panel重启后再验界面，1440/390/360两主题、固定底栏、唯一操作及零pageerror | 同次operation/plan恢复、073准备记录持久化，脚本073交接Web、080不被GitHub latest073降级；不重放已接受请求 |
 
 - 自动门禁由 `scripts/run-release-gates.sh` 对上一tag到候选SHA的路径差异实际选择并记录：后端test/vet/build、前端状态/浏览器/production build、脚本/ShellCheck、兼容清单、updater/Docker integration始终执行；本版清单变化须触发对应真实SMAPI下载、远程制品与Junimo长integration；网站依据website/公开文档/README变化选择。未运行的链路只接受脚本生成的跳过理由，不预先把历史成功计作本候选通过。
+- 新增 `PANEL_INSTALL_DELETE_DOCKER_TEST=1` / `TestInstallGameVolumeDeletionDocker`至候选和独立兼容门禁，覆盖fresh及retained-source两种真实卷关系；两入口当前共11条真实Docker调用均显式禁结果缓存，前端轻量契约核ENV与父项选择。本地响应式及关联四组检查、默认140兼容清单24项和安装脚本五边界/ShellCheck已通过；真实删除与fresh游戏链仍以新候选实际结果回填。
+- 本地后端按全量及仅受影响包续测完成：2340项通过、9项条件跳过、19包无最终失败，vet/build均exit0；仅web/Docker测试fixture修正后续测，已通过game包不重复。summary SHA256 `c3522e35420bc31103a8208083495a30b473e4294712d7b0595938ed7d086e2e`。独立空DinD真实删除也已通过fresh/retained-source两场景，foreign holder保护与产品Apply删除精确，测试容器/卷归零；实际binary SHA256 `60251e301fcf6ad94dfd546481d868808f9821a22497298b8ea6085d535862aa`，receipt `fresh140-20261028/real-delete-regression-v2.safe.json`。新DinD仅alpine夹具，尚未创建新Panel/游戏/Auth；080精确候选上的fresh游戏与Web升级专项仍待执行。
 - 本候选真实专项完成后封存acceptance，再由同digest候选创建annotated tag并提升三仓 `0.8.0/latest`；GitHub latest保持 `v0.7.3`。正式OCI、单仓回拉health/version、Release资产及官网上线完成后，回填实际候选/接受/正式/Pages run、digest、选择/跳过矩阵、耗时、故障和精确资源结果。任一必跑失败即停发布，保留原失败，只续受影响步骤。
+- 前序候选 `40635176841`（main `7895b0a66ea11a3835b2102f27e58658003566ad`）在代码门禁holder-wait回归的timeout场景失败，镜像构建、推送及proof均未执行；同输入独立兼容 `40635147573`成功。旧文档提交 `71bbb083…`的兼容 `40634616234`也已成功。后续运行契约与测试输入变化须以新main身份验证；实际失败保留，不提升该输入。
 
 ## 2026-10-28 0.7.3 正式发布完成与收尾
 
@@ -30,7 +35,7 @@
 - 资源与容量：073临时故障容器0、活动observer0、jobs0；任务内6容器/5卷/2网络作为080原始来源保留，未全局prune。Docker数据盘已迁至`E:\DockerDesktopData\disk\docker_data.vhdx`，原C数据盘经离线回滚副本及SHA校验后精确移除；独立回滚副本保留。原宿主两服务身份/镜像与健康核验通过。冷恢复完整校验文件、UID/GID/权限/ACL/xattr、数据库和容器/镜像/卷身份；仅明确记录DNS空值表示、启用OOM的空值表示及卷CreatedAt来源为恢复inode ctime的差异。最后容量快照C约52.23GiB、E约699.33GiB；这是UTC17:31:25时点，不代替下一轮启动前检查。
 - 交接前新检查（UTC `2026-10-28T04:40:18Z`）：C约66.98GiB、E约699.33GiB，原宿主两服务running/healthy；任务DinD仍为原cold-restored身份，但已于UTC04:25:35停止、exit255/OOM=false，19212测试端口拒绝连接。该时点与此前已通过的073发布证明分开记录，不能把历史running状态当当前事实，也不能据exit255推断根因。本次未start/restart；tmpfs来源必须先按冷检查点及原证据只读核查，再为080受控恢复，不能直接重启或假定数据仍在。安全receipt为`handoff080-runtime-status-20261028.safe.json`。
 - 全部原始证据保留于`E:/task-evidence/panel-release-20261027`；最终只写真正完成结果的`formal073-release-confirmed.json`为released=true，绑定三仓、OCI、正式冒烟、脚本与tag证据。既有候选、冷恢复及manifest引用文件保持不可变。
-- 用户最新安排：本对话只完成073发布记录和官网，核验上线后另开对话发布080。本轮不启用080、不dispatch080候选；当前manifest仍`activate=false`，默认`.125/Auth anxi.2`。080准备需从073真实现场追加073来源基线，显式`version=0.8.0, previous_version=0.7.3, oldest_version=""`，全新安装默认保持125/Auth2，受控目标迁移140/正式Auth140，GitHub latest保留073。不得使用历史V4或073的证明提升080。
+- 080发布按当前执行节继续：全新安装默认140/正式Auth140；已有服务器先到073，再经Web范围确认自动完成080及游戏组迁移。已建立的正式073来源与新增基线用于新干净main候选，显式 `version=0.8.0, previous_version=0.7.3, oldest_version=""`；GitHub latest保持073，Docker latest在080正式提升时更新。真实新装、同候选升级/回滚及全部门禁完成后才封存提升。
 - 官网本次变更：首页/变更记录切到073、快速部署与FAQ写明先073再由Web更新中心继续升级；080公开发布内容留待其正式Release。main `3538b7f5e99f7f4de2ebe96e02096885a6eaf011` 的 [Pages40633876075](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40633876075) 成功，build24秒、deploy12秒；本地`npm run docs:build`及生成内容12项通过。线上首页、changelog、quick-start、FAQ、maintain/update五页均HTTP200，实际可见文案与href共28项通过，路由从当前HTML链接发现；另保留requirements导航中转原文。receipt `website073-live-3538b7f5-verified.safe.json` SHA256 `af0d2c418af098b9e28f38b4de30ebc5d7a5383df476cb1a3fcf5423993d90cb`，6份原始HTML及验证脚本保留于外部任务根。[官网](https://anxiyizhi.github.io/stardew-server-anxi-panel/)。
 - 收尾源码核验：同3538b7f5提交的 [compat40633876097](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40633876097) 全部成功（6分10秒），覆盖嵌入清单、后端、前端production build及隔离Docker integration；两处repo下载的仓库外mock、11项关键负向、Bash语法与ShellCheck另在本地通过，精确临时lint容器已归零。候选40633876074/自动tag40633880555因提交标记按设计skipped，本次没有创建074或080候选，也没有改变已发布073的tag/digest。后续仅补上线证据和错题本，不触发镜像重建。
 

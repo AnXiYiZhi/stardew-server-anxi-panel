@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	DefaultServerImage                       = "sdvd/server:1.5.0-preview.125"
-	DefaultServerImageCandidates             = "dockerproxy.net/sdvd/server:1.5.0-preview.125,docker.1ms.run/sdvd/server:1.5.0-preview.125,docker.1panel.live/sdvd/server:1.5.0-preview.125,docker.jiaxin.site/sdvd/server:1.5.0-preview.125,dockerproxy.link/sdvd/server:1.5.0-preview.125,sdvd/server:1.5.0-preview.125"
-	DefaultSteamServiceImage                 = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
-	DefaultSteamServiceImageCandidates       = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2,docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+	DefaultServerImage                       = "sdvd/server:1.5.0-preview.140"
+	DefaultServerImageCandidates             = "dockerproxy.net/sdvd/server:1.5.0-preview.140,docker.1ms.run/sdvd/server:1.5.0-preview.140,docker.1panel.live/sdvd/server:1.5.0-preview.140,docker.jiaxin.site/sdvd/server:1.5.0-preview.140,dockerproxy.link/sdvd/server:1.5.0-preview.140,sdvd/server:1.5.0-preview.140"
+	DefaultSteamServiceImage                 = "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-preview.140-anxi.1"
+	DefaultSteamServiceImageCandidates       = "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-preview.140-anxi.1,ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1,anxiyizhi/junimo-steam-service-cn:1.5.0-preview.140-anxi.1"
 	DefaultSteamCMDImage                     = "docker.1ms.run/steamcmd/steamcmd:latest"
 	DefaultSteamCMDImageCandidates           = "dockerproxy.net/steamcmd/steamcmd:latest,docker.1ms.run/steamcmd/steamcmd:latest,docker.1panel.live/steamcmd/steamcmd:latest,docker.jiaxin.site/steamcmd/steamcmd:latest,dockerproxy.link/steamcmd/steamcmd:latest,cm2network/steamcmd:latest"
 	DefaultSMAPIVersion                      = "4.5.2"

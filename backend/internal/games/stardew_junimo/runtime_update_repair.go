@@ -282,7 +282,7 @@ func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return RuntimeUpdateApplyStatus{}, err
 	}
-	plan := DetectRuntimeUpdateRepairPlan(instance)
+	plan := DetectRuntimeUpdateRepairPlanWithInspection(instance, d.EffectiveRuntimeInspection(instance))
 	if plan == nil {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_not_needed", Message: "当前没有需要执行的一键修复方案。"}
 	}
@@ -615,7 +615,7 @@ func (d *Driver) failRetryableRuntimeUpdateRepair(ctx context.Context, instance 
 }
 
 func (d *Driver) reconcileRequiredRuntimeRepair(ctx context.Context, instance registry.Instance, apply RuntimeUpdateApplyStatus) {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {
 		return
 	}

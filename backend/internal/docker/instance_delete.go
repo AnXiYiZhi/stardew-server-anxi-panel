@@ -120,9 +120,27 @@ func deletionStopped(v deletionContainer) bool {
 }
 
 func (c *Client) PlanInstanceDeletion(ctx context.Context, dir, project, hostDir, gameVolume string) (DeletionPlan, error) {
+	return c.planInstanceDeletion(ctx, dir, project, hostDir, gameVolume, nil)
+}
+
+// The install journal may retain a previous game volume while a stopped
+// service still references it. This only widens the accepted game mount names;
+// every volume must still pass exact ownership, fingerprint and holder gates.
+func (c *Client) PlanInstanceDeletionWithRetainedGameVolumes(ctx context.Context, dir, project, hostDir, gameVolume string, retained []string) (DeletionPlan, error) {
+	return c.planInstanceDeletion(ctx, dir, project, hostDir, gameVolume, retained)
+}
+
+func (c *Client) planInstanceDeletion(ctx context.Context, dir, project, hostDir, gameVolume string, retained []string) (DeletionPlan, error) {
 	p := DeletionPlan{Project: project, HostDir: hostDir, ContainerDir: filepath.Join(dir, project), Volumes: map[string]string{}, Networks: map[string]string{}}
 	if !composeProjectPattern.MatchString(project) || path.Base(deletionPath(hostDir)) != project || !dockerVolumePattern.MatchString(gameVolume) {
 		return p, errors.New("unmanaged world resources")
+	}
+	gameVolumes := map[string]bool{gameVolume: true}
+	for _, volume := range retained {
+		if !installationRetainedVolumeOwned(project, volume) {
+			return p, errors.New("retained installation volume is outside the world namespace")
+		}
+		gameVolumes[volume] = true
 	}
 	all, err := c.deletionContainers(ctx, dir)
 	if err != nil {
@@ -141,7 +159,7 @@ func (c *Client) PlanInstanceDeletion(ctx context.Context, dir, project, hostDir
 			if m.Type == "volume" && anonymousDeletionVolume.MatchString(m.Name) {
 				anonymous[m.Name] = true
 			}
-			if (m.Destination == "/data/game" && (m.Type != "volume" || m.Name != gameVolume)) ||
+			if (m.Destination == "/data/game" && (m.Type != "volume" || !gameVolumes[m.Name])) ||
 				(m.Type == "bind" && !deletionWithin(hostDir, m.Source)) {
 				return p, errors.New("world has unmanaged mounts")
 			}
@@ -190,6 +208,10 @@ func (c *Client) PlanInstanceDeletion(ctx context.Context, dir, project, hostDir
 		p.Networks[rows[0].Name] = rows[0].ID
 	}
 	return p, c.validateDeletionReferences(p, all)
+}
+
+func installationRetainedVolumeOwned(project, volume string) bool {
+	return volume == project+"_game-data" || smapiStagingVolumePattern.MatchString(volume) && strings.HasPrefix(volume, project+"_anxi-smapi-update-")
 }
 
 func (c *Client) validateDeletionReferences(p DeletionPlan, all []deletionContainer) error {

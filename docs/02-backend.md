@@ -1,7 +1,9 @@
 ## 2026-10-28 0.8.0 正式候选准备
 
-- 本对话继续已授权的080正式发布。运行栈清单启用 `fullStackUpgrade.activate=true`，`deploy/panel-update.json` 使用080发行策略，最低来源073；目标为 Junimo `.140` / 正式 Auth `1.5.0-preview.140-anxi.1`，全新安装仍为 `.125/Auth 1.5.0-anxi.2/Control 0.3.9`。沿用driver协调器、提示摘要/精确范围确认及073准备记录门禁。
-- 先以独立新attempt从072故障回滚冷检查点恢复隔离现场，再受控建立正式073来源和新增073基线；保留原072基线、旧outer与全部冻结文件。冷检查点不代表073终态，不重放历史已接受操作。
+- 新装安装器复用固定140镜像内的patched SMAPI，核对核心文件哈希、构建标记和游戏/SDK清单；`junimo140_install.go`在创建卷前持久保存并绑定安装journal，部分下载续用同一owned卷。旧125基础安装不能代替范围迁移，单独Steam授权按当前125/Auth2或140/Auth140配对；事务导入继续支持125和140。普通运行栈测试使用逐Driver私有依赖保留历史矩阵，生产安装与全栈授权始终读取内置目标。
+- 开发回归最终2340通过/9条件跳过、19包无最终失败，vet/build通过；独立空DinD实际通过新装卷与retained-source删除两场景及foreign holder保护，测试容器/卷归零。候选自动门禁及精确镜像真实fresh游戏/073升级与unhealthy回滚仍待执行，实际日志、SHA和范围见docs09。
+- 本对话继续已授权的080正式发布。080全新安装及受控升级均采用 Junimo `.140` / 正式 Auth `1.5.0-preview.140-anxi.1` / Control `0.3.9`；默认清单与 `fullStackUpgrade.activate=true`共同声明该组合，`deploy/panel-update.json`使用080发行策略。已有服务器先完成073准备，再通过Web提示摘要与精确范围确认，由driver协调器执行Panel及游戏组升级；新装来源走独立初始化分支。
+- 隔离来源已由新attempt恢复072冷检查点，再经独立单次真实Web升级到正式073，新增073世界/账户基线。`source073-ready080-compact.safe.json`核验正式073精确digest、bridge、125/Auth2/Control0.3.9、实际加载、SQLite零活跃任务、1档3角色1用户及有效邀请码；原072基线、旧outer和192份冻结文件保持。closure/ready身份与SHA见docs09。
 - 新候选输入固定 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，073同时为最老支持来源，072跳级仍拒绝。当前为准备阶段，后端/脚本/兼容/Docker门禁、真实Web正常升级和同候选unhealthy回滚、140/Auth140及有效邀请码、原数据/维护/重启边界尚待本候选验收；以docs09实际run/digest和证明为准。发布后GitHub latest保留073，三仓Docker latest提升080同digest。
 
 ## 2026-10-28 0.7.3 正式发布完成
@@ -10,7 +12,7 @@
 - 本版包含发行策略与最低更新器校验、073 准备记录、全局更新中心及旧事务修复入口。073 的运行栈升级开关仍为 `activate=false`，默认新装保持 Junimo `.125` / Auth `1.5.0-anxi.2` / Control `0.3.9`；正式 080 的 `.140` / Auth `1.5.0-preview.140-anxi.1` 尚未启用。
 - 同一候选完成全新安装、072 与最老支持版032的真实 Web 升级/回滚；专项在原072真实世界上验证 unhealthy 回滚后正常升级073，再完成备份恢复/ZIP导出、Mod开关、有效邀请码、Panel重启与双主题三宽度UI。原1存档/3角色、用户、Mod文件/配置、专用Auth会话及非目标资源完整。专项共18项检查、192份绑定文件，原始/冷恢复/升级后证据均保留，未用重建现场替换原基线。
 - 自动tag任务 `40548742682` 在checkout前因 `gh run download` 缺少显式repo失败，未创建tag。已逐项核对同一候选/专项的run、artifact、commit、digest、矩阵、干净同步main与tag不存在等守卫后，本地创建并推送 annotated tag；该push自动触发正式提升，没有重复dispatch，旧tag未移动。工作流下载修复及发布记录按本次收尾提交，不改变已发布073镜像。
-- 下一步按用户要求新开对话发布080：先从正式073建立新增基线，保留原072证据；080上一版/最老支持来源均为073，保留072直升拒绝。启用目标后必须使用新的干净同步main候选重新完成真实Web正常升级、unhealthy回滚、140/Auth140与数据/维护/重启/UI验收；fresh仍为125/Auth2，GitHub latest在080发布后继续保留073。正式发布事实与矩阵见 `docs/09-image-build.md`，证据根 `E:/task-evidence/panel-release-20261027`。
+- 080后续发布使用已核验的正式073来源，保留原072与新增073两套基线。新装默认140/正式Auth140；已有服务器先073，再经Web范围确认自动完成080及游戏组迁移。073为上一版及最老来源，072直升拒绝；新候选须重新完成正常升级、unhealthy回滚、数据/维护/重启/UI与真实新装专项。GitHub latest保留073，Docker latest正式提升080；矩阵与实际来源证明见docs09。
 
 以下保留发布前各阶段记录，当前发布状态以上节为准。
 

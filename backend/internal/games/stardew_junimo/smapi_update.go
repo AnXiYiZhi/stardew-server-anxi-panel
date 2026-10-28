@@ -79,7 +79,7 @@ func (d *Driver) InspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 }
 
 func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Instance, knownComponents *RuntimeComponentsInspection) (SMAPIUpdateInfo, error) {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil {
 		return SMAPIUpdateInfo{}, err
 	}
@@ -96,7 +96,7 @@ func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 		return result, nil
 	}
 	result.Current.GameDataVolume = volume
-	stack := InspectRuntimeStack(instance.DataDir, instance.State)
+	stack := d.inspectRuntimeStack(instance)
 	image := stack.Current.Server.Image
 	if image == "" {
 		image = manifest.Server.Image

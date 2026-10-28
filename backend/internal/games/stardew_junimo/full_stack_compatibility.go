@@ -279,7 +279,7 @@ func (d *Driver) acceptsFullStackCompatibility(instance registry.Instance) bool 
 }
 
 func (d *Driver) EffectiveRuntimeInspection(instance registry.Instance) sjconfig.RuntimeStackInspection {
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := d.inspectManagedRuntimeStack(instance)
 	if !d.acceptsFullStackCompatibility(instance) {
 		return inspection
 	}

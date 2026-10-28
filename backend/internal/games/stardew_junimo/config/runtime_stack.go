@@ -242,8 +242,18 @@ func ValidateRuntimeStackManifest(manifest RuntimeStackManifest) error {
 	if err := validateFullStackUpgradeTarget(manifest.FullStackUpgrade); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(manifest.SteamAuth.UpstreamRef, "refs/tags/") || strings.TrimSpace(strings.TrimPrefix(manifest.SteamAuth.UpstreamRef, "refs/tags/")) == "" {
+	if !HasJunimo140SteamAuthTarget(manifest.SteamAuth) && (!strings.HasPrefix(manifest.SteamAuth.UpstreamRef, "refs/tags/") || strings.TrimSpace(strings.TrimPrefix(manifest.SteamAuth.UpstreamRef, "refs/tags/")) == "") {
 		return errors.New("steamAuth upstreamRef must be an exact tag ref")
+	}
+	if manifest.Server.Tag == "1.5.0-preview.140" {
+		if !HasJunimo140SteamAuthTarget(manifest.SteamAuth) || manifest.SteamAuth.UpstreamRef != "f318717ac06a780b6b21080b0263c16278d8e6e1" || manifest.SteamAuth.SourceRevision != "db3f7d53b8e7705b01bbf5a87633e07dabdd34a4" {
+			return errors.New("Junimo .140 requires the fixed compatible SteamAuth release")
+		}
+		for _, digest := range manifest.Server.Digests {
+			if digest != Junimo140ServerDigest {
+				return errors.New("Junimo .140 server content does not match the fixed release")
+			}
+		}
 	}
 	if len(manifest.SteamAuth.SourceRevision) != 40 || !isHexDigest40(strings.ToLower(manifest.SteamAuth.SourceRevision)) {
 		return errors.New("steamAuth sourceRevision must be a 40-character git revision")

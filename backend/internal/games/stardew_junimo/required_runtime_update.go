@@ -52,14 +52,20 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
 		return
 	}
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return
+	}
 	if d.acceptsFullStackCompatibility(instance) {
 		return
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {
 		return
 	}
-	if manifest.Server.Tag == "1.5.0-preview.140" || InspectRuntimeStack(instance.DataDir, instance.State).Current.Server.Tag == "1.5.0-preview.140" && manifest.Server.Tag != "1.5.0-preview.140" {
+	if instance.State == storage.InstanceStateUninitialized || instance.State == storage.InstanceStateAdminCreated || d.EffectiveRuntimeInspection(instance).Status == sjconfig.RuntimeStackStatusUpToDate {
+		return
+	}
+	if manifest.Server.Tag == "1.5.0-preview.140" || d.inspectRuntimeStack(instance).Current.Server.Tag == "1.5.0-preview.140" && manifest.Server.Tag != "1.5.0-preview.140" {
 		// Scope authorization comes from the durable full-stack operation.
 		// Never save/stop from the legacy automatic path with an empty hash.
 		now := time.Now().UTC().Format(time.RFC3339)
@@ -118,7 +124,7 @@ func requiredRuntimeFailureRetryable(code string) bool {
 }
 
 func (d *Driver) requireCurrentRuntimeStack(instance registry.Instance) error {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {
 		return err
 	}
@@ -336,7 +342,7 @@ func (d *Driver) ReadRequiredRuntimeUpdateStatus(instance registry.Instance) (Re
 	if err != nil || status.Phase != requiredRuntimePhaseFailed {
 		return status, err
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired || status.PanelVersion != d.panelVersion || status.StackVersion != manifest.StackVersion {
 		return status, nil
 	}

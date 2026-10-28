@@ -122,7 +122,7 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, data
 		return errors.New("injected up failure")
 	}
 	if service == "server" {
-		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+		manifest, _ := legacy125RuntimeManifest()
 		_ = os.MkdirAll(filepath.Join(dataDir, ".local-container", "control"), 0o755)
 		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "options.json"), []byte(readyControlRuntimeOptions(manifest.Control.Version)), 0o600)
 		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1,"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
@@ -239,7 +239,7 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	if state == storage.InstanceStateStopped {
 		fake.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "exited"}, {Service: "steam-auth", State: "exited"}}}
 	}
-	driver := New(fake, base.logger, base.jobs, store)
+	driver := useLegacy125RuntimeFixture(New(fake, base.logger, base.jobs, store))
 	driver.runtimeUpdatePollInterval = time.Millisecond
 	driver.runtimeUpdateAuthTimeout = 15 * time.Millisecond
 	driver.runtimeUpdateServerTimeout = 15 * time.Millisecond
@@ -253,7 +253,7 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(readyControlRuntimeOptions(manifest.Control.Version)), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	if err := os.WriteFile(filepath.Join(oldJunimoDir, junimoServerAssemblyName), []byte("old assembly"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	status := RuntimeUpdateDryRunStatus{DryRunID: "dryrun_test", Phase: RuntimeUpdatePhaseSucceeded, Current: inspection.Current, Target: inspection.Recommended, Selected: RuntimeUpdateSelectedPair{Server: RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64)}, SteamAuth: RuntimeUpdateSelectedImage{Image: inspection.Recommended.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64)}}}
 	if err := writeRuntimeUpdateDryRunStatus(instance.DataDir, status); err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func configureDisabledRuntimeApplyFixture(t *testing.T, instance registry.Instan
 		serverState = "exited"
 	}
 	fake.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: serverState}}}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125ManagedRuntimeInspection(instance.DataDir, instance.State)
 	status := RuntimeUpdateDryRunStatus{
 		DryRunID: "dryrun_disabled_test",
 		Phase:    RuntimeUpdatePhaseSucceeded,
@@ -445,7 +445,7 @@ func TestRuntimeUpdateApplyDisabledRollbackNeverTouchesAuth(t *testing.T) {
 
 func configureControlOnlyRuntimeFixture(t *testing.T, instance registry.Instance) sjconfig.RuntimeStackManifest {
 	t.Helper()
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func configureControlOnlyRuntimeFixture(t *testing.T, instance registry.Instance
 	if err := os.WriteFile(filepath.Join(junimoServerModDir(instance.DataDir), junimoServerManifestName), []byte(junimoManifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125ManagedRuntimeInspection(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || inspection.Code != "control_update_available" {
 		t.Fatalf("control-only fixture=%+v", inspection)
 	}
@@ -617,7 +617,7 @@ func TestRuntimeUpdateAuthHealthIsAdvisoryOnlyForControlOnly(t *testing.T) {
 
 func TestRuntimeUpdateRepairMaterializesMissingJunimoFromLegacyControlOnlyTransaction(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
-	stackManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	stackManifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +636,7 @@ func TestRuntimeUpdateRepairMaterializesMissingJunimoFromLegacyControlOnlyTransa
 	if err := os.RemoveAll(junimoServerModDir(instance.DataDir)); err != nil {
 		t.Fatal(err)
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125ManagedRuntimeInspection(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || inspection.Code != "control_update_available" {
 		t.Fatalf("legacy control-only fixture=%+v", inspection)
 	}
@@ -683,7 +683,7 @@ func TestRuntimeUpdateRepairMaterializesMissingJunimoFromLegacyControlOnlyTransa
 		t.Fatal(err)
 	}
 	fake.fakeDocker.junimoExtractVersion = stackManifest.Server.Tag
-	plan := DetectRuntimeUpdateRepairPlan(instance)
+	plan := legacy125RepairPlan(instance)
 	if plan == nil || !plan.ActionAvailable || plan.Code != "repair/rollback_failed" {
 		t.Fatalf("legacy rollback repair plan=%#v", plan)
 	}
@@ -753,7 +753,7 @@ func TestRuntimeUpdateApplyPinsRunningContainerImageIDsWithoutPersistingDigestCo
 	if env["SERVER_IMAGE"] != "sdvd/server:1.4.0-preview.1" || env["STEAM_SERVICE_IMAGE"] != "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2" {
 		t.Fatalf("rollback leaked temporary digest pins into persistent config: %#v", env)
 	}
-	inspection := sjconfig.InspectRuntimeStack(instance.DataDir, true)
+	inspection := legacy125ConfigInspection(instance.DataDir, true)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || !inspection.Available {
 		t.Fatalf("restored tagged config no longer reports the recommended update: %#v", inspection)
 	}
@@ -883,7 +883,7 @@ func TestRequiredRuntimeUpdateAutomaticallyChainsDryRunAndApply(t *testing.T) {
 	fake.authUseTargetState = true
 	fake.authLoggedIn = false
 	fake.inviteUnavailable = true
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,7 +896,7 @@ func TestRequiredRuntimeUpdateAutomaticallyChainsDryRunAndApply(t *testing.T) {
 	if err != nil || status.Phase != requiredRuntimePhaseSucceeded || status.StackVersion != manifest.StackVersion {
 		t.Fatalf("required coordinator status=%#v err=%v", status, err)
 	}
-	inspection := InspectRuntimeStack(instance.DataDir, storage.InstanceStateRunning)
+	inspection := legacy125RuntimeInspection(instance.DataDir, storage.InstanceStateRunning)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpToDate || inspection.Current.Server.Tag != "1.5.0-preview.125" {
 		t.Fatalf("required stack was not applied: %#v", inspection)
 	}
@@ -913,7 +913,7 @@ func TestRequiredRuntimeUpdateDisabledChainsServerOnlyWithoutAuth(t *testing.T) 
 	if err := os.Remove(runtimeUpdateDryRunStatusPath(instance.DataDir)); err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -930,7 +930,7 @@ func TestRequiredRuntimeUpdateDisabledChainsServerOnlyWithoutAuth(t *testing.T) 
 	if err != nil || apply.Phase != RuntimeUpdateApplySucceeded || apply.Selected.SteamAuth != (RuntimeUpdateSelectedImage{}) {
 		t.Fatalf("disabled apply status=%#v err=%v", apply, err)
 	}
-	if inspection := InspectRuntimeStack(instance.DataDir, storage.InstanceStateRunning); inspection.Status != sjconfig.RuntimeStackStatusUpToDate {
+	if inspection := legacy125RuntimeInspection(instance.DataDir, storage.InstanceStateRunning); inspection.Status != sjconfig.RuntimeStackStatusUpToDate {
 		t.Fatalf("disabled server stack was not applied: %#v", inspection)
 	}
 	assertNoOptionalAuthRuntimeCalls(t, fake)
@@ -943,7 +943,7 @@ func TestRequiredRuntimeUpdateFailureIsPersistedAndNotRetriedOnSamePanel(t *test
 		t.Fatal(err)
 	}
 	fake.authProbeErrorTarget = true
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	if err := driver.runRequiredRuntimeUpdate(ctx, instance, manifest); err == nil {
@@ -967,7 +967,7 @@ func TestRequiredRuntimeUpdateFailureIsPersistedAndNotRetriedOnSamePanel(t *test
 func TestSuccessfulRuntimeApplyResolvesStaleRequiredFailure(t *testing.T) {
 	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	driver.panelVersion = "0.4.15"
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1014,7 +1014,7 @@ func TestReadRequiredRuntimeStatusResolvesHistoricalFailure(t *testing.T) {
 	if apply := waitRuntimeApply(t, driver, instance); apply.Phase != RuntimeUpdateApplySucceeded {
 		t.Fatalf("runtime apply did not succeed: %#v", apply)
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1046,7 +1046,7 @@ func TestReadRequiredRuntimeStatusResolvesHistoricalFailure(t *testing.T) {
 func TestRequiredRuntimeUpdateResumesAfterCurrentAuthImageBecomesAvailable(t *testing.T) {
 	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	driver.panelVersion = "0.3.5"
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1076,7 +1076,7 @@ func TestRequiredRuntimeUpdateResumesAfterCurrentAuthImageBecomesAvailable(t *te
 func TestRequiredRuntimeUpdateResumesAfterPanelContextCancellation(t *testing.T) {
 	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	driver.panelVersion = "0.3.5"
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1121,17 +1121,17 @@ func TestRequiredRuntimeUpdateRepairsTrustedLegacyCandidates(t *testing.T) {
 	if err := os.Remove(runtimeUpdateDryRunStatusPath(instance.DataDir)); err != nil {
 		t.Fatal(err)
 	}
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	if !inspection.Repairable {
 		t.Fatalf("fixture is not repairable: %#v", inspection)
 	}
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	if err := driver.runRequiredRuntimeUpdate(ctx, instance, manifest); err != nil {
 		t.Fatalf("%v calls=%v metadata=%v", err, fake.calls, fake.metadata)
 	}
-	if got := InspectRuntimeStack(instance.DataDir, instance.State); got.Status != sjconfig.RuntimeStackStatusUpToDate {
+	if got := legacy125RuntimeInspection(instance.DataDir, instance.State); got.Status != sjconfig.RuntimeStackStatusUpToDate {
 		t.Fatalf("trusted legacy config was not repaired and upgraded: %#v", got)
 	}
 	backups, err := filepath.Glob(filepath.Join(instance.DataDir, ".local-container", "junimo-update", "config-repair", "*", "original.env"))
@@ -1148,7 +1148,7 @@ func TestRequiredRuntimeUpdateRollbackFailureRequiresManualAction(t *testing.T) 
 	}
 	fake.authProbeErrorTarget = true
 	fake.restoreError = true
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	if err := driver.runRequiredRuntimeUpdate(ctx, instance, manifest); err == nil {
@@ -1169,7 +1169,7 @@ func TestRequiredRuntimeUpdateRejectsCustomImagesWithoutMutation(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(custom), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, _ := legacy125RuntimeManifest()
 	if err := driver.runRequiredRuntimeUpdate(context.Background(), instance, manifest); err == nil {
 		t.Fatal("custom image was force-overwritten")
 	}
@@ -1268,7 +1268,7 @@ func TestRuntimeUpdateRepairRetriesPartialRollbackIdempotently(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID), "failed-target-junimo-server")); err != nil {
 		t.Fatalf("first partial rollback did not leave deterministic Junimo evidence: %v", err)
 	}
-	plan := DetectRuntimeUpdateRepairPlan(instance)
+	plan := legacy125RepairPlan(instance)
 	if plan == nil || !plan.ActionAvailable || plan.Code != "repair/rollback_failed" || plan.ButtonLabel != "修复：恢复旧版后升级" {
 		t.Fatalf("rollback repair plan = %#v", plan)
 	}
@@ -1334,7 +1334,7 @@ func TestRuntimeUpdateRepairRetriesSafelyRolledBackFailure(t *testing.T) {
 	if failed.Phase != RuntimeUpdateApplyFailedRolledBack {
 		t.Fatalf("expected safe rollback, got %#v", failed)
 	}
-	plan := DetectRuntimeUpdateRepairPlan(instance)
+	plan := legacy125RepairPlan(instance)
 	if plan == nil || !plan.ActionAvailable || plan.Code != "repair/safe_retry" || plan.ButtonLabel != "修复：重新预检并升级" {
 		t.Fatalf("safe retry plan = %#v", plan)
 	}
@@ -1365,7 +1365,7 @@ func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
 		if err := os.WriteFile(runtimeUpdateApplyStatusPath(instance.DataDir), []byte("{broken"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		plan := DetectRuntimeUpdateRepairPlan(instance)
+		plan := legacy125RepairPlan(instance)
 		if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "recovery_state_uncertain" {
 			t.Fatalf("corrupt-state plan = %#v", plan)
 		}
@@ -1383,7 +1383,7 @@ func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		plan := DetectRuntimeUpdateRepairPlan(instance)
+		plan := legacy125RepairPlan(instance)
 		if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "unsupported/custom_images" || !strings.Contains(plan.Method, "自定义镜像") {
 			t.Fatalf("custom-image plan = %#v", plan)
 		}
@@ -1391,7 +1391,7 @@ func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
 
 	t.Run("attempts exhausted", func(t *testing.T) {
 		_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
-		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		inspection := legacy125ManagedRuntimeInspection(instance.DataDir, instance.State)
 		status := RuntimeUpdateApplyStatus{
 			ApplyID: "apply_" + strings.Repeat("d", 24), Phase: RuntimeUpdateApplyFailedRolledBack,
 			Current: inspection.Current, Target: inspection.Recommended, RepairAttempts: runtimeUpdateRepairAttemptLimit,
@@ -1400,7 +1400,7 @@ func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
 		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 			t.Fatal(err)
 		}
-		plan := DetectRuntimeUpdateRepairPlan(instance)
+		plan := legacy125RepairPlan(instance)
 		if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "runtime_repair_exhausted" || plan.Attempts != runtimeUpdateRepairAttemptLimit {
 			t.Fatalf("exhausted plan = %#v", plan)
 		}
@@ -1417,7 +1417,7 @@ func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		inspection := legacy125ManagedRuntimeInspection(instance.DataDir, instance.State)
 		status := RuntimeUpdateApplyStatus{
 			ApplyID: "apply_" + strings.Repeat("e", 24), Phase: RuntimeUpdateApplyResumingUpgrade,
 			Current: inspection.Current, Target: inspection.Recommended,
@@ -1426,7 +1426,7 @@ func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
 		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 			t.Fatal(err)
 		}
-		plan := DetectRuntimeUpdateRepairPlan(instance)
+		plan := legacy125RepairPlan(instance)
 		if plan == nil || plan.ActionAvailable || plan.Action != "wait" || plan.Code != "runtime_update_in_progress" || plan.ButtonLabel != "等待自动恢复" {
 			t.Fatalf("active-recovery plan = %#v", plan)
 		}
@@ -1444,7 +1444,7 @@ func TestRuntimeUpdateRepairDetectsKnownLegacyConfigAndCompletesUpgrade(t *testi
 	}); err != nil {
 		t.Fatal(err)
 	}
-	plan := DetectRuntimeUpdateRepairPlan(instance)
+	plan := legacy125RepairPlan(instance)
 	if plan == nil || !plan.ActionAvailable || plan.Code != "repairable/legacy_candidates" || plan.ButtonLabel != "修复：规范配置并升级" {
 		t.Fatalf("legacy config plan = %#v", plan)
 	}
@@ -1476,7 +1476,7 @@ func TestRuntimeUpdateRepairResumeAfterCleanupKeepsServerStopped(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125ManagedRuntimeInspection(instance.DataDir, instance.State)
 	if !inspection.Repairable {
 		t.Fatalf("historical trusted candidate failure was not detected: %#v", inspection)
 	}
@@ -1509,7 +1509,7 @@ func TestRuntimeUpdateRepairResumeAfterCleanupKeepsServerStopped(t *testing.T) {
 
 func TestRuntimeUpdateRepairResumeAfterRetryManifestBeforeMutationKeepsServerStopped(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	applyID := "apply_" + strings.Repeat("8", 24)
 	sourceID := "apply_" + strings.Repeat("7", 24)
 	target := RuntimeUpdateSelectedPair{
@@ -1577,7 +1577,7 @@ func TestRuntimeUpdateRepairRejectsTamperedMaterialWithoutMutation(t *testing.T)
 	if err := os.WriteFile(backup, []byte("SERVER_IMAGE=untrusted.example/tampered:latest\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan := DetectRuntimeUpdateRepairPlan(instance)
+	plan := legacy125RepairPlan(instance)
 	if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "recovery_material_invalid" {
 		t.Fatalf("tampered material plan = %#v", plan)
 	}
@@ -1609,7 +1609,7 @@ func TestRuntimeUpdateRollbackRetriesTransientDockerStopTimeout(t *testing.T) {
 }
 
 func TestRuntimeUpdateDefaultTimeoutsCoverSlowColdStart(t *testing.T) {
-	driver := New(nil, nil, nil, nil)
+	driver := useLegacy125RuntimeFixture(New(nil, nil, nil, nil))
 	if driver.runtimeUpdateAuthTimeout < 10*time.Minute {
 		t.Fatalf("auth verification timeout=%v, want at least 10m", driver.runtimeUpdateAuthTimeout)
 	}
@@ -1643,7 +1643,7 @@ func TestRuntimeUpdateApplyPreMutationFailureAndRepeatRejected(t *testing.T) {
 		t.Fatal("instance modified after pull failure")
 	}
 	current, _ := os.ReadFile(filepath.Join(instance.DataDir, ".env"))
-	recommended, _ := sjconfig.BuiltInRuntimeStackManifest()
+	recommended, _ := legacy125RuntimeManifest()
 	_ = os.WriteFile(filepath.Join(instance.DataDir, ".env"), []byte("IMAGE_VERSION="+recommended.Server.Tag+"\nSERVER_IMAGE="+recommended.Server.Image+"\nSERVER_IMAGE_CANDIDATES="+strings.Join(recommended.Server.TrustedCandidates, ",")+"\nSTEAM_SERVICE_IMAGE="+recommended.SteamAuth.Image+"\nSTEAM_SERVICE_IMAGE_CANDIDATES="+strings.Join(recommended.SteamAuth.TrustedCandidates, ",")+"\n"), 0600)
 	_, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0)
 	_ = current
@@ -1705,7 +1705,7 @@ func TestRuntimeUpdateApplyRestartBeforeManifestKeepsServerStopped(t *testing.T)
 
 func TestRuntimeUpdateRecoveryManifestUsesPersistedTransactionAcrossPanelVersions(t *testing.T) {
 	_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	status := RuntimeUpdateApplyStatus{
 		ApplyID: "apply_" + strings.Repeat("f", 24), Current: inspection.Current, Target: inspection.Recommended,
 	}
@@ -1741,7 +1741,7 @@ func TestRuntimeUpdateSnapshotCreateIntentOwnsPossibleCrashWindowVolume(t *testi
 
 func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	if err := sjconfig.SetSteamInviteEnabled(instance.DataDir, false); err != nil {
 		t.Fatal(err)
 	}
@@ -1804,7 +1804,7 @@ func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T)
 func TestRuntimeUpdateApplyRestartSchema4DisabledRecoversServerOnly(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	configureDisabledRuntimeApplyFixture(t, instance, fake)
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	applyID := "apply_" + strings.Repeat("9", 24)
 	target := RuntimeUpdateSelectedPair{Server: RuntimeUpdateSelectedImage{
 		Image:   inspection.Recommended.Server.TrustedCandidates[0],
@@ -1882,7 +1882,7 @@ func TestRuntimeUpdateApplyRestartSchema4DisabledRecoversServerOnly(t *testing.T
 
 func TestRuntimeUpdateApplyRestartRollsBackFinalVerificationAndKeepsStopped(t *testing.T) {
 	driver, store, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := legacy125RuntimeInspection(instance.DataDir, instance.State)
 	applyID := "apply_" + strings.Repeat("b", 24)
 	target := RuntimeUpdateSelectedPair{
 		Server:    RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},

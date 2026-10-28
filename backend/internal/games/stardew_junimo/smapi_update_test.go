@@ -20,7 +20,7 @@ type smapiDetectionFakeDocker struct {
 }
 
 func TestEmbeddedControlManifestMatchesRuntimeStack(t *testing.T) {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func smapiDetectionFixture(t *testing.T, version string) (*Driver, registry.Inst
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func smapiDetectionFixture(t *testing.T, version string) (*Driver, registry.Inst
 		game:     manifestFixture("413150", manifest.Game.BuildID, "4", "Stardew Valley"),
 		sdk:      manifestFixture("1007", manifest.SDK.BuildID, "4", "Steamworks SDK Redist"),
 	}
-	return New(fake, nil, nil, nil), registry.Instance{ID: "stardew", DriverID: DriverID, DataDir: dir, State: storage.InstanceStateStopped}, fake
+	return useLegacy125RuntimeFixture(New(fake, nil, nil, nil)), registry.Instance{ID: "stardew", DriverID: DriverID, DataDir: dir, State: storage.InstanceStateStopped}, fake
 }
 
 func TestSMAPIDetectionUsesAssemblyMetadataNotEnv(t *testing.T) {

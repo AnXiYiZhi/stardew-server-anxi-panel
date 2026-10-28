@@ -27,7 +27,7 @@ func TestRuntimeUpgradePolicySeparatesBridgeAndGameMigration(t *testing.T) {
 	}
 }
 
-func TestExplicitRuntimeUpgradeTargetKeepsDefaultInstallPair(t *testing.T) {
+func TestExplicitRuntimeUpgradeTargetMatchesDefaultInstallPair(t *testing.T) {
 	manifest, err := BuiltInRuntimeStackManifest()
 	if err != nil {
 		t.Fatal(err)
@@ -40,9 +40,9 @@ func TestExplicitRuntimeUpgradeTargetKeepsDefaultInstallPair(t *testing.T) {
 		t.Fatalf("explicit migration not described by release: %+v", policy)
 	}
 	manifest.FullStackUpgrade = nil
-	bridge := RuntimeUpgradePolicyForManifest(manifest)
-	if bridge.RequiresScopeConfirmation || bridge.ServerVersion != "1.5.0-preview.125" || bridge.AuthVersion != "1.5.0-anxi.2" {
-		t.Fatalf("bridge changed its default installation pair: %+v", bridge)
+	defaults := RuntimeUpgradePolicyForManifest(manifest)
+	if !defaults.RequiresScopeConfirmation || defaults.ServerVersion != "1.5.0-preview.140" || defaults.AuthVersion != Junimo140SteamAuthTag {
+		t.Fatalf("default installation differs from the coordinated .140 target: %+v", defaults)
 	}
 }
 

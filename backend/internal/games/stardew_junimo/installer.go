@@ -265,6 +265,14 @@ func (r *installRunner) runPrepared(ctx context.Context, jobCtx *jobs.Context) e
 	if _, err := r.ensureServerImage(ctx, jobCtx); err != nil {
 		return err
 	}
+	if r.imageTag == "1.5.0-preview.140" {
+		if _, err := ensureRuntimeContEnvFix(r.instance.DataDir, maintainSteamAuth); err != nil {
+			return err
+		}
+	}
+	if err := r.prepareJunimo140InstallVolume(ctx); err != nil {
+		return fmt.Errorf("prepare image-managed installation volume: %w", err)
+	}
 
 	// ── Step 3: SteamCMD primary download ───────────────────────────────
 	_, _ = jobCtx.Info(ctx, "基础安装使用 SteamCMD 下载并校验 Stardew Valley 与 Steamworks SDK；不会拉取或启动 steam-auth。")
@@ -293,6 +301,10 @@ func (r *installRunner) ensureSteamAuthImage(ctx context.Context, jobCtx *jobs.C
 		}
 		authTarget = &manifest.FullStackUpgrade.SteamAuth
 		refs = authTarget.TrustedCandidates
+	} else {
+		legacy := sjconfig.Junimo125SteamAuthTarget()
+		authTarget = &legacy
+		refs = authTarget.TrustedCandidates
 	}
 
 	steamImage, err := r.ensureCandidateImage(ctx, jobCtx, imageCandidatePullOptions{
@@ -310,11 +322,11 @@ func (r *installRunner) ensureSteamAuthImage(ctx context.Context, jobCtx *jobs.C
 			RuntimeImageInspect(context.Context, string, string) (paneldocker.RuntimeImageMetadata, error)
 		})
 		if !ok {
-			return "", errors.New("Docker driver cannot verify Junimo .140 SteamAuth content")
+			return "", errors.New("Docker driver cannot verify the selected SteamAuth content")
 		}
 		metadata, err := reader.RuntimeImageInspect(ctx, r.instance.DataDir, steamImage)
 		if err != nil || metadata.Digest != authTarget.Digests[steamImage] || !runtimeImageDigestPattern.MatchString(metadata.ID) {
-			return "", errors.New("Junimo .140 SteamAuth image does not match the fixed release content")
+			return "", errors.New("SteamAuth image does not match the deployed runtime's fixed release content")
 		}
 	}
 	if err := sjconfig.UpdateEnvFile(envPath, map[string]string{
@@ -1047,6 +1059,9 @@ func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.C
 		"游戏文件和 Steam SDK 已完成，正在检查 SMAPI 安装包缓存...", "smapi_installing", jobCtx.ID)
 
 	imageRef := envWithDefault(envVals, "SERVER_IMAGE", serverImageDefault(r.imageTag))
+	if r.imageTag == "1.5.0-preview.140" {
+		return r.ensureJunimo140SMAPIInstalled(ctx, jobCtx, imageRef)
+	}
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		return err
@@ -1962,6 +1977,9 @@ func steamServiceImageRef(envVals map[string]string) string {
 }
 
 func steamServiceImageRefs(envVals map[string]string) []string {
+	if strings.TrimSpace(envVals["IMAGE_VERSION"]) == "1.5.0-preview.125" || imageReferenceTag(envVals["SERVER_IMAGE"]) == "1.5.0-preview.125" {
+		return sjconfig.Junimo125SteamAuthTarget().TrustedCandidates
+	}
 	return imageRefsFromEnv(envVals, "STEAM_SERVICE_IMAGE_CANDIDATES", DefaultSteamServiceImageCandidates, "STEAM_SERVICE_IMAGE", DefaultSteamServiceImage)
 }
 

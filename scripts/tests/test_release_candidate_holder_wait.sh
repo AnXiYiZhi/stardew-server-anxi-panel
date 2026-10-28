@@ -3,6 +3,11 @@
 # shellcheck disable=SC2034,SC2154
 set -euo pipefail
 
+# Observer functions read SECONDS. Unsetting its Bash special behavior gives the
+# fixture a virtual clock that advances only through the mocked sleep below.
+unset SECONDS
+SECONDS=0
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 command -v jq >/dev/null
 for function_name in read_legacy_runtime_fingerprint observe_unknown_holder_bootstrap_rejection report_legacy_bootstrap_diagnostics assert_unknown_session_holder_boundary wait_unknown_session_holder_convergence assert_unknown_session_holder_fail_closed legacy_steam_invite_persistence_ready record_update_http_result; do
@@ -186,6 +191,11 @@ done
 
 for fixture in timeout wrong-reason wrong-instance marker unsafe-compose true-intent duplicate-intent container-restart container-replacement session-change auth-image-change intent-regression compose-regression; do
   reset_fixture "$fixture"
+  if [[ "$fixture" == timeout ]]; then
+    # Slow setup must not shift the observer deadline or its exact tick count.
+    command sleep 1
+    [[ "$SECONDS" == 0 ]]
+  fi
   if wait_unknown_session_holder_convergence 30 >"$root/public.log" 2>&1; then
     echo "candidate holder wait unexpectedly accepted $fixture" >&2
     exit 1

@@ -91,7 +91,7 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	if err := setPhase(RuntimeUpdatePhaseChecking, 10, "正在检查实例与内置推荐运行组件。"); err != nil {
 		return err
 	}
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := d.runtimeStackManifest()
 	if err != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
 		_ = addCheck("manifest", "error", "内置推荐运行组件清单无效或未测试。")
 		return fail("manifest_invalid", "内置推荐运行组件清单无效。")

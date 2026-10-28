@@ -1262,7 +1262,7 @@ func validateImportStaticCapability(dataDir string) error {
 }
 
 func supportsTransactionalImportVersion(version string) bool {
-	return version == TestedImageTag || version == "1.5.0-preview.140"
+	return version == "1.5.0-preview.125" || version == "1.5.0-preview.140"
 }
 
 func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID, allowedOperationID string) error {
