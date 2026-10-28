@@ -5,7 +5,8 @@
 - [x] 新装140/正式Auth与镜像patched SMAPI、同卷续装journal、旧125授权配对/导入兼容及共享卷删除保护开发完成；后端2340通过/9条件跳过、vet/build通过，独立空Docker的fresh/retained-source删除与资源归零通过。两pipeline新增显式删除E2E，11条真实Docker调用禁缓存及对应轻量门禁通过。
 - [x] main999929cb的候选40649330655及兼容40649173156成功；精确候选真实073→080正常升级、同候选unhealthy回滚、140/Auth140/Control0.3.9、有效邀请码、两套世界比较及备份/恢复/导出/Mod切换/游戏重启维护均通过，实际范围/耗时见docs09。
 - [x] Steam/手机段按用户确认标为已测，后续不重复登录；两次真实202安装因手机批准超时failed的证据保持。合法缓存游戏/SDK内容与native v5四核SMAPI/标记实际验证通过，不补写安装job成功；fresh后续使用LAN/Auth disabled，新Auth配套配置与主世界实际授权证据分列。
-- [ ] fresh新世界201成功后的首次Start任务失败，支持Mod同步helper因140镜像无用户名root退出125；事务已rolled_back、无新存档。numeric0:0修复的11项unit及真实140 Docker开发验证通过，须新干净同步main候选与新幂等键复验新世界/重启；999输入停止正式提升，旧failed任务及已通过专项保持。
+- [x] b060候选40677483509虽CI成功，真实fresh Start仍在JunimoServer提取helper退出125；原helper未采stderr，源码定位仍使用用户名root。剩余提取、旧授权缓存迁移和legacy SMAPI安装三个helper已统一numeric0:0，开发unit5/Linux CGO0编译及固定140实际提取/cold SMAPI安装读回通过：2父项+5子项=7PASS/0skip/0fail，51.609289秒；缓存/资源不变，0新增容器/卷、0Steam/API写。摘要SHA256 `08a23678012710bd3a9a98c6c509bb470d0778ea225145e3348a3760eb9c7d3e`。999/b060仍失效，原202/failed及制品保留；开发验证不代替新候选完整fresh/Web专项。
+- [ ] 新073来源在parent `panel-release-20261028-numeric-root/`实际恢复并生成pointer/Ready；后续候选使用独立 `candidate-all-helpers-v2/`子根及新proof/run/digest，逐SHA绑定来源并重新完成正常/unhealthy Web升级与双基线。当前新候选身份未知，禁止将parent b060身份或旧999通过结果当作新验收。
 - [ ] 新候选完成受影响fresh、Panel重启和UI/CLI专项，清理独立资源并按原ID恢复主世界server/Auth及核验原会话/邀请码，封存最终同候选证明。
 - [ ] 从同一候选digest完成annotated tag、三仓080/latest正式提升、OCI/正式冒烟与Release资产核验；GitHub latest保持073。
 - [ ] 080正式后更新官网并核验Pages及线上内容/链接；回填实际workflow、digest、选择/跳过矩阵、耗时、故障与资源结果。当前080尚未发布，历史工程和073证明仅保留各自用途。

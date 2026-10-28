@@ -48,6 +48,7 @@ type fakeDocker struct {
 	containerCode               int
 	containerCodes              []int
 	containerErr                error
+	containerHasNoNamedRoot     bool
 	containerRuns               int
 	containerLines              []string
 	containerRunLines           [][]string
@@ -275,6 +276,9 @@ func (f *fakeDocker) RunSteamAuthTTY(ctx context.Context, _ string, opts paneldo
 }
 
 func (f *fakeDocker) RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	if f.containerHasNoNamedRoot && opts.User == "root" {
+		return 125, errors.New("fixture image has no named root account")
+	}
 	command := strings.Join(opts.Command, " ")
 	if strings.Contains(command, junimoModExtractMarker) {
 		f.containerRuns++
@@ -3371,6 +3375,9 @@ func TestBuildSteamCMDAuthMigrationOptsCopiesLegacyCachesIntoCanonicalVolume(t *
 	opts := (&installRunner{
 		instance: storage.Instance{DataDir: "/data/instances/stardew"},
 	}).buildSteamCMDAuthMigrationOpts("img:latest")
+	if opts.User != "0:0" {
+		t.Fatalf("legacy auth-cache helper user = %q, want numeric UID:GID 0:0", opts.User)
+	}
 	script := opts.Command[len(opts.Command)-1]
 
 	for _, bind := range []string{
@@ -3390,6 +3397,17 @@ func TestBuildSteamCMDAuthMigrationOptsCopiesLegacyCachesIntoCanonicalVolume(t *
 	}
 	if strings.Contains(script, "cat ") {
 		t.Fatalf("migration must never print credential file contents, script=%q", script)
+	}
+}
+
+func TestBuildLegacySMAPIInstallOptsUsesNumericRootIdentity(t *testing.T) {
+	dir := t.TempDir()
+	opts := (&installRunner{
+		instance: storage.Instance{DataDir: dir},
+		imageTag: "1.5.0-preview.125",
+	}).buildSMAPIInstallOpts(serverImageDefault("1.5.0-preview.125"), filepath.Join(dir, "smapi.zip"))
+	if opts.User != "0:0" {
+		t.Fatalf("legacy SMAPI installer user = %q, want numeric UID:GID 0:0", opts.User)
 	}
 }
 

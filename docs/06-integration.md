@@ -5,6 +5,9 @@
 - 新attempt恢复072并单次Web升级正式073的source073Ready与closure已封存，旧outer及192份字节保持。其后999候选 `40649330655`及兼容 `40649173156`成功；真实073→080单次确认、同候选unhealthy回滚、生产Prepare收敛、140/Auth140/Control0.3.9与有效邀请码、两套数据基线及升级后备份/恢复/导出/Mod切换/游戏重启均通过，原operation/plan/HTTP与终态绑定保留。主世界server/Auth当前为fresh窗口受控停止，结束须原状态恢复。
 - fresh实际POST新世界201成功，LAN/Auth disabled的custom-new-game返回202，同job终态failed：`smapi_bundled_sync_failed`，支持Mod同步helper退出125，Docker明确拒绝镜像内不存在的用户名root。宿主路径核对正确：`PANEL_HOST_DATA_DIR=/fixtures/panel-data`与Panel `/data` bind一致，两端同世界env字节相同。事务rolled_back且未调用新存档命令，无存档/owner；新尝试须新幂等键，不能重放原failed任务。
 - helper改numeric `0:0`的unit与真实140 Docker开发验证通过，须新候选继续受影响新世界/重启及最终专项；999输入停止正式提升。fresh仅核Auth140配套配置/镜像，AuthReady/邀请码由同候选主世界与最终恢复证据独立证明。任务详情保持 `{"job": ...}`，成功/失败和异步Prepare均按原ID只读收敛；UI/CLI、资源恢复和正式封存以docs09实际结果为准。
+- b060候选 `40677483509` 的真实fresh Start再次返回202后同job failed/exit125，JunimoServer提取helper仍按用户名root运行。该helper丢弃了底层stderr，原因由同一精确140镜像和源码定位；此前支持Mod同步修复通过不代表此独立路径通过。b060已superseded，原failed记录和候选制品保持。提取器及安装器的授权缓存迁移、legacy SMAPI安装三个剩余helper已统一为 `0:0`。
+- 开发验证现已通过unit5、Linux CGO0编译，以及固定140真实JunimoServer提取、cold SMAPI安装/读回：2父项+5子项共7PASS/0skip/0fail，51.609289秒、native exit0；缓存hash/资源保持，0新增容器/卷、0Steam/API写。摘要 `candidate-all-helpers-v2/helper-tests-v1/real-result.safe.json` SHA256 `08a23678012710bd3a9a98c6c509bb470d0778ea225145e3348a3760eb9c7d3e`；新候选完整fresh/Web联调仍待实际完成。
+- 新candidate仍须从新空Panel和新世界完成真实201、Start202/同job终态、patched SMAPI四核/标记、Panel重启及清理；正式073来源的正常/unhealthy确认、双基线与有效邀请码须绑定该新候选。外部parent `panel-release-20261028-numeric-root/`只提供实际073 pointer/Ready，`candidate-all-helpers-v2/`子根独立保存新proof/feed/observer与验收结果，来源按path/SHA引用，不把b060的CI或旧999 Web结果转记为新通过。接口与任务包裹结构不变，Steam/手机已测段继续独立记录且不重复。
 
 ## 2026-10-28 0.7.3 正式联调发布完成
 

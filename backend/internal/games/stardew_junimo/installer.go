@@ -1659,7 +1659,7 @@ echo "anxi-steamcmd-auth-migrate: no legacy cache found"
 	return paneldocker.ContainerTTYRunOpts{
 		ImageRef:   imageRef,
 		Entrypoint: []string{"/bin/sh"},
-		User:       "root",
+		User:       "0:0",
 		Command:    []string{"-lc", script},
 		Binds: []string{
 			loginVolume + ":/auth",
@@ -1772,7 +1772,7 @@ echo "SMAPI preinstall complete."
 	return paneldocker.ContainerTTYRunOpts{
 		ImageRef:   imageRef,
 		Entrypoint: []string{"/bin/sh"},
-		User:       "root",
+		User:       "0:0",
 		Command:    []string{"-lc", script},
 		Env: []string{
 			"SMAPI_VERSION=" + version,

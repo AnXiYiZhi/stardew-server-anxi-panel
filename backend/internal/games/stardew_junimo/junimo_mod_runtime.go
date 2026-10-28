@@ -121,7 +121,7 @@ func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef,
 	defer cancel()
 	exitCode, err := docker.RunContainerTTY(extractCtx, paneldocker.ContainerTTYRunOpts{
 		ImageRef: imageRef, Entrypoint: []string{"/bin/sh"}, Command: []string{"-lc", script},
-		Binds: []string{absWorkDir + ":/out"}, User: "root",
+		Binds: []string{absWorkDir + ":/out"}, User: "0:0",
 	}, nil, func(string) {})
 	if err != nil {
 		return "", fmt.Errorf("extract JunimoServer from target image: %w", err)

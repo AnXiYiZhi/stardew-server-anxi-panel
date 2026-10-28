@@ -1,10 +1,26 @@
 package stardew_junimo
 
 import (
+	"context"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestExtractJunimoServerModUsesNumericRootWithoutPasswdEntry(t *testing.T) {
+	dir := t.TempDir()
+	docker := &fakeDocker{containerHasNoNamedRoot: true, junimoExtractVersion: "1.5.0-preview.140"}
+	extracted, err := extractJunimoServerMod(context.Background(), docker, serverImageDefault("1.5.0-preview.140"), dir, dir, "1.5.0-preview.140")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if docker.containerRuns != 1 || docker.containerOpts.User != "0:0" {
+		t.Fatalf("Junimo extraction runs=%d user=%q; want one numeric UID:GID 0:0 helper", docker.containerRuns, docker.containerOpts.User)
+	}
+	if err := validateExtractedJunimoServerMod(extracted, "1.5.0-preview.140"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestExtractedJunimoOwnershipCommandUsesNumericIdentity(t *testing.T) {
 	command, err := extractedJunimoOwnershipCommand()

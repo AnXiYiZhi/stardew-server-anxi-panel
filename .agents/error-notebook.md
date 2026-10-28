@@ -2,6 +2,14 @@
 
 ## 2026-10-27 正式发布工具记录
 
+- 最近补充（2026-10-28，PowerShell 数组与单项集合）：专属清理把 `@($prefix+'-docker',$prefix+'-fixtures')` 解析成一个拼接字符串，原账号窗口又把管道筛选结果当数组访问 `.Count`，分别在删除前和 Docker 调用前失败。保留原失败，名称每项加括号，筛选结果外再用 `@(...)` 收集；先以真实输入断言两名称、单项及空集合再执行。新工具的 Join-Path 数组同样每项完整括起，不把两个调用串成路径。StrictMode 读取混合容器角色的可选 Compose label 前先核属性存在，不能假定所有 inspect 条目形状一致。适用 Windows pwsh7 StrictMode 与任务清理/续接工具。
+- 最近补充（2026-10-28，固定目标与复制工具守卫）：冷恢复复用了字节相同的 Engine helper，却遗漏其旧容器名正则，Create 在 HTTP intent 和发送前退出1。只读确认原响应全无、目标不存在、原导入与请求 body 不变后，仅为新精确名称派生 continuation；不重导入、不删 intent、不重发旧 Create。派生工具必须逐项检查硬编码身份，解析通过和依赖 SHA 相同不能代替真实参数契约检查。准备时已存在的073 proof仅在原路径、SHA与字节完全相同时复用，其它输出继续wx拒绝，不删除别的协作者已供应输入。
+- 最近补充（2026-10-28，资源探针投影）：VM df按overlay路径匹配，输出了判断空间无需的存储标识，随后又发现同一文件系统在多个namespace视图重复。原raw保持私有；改只选已确认挂载点并输出容量数字，多行要求容量tuple一致，不假定只有一行。任何资源探针都应在输出前完成必要字段白名单投影。
+- 最近补充（2026-10-28，缓存摘要大小写）：许可缓存导出验证将 PowerShell 大写 MD5 与小写 hexdigest 直接比较，误报失败。保留首轮结果，对同一归档离线规范化十六进制大小写后复核文件集合、逐项摘要和总 SHA，不重新导出。摘要类型、算法与字节数仍须精确一致，不能以不区分大小写掩盖非十六进制差异。
+- 最近补充（2026-10-28，Junimo OCI 标签与新装状态）：新装夹具把固定 .140 镜像的 OCI version 错当完整版本（实际为通道 `preview`），又把 scaffolded 模板的安装诊断 `unknown` 错当缓存不完整，分别在 seed 写入与 CreateWorld POST 前退出。保留原失败，版本由精确 digest/platform 与真实 Mod manifest 绑定；由生产 Provision 的模板、复制和目标 verifier 验真，保持原 GET unknown，不补写模板 ready/DB/job。不能按标签语义或只读诊断推导未执行的安装检查。
+- 最近补充（2026-10-28，清理清单来源）：新装 inspect 将“当前所有卷”直接作为可删集合，可能把未知卷纳入随后清理。尚未执行该清理；改为 seed 原始卷、世界 Compose 解析名及已核容器 mount 的明确允许集合，并要求实际集合相等、未知项拒绝。最终 inventory 是核对对象，不能自行授予删除权限。宽目录库存仍须先过滤精确文件名并限制数量，不能把截断输出视为已完整审阅。
+- 最近补充（2026-10-28，helper 修复覆盖）：第一次数值 root 修复只覆盖支持 Mod 同步，真实新世界随后在 JunimoServer 提取的另一个 `User: root` helper 返回125；另发现 legacy SMAPI 安装和 SteamCMD 缓存迁移 helper 仍依赖符号用户名；.140 专用安装分支不走 legacy helper，已有 stamp 的用例也不能代替冷路径验证。保留 b060 原202与失败终态，撤销该候选的发布资格，统一审计 Junimo 全部 helper；新增固定镜像冷路径验证及数字身份回归，预防规则已提升到 AGENTS.md。该产品失败不伪改为任务成功，不重测用户已确认的手机部分。
+
 - 最近补充（2026-10-28，SQLite备份连接与负向夹具）：缺073记录的真实候选已按预期exit1，但夹具用with sqlite3.connect后未close，WAL目标在严格目录断言时仍有shm/wal；进程退出后只剩DB，不能倒推原before。保留原202/终态/失败，合成WAL复现后改显式finally关闭两连接，create前fsync落盘DB大小/SHA/目录快照，新namespace以原严格DB字节与ONLY-panel.db断言实际通过。context manager提交不等于关闭；所有进程前置快照必须在动作前持久化，不补造缺失证据。
 - 最近补充（2026-10-28，精确Git来源字节）：正式核验fixture把Windows CRLF工作树当Git blob，组件副本又用git archive导出后发现101组CRLF而原blob为LF，均在执行前SHA门禁拒绝。保留原失败；改git ls-tree -r -z与git cat-file --batch读取原始blob bytes，546文件逐blob/SHA/字节数绑定。版本化源码/Release资产/编译副本不得由checkout行尾或archive转换推断；不能靠去CR后相等冒称原字节相等，预防已固化到副本脚本。 同轮审阅CRLF文档时误用git -c core.autocrlf=false diff，导致只读diff膨胀26015行；恢复仓库正常diff后仅99行，并按缺失范围补读。语义审阅沿用仓库过滤设置，原blob字节验证另用cat-file，不能混用配置。
 - 最近补充（2026-10-28，当前输入与JSON契约）：原生组件把retry前envSHA当成retry后的当前快照，在0.26秒只读guard退出，未进入生产复制；旧before仅SHA，不能追造changed键。新namespace只钉当前真实raw SHA并保留前后不变守卫；每次已知写操作之后须重新采当前输入。其它准备断言曾误把licensed seed存在的sourceExisted当false、字符串workflowRunId当整数、job.errorMessage当job.error；先只投影真实字段/类型/存在性，再绑定，不改数据迎合测试。AST差异校验仅规范化已声明版本标签，不删除行为断言。
@@ -20,7 +28,7 @@
 - 最近补充（2026-10-28，初始化脚本诊断最小投影）：整段读取历史初始化脚本时夹带了测试登录字面量；后续此类脚本先只列路径、接口、字段名及状态码，不输出登录值。新fresh账号使用运行时生成的专用值，Steam输入只在内存传递，原请求敏感body不进入公开日志或证明。
 
 - 最近补充（2026-10-28，source073Ready输入尺寸）：首份真实ready把旧证据重复展开684引用，wx后148442B，超过真实object loader的128KiB；事实复验成功不等于输入格式可接受。保留原件，另生成18706B/92引用compact版本，非references事实逐值相同，14必需roles与本轮raw保留、历史链按SHA连接、extendedReady只hash。080草稿还误把真实Web applyRequests单项POST body数组当计数，已按实际数组及confirm字段严格验证、保留失败且不重放动作。封存前必须用真实loader核类型、tuple返回、字节上限及引用图，不放宽上限或覆盖原件。
-- 最近复发/补充（2026-10-28，精确工具及只读投影）：NVM与bundled Node同时在PATH时，Get-Command node.exe -CommandType Application返回数组，.Source不能直接作可执行路径；改已确认单一绝对路径并版本探针后语法检查通过。旧fixture审计另复发宽New(检索截断与语句式for后接管道ParserError，均未业务执行；改精确构造器锚点/现成cmdlet和独立脚本。继续执行AGENTS既有scalar路径、全局预算和循环不接管道规则。
+- 最近复发/补充（2026-10-28，精确工具及只读投影）：NVM与bundled Node同时在PATH时，Get-Command node.exe -CommandType Application返回数组，.Source不能直接作可执行路径；改已确认单一绝对路径并版本探针后语法检查通过。旧fixture审计另复发宽New(检索截断与语句式for后接管道ParserError，均未业务执行；改精确构造器锚点/现成cmdlet和独立脚本。同轮 Get-Command wsl.exe 也命中 System32 与 WindowsApps 两项，精确可执行守卫在运行前拒绝；改已验证 System32 绝对路径。嵌套 foreach/if 审计载荷又因括号缺失而零执行，改独立 Python 脚本后17份输入SHA全通过，不重放原内联形态。继续执行AGENTS既有scalar路径、全局预算和循环不接管道规则。
 
 - 最近补充（2026-10-28，ShellCheck源码配对）：首轮在容器默认工作目录用绝对路径lint run.sh与source它的测试，动态source按`./deploy/run.sh`解析不到已输入文件，继而误报SC1091/2034/2317。改为稳定`--workdir /repo`并使用与source一致的相对路径成对输入，完整通过；未增加disable或删断言。ShellCheck单文件/跨目录输入须先核对被source路径与当前目录，保持正式gate实际执行契约。
 

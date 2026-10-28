@@ -52,12 +52,24 @@ func TestJunimo140ImageSMAPIStagingRealOptIn(t *testing.T) {
 	}
 	fixture := func(script string) string {
 		t.Helper()
-		output, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--mount", "type=volume,src="+staging+",dst=/game", "--entrypoint", "sh", image.ID, "-eu", "-c", script).CombinedOutput()
+		output, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--pull", "never", "--network", "none", "--user", "0:0", "--read-only", "--mount", "type=volume,src="+staging+",dst=/game", "--entrypoint", "sh", image.ID, "-eu", "-c", script).CombinedOutput()
 		if err != nil {
 			t.Fatalf("isolated game corruption fixture failed: %v: %s", err, output)
 		}
 		return string(output)
 	}
+	t.Run("cold patched SMAPI installation", func(t *testing.T) {
+		// Damage only the newly owned clone. The authorized source stays readonly.
+		fixture(`rm -f /game/smapi-internal/.sdvd-smapi-build /game/StardewModdingAPI.dll`)
+		before, err := client.RuntimeReadPinnedSMAPIMetadata(ctx, dir, staging, imageRef, image.ID)
+		if err != nil || junimo140SMAPIIdentityVerified(before) {
+			t.Fatalf("cold SMAPI fixture was not established: %v", err)
+		}
+		after, err := prepareJunimo140SMAPIStaging(ctx, client, dir, staging, selected)
+		if err != nil || !junimo140SMAPIIdentityVerified(after) {
+			t.Fatalf("production cold patched SMAPI installation/readback failed: %v", err)
+		}
+	})
 	const markerHashes = `sha256sum /game/.download-manifest-413150 /game/.steam-sdk/.download-manifest-1007`
 	beforeMarkers := fixture(markerHashes)
 	for _, scenario := range []struct{ name, damage, repair string }{

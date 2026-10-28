@@ -51,6 +51,19 @@ printf '%s\n' '{"Name":"Save Backup","UniqueID":"SMAPI.SaveBackup","Version":"4.
 		t.Fatalf("seed real game-data volume: exit=%d err=%v", exitCode, err)
 	}
 	driver := New(client, nil, nil, nil)
+	t.Run("JunimoServer image extraction without named root", func(t *testing.T) {
+		selected, err := client.RuntimeImageInspect(ctx, dataDir, image)
+		if err != nil {
+			t.Fatalf("inspect bundled sync fixture image: %v", err)
+		}
+		if selected.Digest != junimo140Digest {
+			t.Skip("JunimoServer extraction requires the fixed .140 runtime image")
+		}
+		dir := t.TempDir()
+		if _, err := extractJunimoServerMod(ctx, client, image, dir, dir, "1.5.0-preview.140"); err != nil {
+			t.Fatalf("extract image-bundled JunimoServer: %v", err)
+		}
+	})
 	changed, err := driver.EnsureManagedSMAPIBundledMods(ctx, dataDir, image, nil)
 	if err != nil {
 		t.Fatal(err)
