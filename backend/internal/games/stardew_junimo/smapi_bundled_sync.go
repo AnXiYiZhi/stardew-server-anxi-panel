@@ -71,8 +71,10 @@ echo "` + smapiBundledSyncMarker + `: copy complete"`
 	exitCode, err := d.docker.RunContainerTTY(ctx, paneldocker.ContainerTTYRunOpts{
 		ImageRef:   imageRef,
 		Entrypoint: []string{"/bin/sh"},
-		User:       "root",
-		Command:    []string{"-c", script},
+		// Junimo .140 has no root entry in /etc/passwd. Numeric UID:GID
+		// retains root permissions without requiring an account-name lookup.
+		User:    "0:0",
+		Command: []string{"-c", script},
 		Binds: []string{
 			resolvedGameDataVolumeName(dataDir) + ":/data/game:ro",
 			hostStage + ":/managed",

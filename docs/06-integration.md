@@ -1,9 +1,10 @@
-## 2026-10-28 0.8.0 正式联调准备
+## 2026-10-28 0.8.0 真实联调与新世界阻断
 
-- 安装请求字段保持现有协议；省略imageTag的新装采用140/正式Auth140，安装job及详情仍按202和`{job:...}`保存原ID/终态。旧125授权固定原Auth2且基础安装不能替代范围迁移。新增owned卷journal、镜像patched SMAPI及删除共享保护开发回归和独立Docker删除通过；精确候选上的全新游戏安装、Web升级/回滚与UI仍待执行。
+- 安装请求字段保持现有协议；省略imageTag的新装采用140/正式Auth140，安装job及详情按202和`{job:...}`保存原ID/终态。fresh两次真实安装均终止于手机批准超时，原202与failed任务保留；用户确认Steam/手机段已测，后续不再重复登录。合法游戏/SDK缓存和生产native组件v5四核SMAPI/标记装配已真实核验，未补写安装成功、job成功或installedReady。
 - 本轮080默认清单与受控目标统一为140/正式Auth `1.5.0-preview.140-anxi.1`。全新安装使用独立新装来源；已有服务器固定先到正式073，再从Web更新中心确认本次范围，由同一事务升级Panel和游戏组。候选 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，072直升及既有安装缺073准备记录继续拒绝。GitHub latest保留073，073及以后从正式列表选择080，Docker latest在正式同digest提升后指向080。
-- 隔离来源已用新attempt恢复072冷检查点，再以独立单次真实Web升级到正式073；新来源的exact digest、bridge、125/Auth2/Control0.3.9、有效邀请码和两套世界/账户基线已只读核验，旧outer及192份封存字节保持。后续080 prepare/confirm继续保存本次HTTP状态与operation/plan，单次确认后观察终态及生产Prepare明确收敛。实际source073Ready与closure见docs09。
-- 本候选尚待验证：真实073→080、同候选unhealthy回滚073、提示/范围与CLI边界、140/Auth140及有效非空邀请码、两套数据基线、用户/专用会话/非目标资源、维护/导出/备份恢复、Panel重启和真实UI。维护任务详情保持 `{"job": ...}` 契约；原始证据最小投影并绑定候选完整SHA/digest。完整门禁、结果及封存入口见docs09。
+- 新attempt恢复072并单次Web升级正式073的source073Ready与closure已封存，旧outer及192份字节保持。其后999候选 `40649330655`及兼容 `40649173156`成功；真实073→080单次确认、同候选unhealthy回滚、生产Prepare收敛、140/Auth140/Control0.3.9与有效邀请码、两套数据基线及升级后备份/恢复/导出/Mod切换/游戏重启均通过，原operation/plan/HTTP与终态绑定保留。主世界server/Auth当前为fresh窗口受控停止，结束须原状态恢复。
+- fresh实际POST新世界201成功，LAN/Auth disabled的custom-new-game返回202，同job终态failed：`smapi_bundled_sync_failed`，支持Mod同步helper退出125，Docker明确拒绝镜像内不存在的用户名root。宿主路径核对正确：`PANEL_HOST_DATA_DIR=/fixtures/panel-data`与Panel `/data` bind一致，两端同世界env字节相同。事务rolled_back且未调用新存档命令，无存档/owner；新尝试须新幂等键，不能重放原failed任务。
+- helper改numeric `0:0`的unit与真实140 Docker开发验证通过，须新候选继续受影响新世界/重启及最终专项；999输入停止正式提升。fresh仅核Auth140配套配置/镜像，AuthReady/邀请码由同候选主世界与最终恢复证据独立证明。任务详情保持 `{"job": ...}`，成功/失败和异步Prepare均按原ID只读收敛；UI/CLI、资源恢复和正式封存以docs09实际结果为准。
 
 ## 2026-10-28 0.7.3 正式联调发布完成
 

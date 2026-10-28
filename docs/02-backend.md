@@ -1,10 +1,12 @@
-## 2026-10-28 0.8.0 正式候选准备
+## 2026-10-28 0.8.0 候选实测与新世界阻断
 
 - 新装安装器复用固定140镜像内的patched SMAPI，核对核心文件哈希、构建标记和游戏/SDK清单；`junimo140_install.go`在创建卷前持久保存并绑定安装journal，部分下载续用同一owned卷。旧125基础安装不能代替范围迁移，单独Steam授权按当前125/Auth2或140/Auth140配对；事务导入继续支持125和140。普通运行栈测试使用逐Driver私有依赖保留历史矩阵，生产安装与全栈授权始终读取内置目标。
-- 开发回归最终2340通过/9条件跳过、19包无最终失败，vet/build通过；独立空DinD实际通过新装卷与retained-source删除两场景及foreign holder保护，测试容器/卷归零。候选自动门禁及精确镜像真实fresh游戏/073升级与unhealthy回滚仍待执行，实际日志、SHA和范围见docs09。
+- 开发回归2340通过/9条件跳过、19包无最终失败，vet/build通过。main `999929cb76d4447eb409e4b1c3bbb37e921441c7` 的候选 `40649330655`及同SHA兼容 `40649173156`成功；候选代码门禁、构建与CI新装/重启、073升级/回滚通过。精确候选的真实073→080正常升级、同候选unhealthy回滚及升级后140/Auth140/Control0.3.9、有效邀请码、两套世界基线与维护均通过；实际身份、范围和耗时见docs09。
+- 独立fresh LAN新世界实际创建201成功，首次custom-new-game的202任务终态failed：`smapi_bundled_sync_failed`，Docker报告镜像内无名为root的用户，支持Mod同步helper退出125。`smapi_bundled_sync.go`改用numeric `0:0`，对应unit和真实固定140 Docker验证通过（11项unit、真实父项1.45秒）；此为开发验证，须新main候选与新世界Start复验。原失败任务保留，事务已rolled_back、未调用新建存档命令、无存档/owner；新attempt必须用新的幂等键，不能重发原键。
+- fresh两次安装202均真实终止于手机批准超时，原接受与failed终态保留；用户确认Steam/手机段已测，后续不再重复登录。合法缓存的游戏/SDK清单及内容已核验，生产native组件v5实际完成4核SMAPI装配与stamp提交，不改原failed任务或installedReady。后续fresh按LAN/Auth disabled验证新世界、启动及重启；Auth140配套从新env/Compose/镜像核验，实际AuthReady/邀请码由同候选主世界及最终恢复证据单独证明。
 - 本对话继续已授权的080正式发布。080全新安装及受控升级均采用 Junimo `.140` / 正式 Auth `1.5.0-preview.140-anxi.1` / Control `0.3.9`；默认清单与 `fullStackUpgrade.activate=true`共同声明该组合，`deploy/panel-update.json`使用080发行策略。已有服务器先完成073准备，再通过Web提示摘要与精确范围确认，由driver协调器执行Panel及游戏组升级；新装来源走独立初始化分支。
-- 隔离来源已由新attempt恢复072冷检查点，再经独立单次真实Web升级到正式073，新增073世界/账户基线。`source073-ready080-compact.safe.json`核验正式073精确digest、bridge、125/Auth2/Control0.3.9、实际加载、SQLite零活跃任务、1档3角色1用户及有效邀请码；原072基线、旧outer和192份冻结文件保持。closure/ready身份与SHA见docs09。
-- 新候选输入固定 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，073同时为最老支持来源，072跳级仍拒绝。当前为准备阶段，后端/脚本/兼容/Docker门禁、真实Web正常升级和同候选unhealthy回滚、140/Auth140及有效邀请码、原数据/维护/重启边界尚待本候选验收；以docs09实际run/digest和证明为准。发布后GitHub latest保留073，三仓Docker latest提升080同digest。
+- 来源先由新attempt恢复072冷检查点，再经独立单次真实Web升级到正式073并封存 `source073-ready080-compact.safe.json`；随后已完成上述999候选升级与维护。原072和新增073世界/账户基线、旧outer及192份冻结文件保持。主世界server/Auth现为fresh串行窗口受控停止状态，fresh结束须按原ID/原状态恢复；closure/ready及实际升级身份见docs09。
+- 后续新候选输入仍为 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，072跳级拒绝。新世界helper缺陷使999输入停止正式提升；numeric修复须进入干净同步main的新候选，完成受影响新世界/重启与发布要求后再封存。尚未创建080正式tag/Release；GitHub latest保留073，三仓Docker latest在正式时提升080同digest。
 
 ## 2026-10-28 0.7.3 正式发布完成
 

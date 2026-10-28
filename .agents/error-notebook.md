@@ -2,6 +2,13 @@
 
 ## 2026-10-27 正式发布工具记录
 
+- 最近补充（2026-10-28，SQLite备份连接与负向夹具）：缺073记录的真实候选已按预期exit1，但夹具用with sqlite3.connect后未close，WAL目标在严格目录断言时仍有shm/wal；进程退出后只剩DB，不能倒推原before。保留原202/终态/失败，合成WAL复现后改显式finally关闭两连接，create前fsync落盘DB大小/SHA/目录快照，新namespace以原严格DB字节与ONLY-panel.db断言实际通过。context manager提交不等于关闭；所有进程前置快照必须在动作前持久化，不补造缺失证据。
+- 最近补充（2026-10-28，精确Git来源字节）：正式核验fixture把Windows CRLF工作树当Git blob，组件副本又用git archive导出后发现101组CRLF而原blob为LF，均在执行前SHA门禁拒绝。保留原失败；改git ls-tree -r -z与git cat-file --batch读取原始blob bytes，546文件逐blob/SHA/字节数绑定。版本化源码/Release资产/编译副本不得由checkout行尾或archive转换推断；不能靠去CR后相等冒称原字节相等，预防已固化到副本脚本。 同轮审阅CRLF文档时误用git -c core.autocrlf=false diff，导致只读diff膨胀26015行；恢复仓库正常diff后仅99行，并按缺失范围补读。语义审阅沿用仓库过滤设置，原blob字节验证另用cat-file，不能混用配置。
+- 最近补充（2026-10-28，当前输入与JSON契约）：原生组件把retry前envSHA当成retry后的当前快照，在0.26秒只读guard退出，未进入生产复制；旧before仅SHA，不能追造changed键。新namespace只钉当前真实raw SHA并保留前后不变守卫；每次已知写操作之后须重新采当前输入。其它准备断言曾误把licensed seed存在的sourceExisted当false、字符串workflowRunId当整数、job.errorMessage当job.error；先只投影真实字段/类型/存在性，再绑定，不改数据迎合测试。AST差异校验仅规范化已声明版本标签，不删除行为断言。
+- 最近补充（2026-10-28，OCI层级与平台形态）：只读checker误将合法direct platform root当index，另把加载后的Docker image ID与build config ID硬等，均执行前拒绝且无helper。先核原root/platform/config descriptor bytes；direct/index按真实media type分支，允许ID只取已证明的三层唯一集合，容器身份与完整OCI另核。不得扩大到任意当前ID或用版本tag代替内容身份；复用已验证的candidate identity工具，禁止在新探针重写层级假设。
+- 最近补充（2026-10-28，Docker进程探针）：docker top -eo args缺PID列而exit1；真实默认列已支持，改bare docker top并仅在内存判断SteamCMD，不打印或落盘可能含密码的完整参数。另误将原世界server名用于fresh daemon，inspect返回不存在；先枚举该专属daemon真实容器并核归属，再以确切名称读取，不能跨夹具套名称。原两个Steam任务终态和新请求ID独立保留，不因诊断失败重发动作。
+- 最近补充（2026-10-28，证据路径与检索复发）：递归库存混入合成loader测试副本并截断、读取尚未生成的候选identity，以及猜测handler/目录/attempt名称，均停止在只读阶段。对rg --files结果先按精确父目录过滤并限总量，契约声明不代表文件存在；先Test-Path、读取当前runner的真实receipt路径。含源码引号的模式改纯函数/错误码标识符定位后短段读取，继续强制既有AGENTS库存/引号/退出码规则，不以有效前项遮盖后项错误。
+
 - 最近补充（2026-10-28，默认矩阵与真实integration夹具）：795候选在纯health Auth integration失败，Driver已注入legacy125而辅助赋真实ID循环仍读Builtin140，导致旧Auth候选保留合成ID，生产强ID检查正确拒绝；回滚超时由测试刻意timeout模式触发。仅同_test.go统一legacy矩阵并删未用import，预算/断言/生产均不改。首轮本地复验又在Dockerfile APK冷下载超原2分钟而未进入Auth断言；先只读确认0资源/仅原alpine，再独立有界预热精确FROM/RUN层，校归属仅删owned预热tag留cache，新attempt实际15.85s全部通过。默认变更须同时审计带integration tag的辅助fixture；依赖准备与业务预算分开，不能把setup超时误判产品或直接重放未知测试。
 
 - 最近补充（2026-10-28，提交输入扫描基线）：首轮对整个修改文件做凭据字面量比对，误命中HEAD中已有且新增行未出现的测试用户名；保留失败与仅字段/布尔诊断，不输出值、不改原测试。第二版只对该已证实的原文件原用户名给出严格“基线存在且新增行无匹配”例外，其它文件、密码及新增内容仍全部扫描；UTF8/换行/64输入和目标配对检查通过。提交扫描须区分原始基线与本次新增，不能用无差别命中删改历史fixture或放宽新内容检查。

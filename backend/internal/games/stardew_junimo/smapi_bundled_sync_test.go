@@ -7,7 +7,34 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 )
+
+type bundledSyncIdentityDocker struct {
+	*fakeDocker
+	options []paneldocker.ContainerTTYRunOpts
+}
+
+func (d *bundledSyncIdentityDocker) RunContainerTTY(ctx context.Context, options paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	d.options = append(d.options, options)
+	return d.fakeDocker.RunContainerTTY(ctx, options, guardCh, lineHandler)
+}
+
+func TestEnsureManagedSMAPIBundledModsUsesNumericRootIdentity(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "stardew")
+	docker := &bundledSyncIdentityDocker{fakeDocker: &fakeDocker{bundledSyncMods: []runtimeLoadedMod{
+		{UniqueID: consoleCommandsID, Version: "4.5.2"},
+		{UniqueID: saveBackupID, Version: "4.5.2"},
+	}}}
+	driver := New(docker, nil, nil, nil)
+	if _, err := driver.EnsureManagedSMAPIBundledMods(context.Background(), dataDir, "example/server:test", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(docker.options) != 1 || docker.options[0].User != "0:0" {
+		t.Fatalf("bundled sync helper must use numeric root UID:GID without passwd lookup: options=%#v", docker.options)
+	}
+}
 
 func TestEnsureManagedSMAPIBundledModsPublishesFirstLaunchRuntimeSet(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "stardew")

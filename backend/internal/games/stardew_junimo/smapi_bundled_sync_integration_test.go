@@ -44,7 +44,7 @@ mkdir -p /data/game/Mods/ConsoleCommands /data/game/Mods/SaveBackup
 printf '%s\n' '{"Name":"Console Commands","UniqueID":"SMAPI.ConsoleCommands","Version":"4.5.2"}' > /data/game/Mods/ConsoleCommands/manifest.json
 printf '%s\n' '{"Name":"Save Backup","UniqueID":"SMAPI.SaveBackup","Version":"4.5.2"}' > /data/game/Mods/SaveBackup/manifest.json`
 	exitCode, err := client.RunContainerTTY(ctx, paneldocker.ContainerTTYRunOpts{
-		ImageRef: image, Entrypoint: []string{"/bin/sh"}, User: "root", Command: []string{"-c", populate},
+		ImageRef: image, Entrypoint: []string{"/bin/sh"}, User: "0:0", Command: []string{"-c", populate},
 		Binds: []string{volume + ":/data/game"},
 	}, nil, func(string) {})
 	if err != nil || exitCode != 0 {

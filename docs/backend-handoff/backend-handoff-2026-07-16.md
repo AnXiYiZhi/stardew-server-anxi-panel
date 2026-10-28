@@ -1,11 +1,13 @@
-## 2026-10-28 0.8.0 正式候选接手增量
+## 2026-10-28 0.8.0 候选实测与新世界故障接手
 
 - 795候选的真实Auth acceptance发现integration辅助循环尚读Builtin140，实际Driver夹具却为legacy125/Auth2；已仅修该_test.go的清单来源并删unused import。修后真实Docker父项与5个故障回滚子项全部通过，生产强身份/纯health/Control-only断言不改；首次本地APK setup超时与独立预热保留。以后变更默认矩阵时，legacy test的Driver与所有辅助metadata循环必须使用同一明确矩阵；tag/镜像不能使用795失败输入，后续新候选与证据见docs09。
 - 新增 `junimo140_install.go`及安装journal `.local-container/install-game-volumes/<volume>.json`：create前固定目标/来源/镜像身份并绑定，失败续用原卷；复用既有unused/label保护和patched SMAPI核心哈希/标记读回。涉及driver/installer/config、`docker/runtime_smapi_image.go`和删除planner；125基础安装仍要求全栈范围确认，AuthOnly按实际运行栈选原配对，125/140事务导入均保留。新卷及历史owned来源卷由实例删除清单枚举，foreign holder和其它世界引用继续阻止共享卷删除。后续须保留journal精确身份，不能以失败重试重置下载卷或放宽归属。
-- 当前开发证据为2340通过/9条件跳过、19包最终无失败，vet/build0；独立空DinD新装/保留来源两种删除关系、foreign holder在plan/apply保护和精确资源归零实际通过。后续正式CI仍从干净同步main完整复验，再由新080精确镜像执行fresh游戏和073 Web专项；不能把开发二进制或073来源证明当候选镜像验收。出处及SHA见docs09。
+- 开发回归2340通过/9条件跳过、19包最终无失败，vet/build0；独立DinD删除与foreign holder保护通过。main `999929cb76d4447eb409e4b1c3bbb37e921441c7` 的候选 `40649330655`与兼容 `40649173156`成功，精确候选真实073→080正常升级、同候选unhealthy回滚、140/Auth140/Control0.3.9、有效邀请码、两套世界比较和升级后维护均通过。CI与真实专项分开封存，完整身份/耗时见docs09。
+- fresh LAN新世界201已成功，但首次custom-new-game的202任务failed：`smapi_bundled_sync_failed`，Docker退出125，明确报镜像无名为root的用户。影响 `smapi_bundled_sync.go` 的安装/新存档/SMAPI更新共同helper；生产改numeric `0:0`及对应unit/真实140 integration已开发验证（11项unit、真实父项1.45秒、资源集合不变），仍须新候选。原任务保留，事务rolled_back、commandCalled=false、无存档及owner；继续只能新attempt/新幂等键，旧键会返回原failed任务。
+- 用户确认Steam/手机段已测，不再重复。两次安装202及手机批准超时failed均保留；合法游戏/SDK缓存内容核验通过，native组件v5真实完成SMAPI四核/标记装配且不改DB/job/installedReady。fresh后续为LAN/Auth disabled新世界/启动/Panel重启；只声明新env/Compose/镜像的Auth140配套，AuthReady/邀请码由主世界及最终恢复实证单列，不补写安装成功或fresh授权成功。
 - 本对话继续已授权的080正式发布：默认新装与受控升级统一采用140/正式Auth140/Control0.3.9，`runtime_stack_manifest.json`启用fullStackUpgrade，当前发行策略切080。已有服务器先完成073准备，再从Web更新中心确认一次本次范围，由driver在同一事务内完成Panel和游戏组迁移；新装来源走独立初始化。关联Web确认、073准备记录和CLI协议保持，Auth为db3f7d53…/digest4649205b…已有正式制品。
-- 当前隔离来源已完成新attempt恢复及独立单次真实Web升级到正式073。使用 `daemon080.json`/`private-browser-session080.json`与 `source073-ready080-compact.safe.json`；正式073 exact digest/bridge、125/Auth2/Control0.3.9及实际加载、有效邀请码、原072与新增073两套世界/账户比较均通过，旧192文件SHA全同。新072恢复closure与073来源ready分开封存，原072基线、全部旧outer和冻结文件保留；精确SHA见docs09。
-- 新候选必须干净同步main，显式080/previous073/oldest空；073为最老来源，072直升继续拒绝。当前本候选验收尚待执行：自动门禁、真实073 Web正常升级/同候选unhealthy回滚、140/Auth及有效邀请码、数据/Mod/备份维护、Panel重启与UI/CLI。完成后封存同digest再正式提升；GitHub latest保持073，Docker latest提升080。完整矩阵和待回填实际run/digest/资源结果见docs09。
+- `daemon080.json`/`private-browser-session080.json`对应的新attempt先恢复072，再单次Web升级正式073并封存source073Ready；此后已完成999候选升级及维护。原072和新增073两套世界/账户基线、192份旧文件SHA及全部旧outer保留。主世界server/Auth为fresh串行窗口受控停止，结束须按source-window v2原ID/原running状态恢复，不能调用新登录API；新closure及ready身份见docs09。
+- 后续候选须干净同步main，显式080/previous073/oldest空，072直升继续拒绝。999成功门禁及真实专项作为历史事实保留，新世界缺陷使其输入停止正式提升；numeric修复须新候选和受影响链路验收。尚未创建080正式tag/Release；GitHub latest保持073，Docker latest仅在最终同digest正式提升时切080。资源恢复、UI/CLI及最终封存以docs09实际结果为准。
 
 ## 2026-10-28 0.7.3 正式发布接手
 
