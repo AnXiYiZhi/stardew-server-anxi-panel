@@ -1,16 +1,29 @@
-## 2026-10-28 0.8.0 候选实测与新世界故障接手
+## 2026-10-29 0.8.0 正式后端接手
 
-- 795候选的真实Auth acceptance发现integration辅助循环尚读Builtin140，实际Driver夹具却为legacy125/Auth2；已仅修该_test.go的清单来源并删unused import。修后真实Docker父项与5个故障回滚子项全部通过，生产强身份/纯health/Control-only断言不改；首次本地APK setup超时与独立预热保留。以后变更默认矩阵时，legacy test的Driver与所有辅助metadata循环必须使用同一明确矩阵；tag/镜像不能使用795失败输入，后续新候选与证据见docs09。
-- 新增 `junimo140_install.go`及安装journal `.local-container/install-game-volumes/<volume>.json`：create前固定目标/来源/镜像身份并绑定，失败续用原卷；复用既有unused/label保护和patched SMAPI核心哈希/标记读回。涉及driver/installer/config、`docker/runtime_smapi_image.go`和删除planner；125基础安装仍要求全栈范围确认，AuthOnly按实际运行栈选原配对，125/140事务导入均保留。新卷及历史owned来源卷由实例删除清单枚举，foreign holder和其它世界引用继续阻止共享卷删除。后续须保留journal精确身份，不能以失败重试重置下载卷或放宽归属。
-- 开发回归2340通过/9条件跳过、19包最终无失败，vet/build0；独立DinD删除与foreign holder保护通过。main `999929cb76d4447eb409e4b1c3bbb37e921441c7` 的候选 `40649330655`与兼容 `40649173156`成功，精确候选真实073→080正常升级、同候选unhealthy回滚、140/Auth140/Control0.3.9、有效邀请码、两套世界比较和升级后维护均通过。CI与真实专项分开封存，完整身份/耗时见docs09。
-- fresh LAN新世界201已成功，但首次custom-new-game的202任务failed：`smapi_bundled_sync_failed`，Docker退出125，明确报镜像无名为root的用户。影响 `smapi_bundled_sync.go` 的安装/新存档/SMAPI更新共同helper；生产改numeric `0:0`及对应unit/真实140 integration已开发验证（11项unit、真实父项1.45秒、资源集合不变），仍须新候选。原任务保留，事务rolled_back、commandCalled=false、无存档及owner；继续只能新attempt/新幂等键，旧键会返回原failed任务。
-- b060 `b060ffec1c5af3379743c5aa43c236b497ab4bf7` / candidate `40677483509` 随后CI成功，但独立fresh新世界Start仍同202 job failed/exit125，失败点为 `junimo_mod_runtime.go:extractJunimoServerMod`。此处仍使用用户名root；原helper没有采集stderr，原因由相同精确140镜像和源码定位。该输入已superseded，原proof、归档、任务及失败记录保持。生产现将提取器、`installer.go:buildSteamCMDAuthMigrationOpts`、`buildSMAPIInstallOpts`三个剩余helper统一为 `0:0`。
-- 本次开发验证已实际通过unit5、Linux CGO0编译及固定140真实JunimoServer提取/cold SMAPI安装读回：2父项+5子项共7PASS/0skip/0fail，native exit0、51.609289秒；缓存hash/资源不变，0新增容器/卷、0Steam/API写。摘要 `candidate-all-helpers-v2/helper-tests-v1/real-result.safe.json` SHA256 `08a23678012710bd3a9a98c6c509bb470d0778ea225145e3348a3760eb9c7d3e`。仍需新候选完整fresh Start/重启、073正常/unhealthy Web和双基线，不能复用b060或999作正式候选验收。
-- 提取器调用链覆盖 `lifecycle.go` 新世界/Start、`runtime_update_apply_runner.go` 目标升级与 `runtime_update_rollback.go` 原镜像恢复；legacy SMAPI安装由125分支使用，140安装走固定镜像SMAPI装配。独立 `games/steamcmd` 仍选择SteamCMD专用镜像，不属于140 SERVER_IMAGE路径。下一步覆盖三个helper的数值用户参数/实际镜像执行和125兼容，再用新候选完成完整fresh Start/重启、073正常/unhealthy Web与双基线；不得重发旧failed幂等键或登录/手机批准。
-- 用户确认Steam/手机段已测，不再重复。两次安装202及手机批准超时failed均保留；合法游戏/SDK缓存内容核验通过，native组件v5真实完成SMAPI四核/标记装配且不改DB/job/installedReady。fresh后续为LAN/Auth disabled新世界/启动/Panel重启；只声明新env/Compose/镜像的Auth140配套，AuthReady/邀请码由主世界及最终恢复实证单列，不补写安装成功或fresh授权成功。
-- 本对话继续已授权的080正式发布：默认新装与受控升级统一采用140/正式Auth140/Control0.3.9，`runtime_stack_manifest.json`启用fullStackUpgrade，当前发行策略切080。已有服务器先完成073准备，再从Web更新中心确认一次本次范围，由driver在同一事务内完成Panel和游戏组迁移；新装来源走独立初始化。关联Web确认、073准备记录和CLI协议保持，Auth为db3f7d53…/digest4649205b…已有正式制品。
-- `daemon080.json`/`private-browser-session080.json`对应的新attempt先恢复072，再单次Web升级正式073并封存source073Ready；此后已完成999候选升级及维护。原072和新增073两套世界/账户基线、192份旧文件SHA及全部旧outer保留。主世界server/Auth为fresh串行窗口受控停止，结束须按source-window v2原ID/原running状态恢复，不能调用新登录API；新closure及ready身份见docs09。
-- 后续候选须干净同步main，显式080/previous073/oldest空，072直升继续拒绝。999和b060的通过/失败均作为各自历史事实保留，不能用于正式提升或冒充新候选验收。新authority为外部 `panel-release-20261028-numeric-root/` 的实际073来源pointer/Ready，以及独立 `candidate-all-helpers-v2/` 子根的新候选proof/run/pin/feed/collector；子根逐SHA绑定来源，不能继续读取parent b060 proof作为当前身份。新commit/run/digest未知，不预填。尚未创建080正式tag/Release；GitHub latest保持073，Docker latest仅在最终同digest正式提升时切080。资源恢复、UI/CLI及最终封存以docs09实际结果为准。
+当前正式版v0.8.0；唯一候选[40690368111](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40690368111)，tag指8b348b0完整commit，正式workflow[40784965514](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40784965514)。
+
+改动与影响：
+
+- 默认Junimo140/正式Auth140/Control0.3.9，既有125协议由显式legacy fixture保留。
+- `junimo140_install.go`绑定创建前journal、owned卷与固定镜像；patched SMAPI四核/stamp读回。
+- `smapi_bundled_sync.go`、`junimo_mod_runtime.go`、`installer.go`相关Junimo helper使用数字`0:0`。
+- 事务导入保持125/140支持；073→080全栈激活、精确范围/notice/operation/plan与一次确认协议保持。
+- CreateWorld通过生产Provision验证模板、clone与目标；`.env`不保证COMPOSE_PROJECT_NAME，容器身份从实际Compose/已注册卷绑定。
+
+验证：
+
+- 候选、同SHAcompat与全自动门禁成功；本轮SMAPI/远程制品/Junimo长链和website均被路径差异选中。
+- 新来源073真实正常/回滚、维护、CLI、Panel重启、UI及072/073双基线通过。
+- healthy断线计数0保留，以绑定旧新Panel身份/同op-plan与成功终态证明实际切换。
+- fresh独立空Panel默认140/cache/生产新世界LAN/重启与strict50通过；正式Auth功能由主升级链证明。
+- 最终26checks/1705refs、正式六引用/OCI/四脚本/冒烟、资源恢复清理全部闭合。
+
+注意事项：
+
+- Steam/手机用户确认段不重测；原两个failed及工具失败/续接证据保持，不回写预期。
+- OLD13images与原server/Auth已恢复；NEW/fresh运行资源清理为0，E中封存证据与许可cache保留。
+- sourceEvidenceRoot与candidateRoot分开；Panel ID跨升级不可复用，数据清单禁止全局端口替换。
+- 正式digest、实际耗时、关键SHA及失败明细见[docs09](../09-image-build.md)。后续提交不得移动正式tag。
 
 ## 2026-10-28 0.7.3 正式发布接手
 

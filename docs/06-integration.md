@@ -1,13 +1,17 @@
-## 2026-10-28 0.8.0 真实联调与新世界阻断
+## 2026-10-29 0.8.0 联调验收完成
 
-- 安装请求字段保持现有协议；省略imageTag的新装采用140/正式Auth140，安装job及详情按202和`{job:...}`保存原ID/终态。fresh两次真实安装均终止于手机批准超时，原202与failed任务保留；用户确认Steam/手机段已测，后续不再重复登录。合法游戏/SDK缓存和生产native组件v5四核SMAPI/标记装配已真实核验，未补写安装成功、job成功或installedReady。
-- 本轮080默认清单与受控目标统一为140/正式Auth `1.5.0-preview.140-anxi.1`。全新安装使用独立新装来源；已有服务器固定先到正式073，再从Web更新中心确认本次范围，由同一事务升级Panel和游戏组。候选 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，072直升及既有安装缺073准备记录继续拒绝。GitHub latest保留073，073及以后从正式列表选择080，Docker latest在正式同digest提升后指向080。
-- 新attempt恢复072并单次Web升级正式073的source073Ready与closure已封存，旧outer及192份字节保持。其后999候选 `40649330655`及兼容 `40649173156`成功；真实073→080单次确认、同候选unhealthy回滚、生产Prepare收敛、140/Auth140/Control0.3.9与有效邀请码、两套数据基线及升级后备份/恢复/导出/Mod切换/游戏重启均通过，原operation/plan/HTTP与终态绑定保留。主世界server/Auth当前为fresh窗口受控停止，结束须原状态恢复。
-- fresh实际POST新世界201成功，LAN/Auth disabled的custom-new-game返回202，同job终态failed：`smapi_bundled_sync_failed`，支持Mod同步helper退出125，Docker明确拒绝镜像内不存在的用户名root。宿主路径核对正确：`PANEL_HOST_DATA_DIR=/fixtures/panel-data`与Panel `/data` bind一致，两端同世界env字节相同。事务rolled_back且未调用新存档命令，无存档/owner；新尝试须新幂等键，不能重放原failed任务。
-- helper改numeric `0:0`的unit与真实140 Docker开发验证通过，须新候选继续受影响新世界/重启及最终专项；999输入停止正式提升。fresh仅核Auth140配套配置/镜像，AuthReady/邀请码由同候选主世界与最终恢复证据独立证明。任务详情保持 `{"job": ...}`，成功/失败和异步Prepare均按原ID只读收敛；UI/CLI、资源恢复和正式封存以docs09实际结果为准。
-- b060候选 `40677483509` 的真实fresh Start再次返回202后同job failed/exit125，JunimoServer提取helper仍按用户名root运行。该helper丢弃了底层stderr，原因由同一精确140镜像和源码定位；此前支持Mod同步修复通过不代表此独立路径通过。b060已superseded，原failed记录和候选制品保持。提取器及安装器的授权缓存迁移、legacy SMAPI安装三个剩余helper已统一为 `0:0`。
-- 开发验证现已通过unit5、Linux CGO0编译，以及固定140真实JunimoServer提取、cold SMAPI安装/读回：2父项+5子项共7PASS/0skip/0fail，51.609289秒、native exit0；缓存hash/资源保持，0新增容器/卷、0Steam/API写。摘要 `candidate-all-helpers-v2/helper-tests-v1/real-result.safe.json` SHA256 `08a23678012710bd3a9a98c6c509bb470d0778ea225145e3348a3760eb9c7d3e`；新候选完整fresh/Web联调仍待实际完成。
-- 新candidate仍须从新空Panel和新世界完成真实201、Start202/同job终态、patched SMAPI四核/标记、Panel重启及清理；正式073来源的正常/unhealthy确认、双基线与有效邀请码须绑定该新候选。外部parent `panel-release-20261028-numeric-root/`只提供实际073 pointer/Ready，`candidate-all-helpers-v2/`子根独立保存新proof/feed/observer与验收结果，来源按path/SHA引用，不把b060的CI或旧999 Web结果转记为新通过。接口与任务包裹结构不变，Steam/手机已测段继续独立记录且不重复。
+- 老面板先到正式073，再经Web更新中心一次管理员确认，由同一事务完成Panel080与游戏组140迁移。
+- 原check/dry/prepare/confirm接受记录、operation/plan/update及终态均保留；任务详情按`{"job": ...}`读取。
+- Prepare显式等本次状态收敛；超时/中断仅续观原ID，不重发已接受动作。
+- healthy实测`transientDisconnects=0`，原值不改；以已绑定Source073旧Panel→65cf新Panel身份、同op/plan、GET apply200 succeeded和重连证明切换。
+- 同候选unhealthy为`failed_rolled_back/health_check_failed`，恢复后用户/会话、1档3角色、Mod及非目标资源保持。
+- 双基线沿用原stage：before-080、after-unhealthy、after-080、after-080-maintenance、after-panel-restart；原bytes不重标。
+- 维护原stop/备份恢复/Mod切换/ZIP导出已接受后，仅补齐冻结输入并从resume-after-exports继续，未重放业务。
+- 升级后140/Auth140/Control0.3.9、四核/stamp、有效邀请码、CLI、Panel重启及双主题三宽度UI通过。
+- 独立fresh空Panel与生产Provision/LAN启动、重启通过；fresh Auth disabled与未执行完整InstallPOST的范围明确保留。
+- 最终26checks/1705refs和GitHub验收[40784861028](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40784861028)成功；资源清理/OLD原服务恢复闭合。
+
+精确候选、矩阵、时序和原件引用见[docs09](09-image-build.md)，不能用断线计数或模板unknown诊断替代持久身份与生产验证。
 
 ## 2026-10-28 0.7.3 正式联调发布完成
 

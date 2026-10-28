@@ -1,41 +1,56 @@
 # Junimo 更新替换交接 2026年10月15日
 
-## 2026-10-28 0.8.0 候选实测与新世界阻断
+## 2026-10-29 0.8.0 正式发布与验收记录
 
-- 本对话按既有授权继续080正式发布及对应官网上线，直接使用main，不建立分支/worktree。当前正式版仍为073。999候选及其Web升级/回滚/维护已实际通过，随后fresh新世界发现helper用户名缺陷，停止该输入的正式提升；修复须进入新候选，080尚未正式发布。
-- 本版变更清单：080新装默认与受控升级目标统一为 Junimo `1.5.0-preview.140` / 正式 Auth `1.5.0-preview.140-anxi.1` / SMAPI `4.5.2` / Control `0.3.9`，运行栈清单启用 `fullStackUpgrade.activate=true`，`deploy/updates/0.8.0.json`用作当前发行策略。已有服务器先完成073准备，再由Web更新中心展示提示摘要与精确范围；管理员确认一次本次范围后，driver协调器通过同一事务完成Panel和游戏组升级。新装使用独立来源记录。Auth固定来源db3f7d53…、digest4649205b…，已有正式制品不重建。
-- 受影响链路：正式073更新检查/发行内容→目标预取与世界范围→管理员提示确认→Panel替换与SQLite保护→游戏组保存/备份/停服/140与Auth迁移/恢复→有效邀请码→维护与重启。另覆盖072跳级与CLI交接、全新安装、非目标资源、候选封存/正式提升和正式后官网。
-- 现场恢复已完成：`approved-cold-restore-attempt-080-01`从 `consistent-fixture-checkpoint-9a030940-01` 的072故障回滚场景受控恢复；原操作202接受ID与当前 `failed_rolled_back/health_check_failed`精确一致，实际125/Auth2/Control0.3.8与原072清单/DLL/加载日志一致，数据、邀请码、隔离与宿主两服务均通过。新closure `fixture-restore-080-20261028/cold-restore080-completed.safe.json` SHA256 `8f01cc5cea7244aa6f0dd97ec0d2e673fa08ae57401f3005bf1ec29b27176d87`，绑定375份证据/23份源码，明确是072恢复证明。
-- 正式073来源也已建立：新observer `source073-recovery-20261028-01`以独立单次真实Web apply完成073，exit0且无存活observer；新accepted ID与终态一致。正式073精确commit/digest及bridge、125/Auth2/Control0.3.9的hash与实际加载、SQLite零活跃任务、有效邀请码、原072与新增073世界/账户比较、非目标资源与宿主两服务均通过。当前镜像以实际完整枚举得到11项，与冷源11项同集合，净增删为空；source数量不作为固定约束。`source073-ready080-compact.safe.json` SHA256 `55c970f8a6b179afe976dffe73b615f8497b4e5422c082bff907814fc7ac435a`为18706B/92引用、14必需roles的实际来源证明；完整扩展原件保留，compact仅压缩重复引用且全部事实逐值一致。原192份manifest及逐文件SHA再次核验全同，全部旧outer与原始证据保留。
-- 候选前提交带 `[manual-release-candidate]`，抑制自动递增074；仅从干净且与origin/main精确同步的新输入显式dispatch `version=0.8.0, previous_version=0.7.3, oldest_version=""`。073同时为上一正式版与最老支持来源，072直升拒绝。固定完整commit/UTC日期/唯一候选身份，正式仅提升其精确digest。
-- 已完成候选 `40649330655`，commit `999929cb76d4447eb409e4b1c3bbb37e921441c7`，UTC build date `2026-10-28T07:19:31Z`，digest `sha256:3d8c485bd2e41ce90f0f24cb5f252872297d7cc493ed01a19656e9aa67d16df4`；同SHA兼容 `40649173156`成功。代码门禁2001秒、候选构建/验证256秒、job总2318秒。门禁实际选择兼容合同、远程制品、部署脚本/ShellCheck、后端test/vet/build与Docker、Junimo真实网络integration、前端回归/production build及网站构建；按脚本跳过额外更老来源Web升级（显式oldest为空）和重复fresh补丁功能矩阵。CI新装health/version/未初始化/Panel重启约1.197秒，073协议正常/故障回滚约165.378秒；CI合成来源不替代下述真实世界专项。短摘要 `audit080-monitor-40649330655/ci-gate-short.safe.json` SHA256 `c01c266fc9f3b0f241dfc1149c4c60a9163455897ba8b7e34d07f565b9d3aafb`，详细摘要SHA256 `8f6c136eb92792f84cdcc8f7da05062c1a512a88df5fa765c24f585a4d2fd7ab`。
-- 上述精确候选的真实世界专项已完成：原正式073经Web单次确认正常升080并明确等待Prepare收敛；同候选unhealthy回到073，原接受ID与 `failed_rolled_back/health_check_failed`一致。`formal080-success-result.json`与`formal080-unhealthy-result.json`均passed；精确digest/bridge及原072、新增073两套world after-080比较通过。managed维护 `formal080-maintenance-20261028-01` exit0/零存活observer，`maintenance-080/post-upgrade-maintenance-success.json`核140/Auth140/Control0.3.9及实际hash、AuthReady/有效邀请码、备份/恢复/ZIP导出、Mod切换、游戏重启全通过，两套after-080-maintenance比较通过。主世界server/Auth随后按受控fresh串行窗口停止，结束须原ID/原running状态恢复。
-- fresh两次真实安装202均因手机批准超时failed，原接受/同job终态永久保留。用户确认Steam/手机段已测，后续不再重复；只读缓存核验游戏/SDK精确清单、228项核心SHA及3560项Content MD5通过。生产native组件v5实际完成SMAPI四核与stamp提交，`new080-default140/fresh140-component-v5/execution-01/native-receipt.private.json` SHA256 `46835e12c7f3644e588c270b70963ab163ce67592882579d6fbf156904d4b42c`，succeeded/completed，SMAPI装配与stamp各一次，无Steam/DB/job/installedReady变更；未生成安装成功或SteamCMD成功证明。
-- fresh LAN新世界POST201成功，首次custom-new-game返回202后同job failed：`smapi_bundled_sync_failed`、支持Mod同步helper退出125，Docker明确报 `unable to find user root`。原任务与日志保存在 `fresh140-20261028/cache-continued-v1/`；事务rolled_back、commandCalled=false、无存档/owner。`PANEL_HOST_DATA_DIR=/fixtures/panel-data`、Panel `/data` bind及两端同世界env字节只读核对一致。产品 `smapi_bundled_sync.go`由用户名root改numeric `0:0`，覆盖安装、新世界与SMAPI更新共用helper；11项unit及真实固定140 Docker父项1.45秒通过，前后资源精确不变，开发验证摘要 `new080-default140/smapi-numeric-root-fix-v1/verification.safe.json` SHA256 `a274865d769fbc663347db6c7bed99277792b592b62580e648fe11b423528e6e`。此修复使999输入失效，须新候选、新attempt/新幂等键验证新世界Start及受影响下游，不重放原failed键。
-- 后续main `b060ffec1c5af3379743c5aa43c236b497ab4bf7` 的候选 `40677483509` 已成功，UTC build date `2026-10-28T11:07:23Z`，digest `sha256:879ad5ae2205922769481f009e1221f7dd7e5b482b534e487825c1f891cebf1d`，workflow约944秒；但新空Panel的真实fresh Start在202接受后的同job failed/exit125，失败点为 `junimo_mod_runtime.go:extractJunimoServerMod`。它仍在同一精确140镜像上指定用户名root，原helper却丢弃stderr；用户名查找失败由源码及先前镜像验证定位。b060输入已superseded，禁止正式提升；原proof/archive、201/202/failed记录和所有旧999证据均保留，未重放Start。
-- 全仓helper复核后，JunimoServer提取器与 `installer.go` 的旧SteamCMD授权缓存迁移、legacy SMAPI安装三个剩余helper统一为numeric `0:0`；已修支持Mod同步和原数值UID0文件校验保持。提取器还供运行栈apply/rollback复用。独立 `games/steamcmd` 使用SteamCMD专用镜像而非140 SERVER_IMAGE，本轮不改；不能用140测试替代其实际镜像用户证据。后续候选commit/run/digest尚未确定，不预填。
-- 本次开发验证实际通过：unit5、Linux CGO0编译exit0，固定140实际JunimoServer提取与cold SMAPI安装/读回2父项+5子项=7PASS/0skip/0fail，native exit0，51.609289秒；原cache hashes及资源不变，0新增容器/卷、0Steam/API写。摘要 `candidate-all-helpers-v2/helper-tests-v1/real-result.safe.json` SHA256 `08a23678012710bd3a9a98c6c509bb470d0778ea225145e3348a3760eb9c7d3e`。新候选完整fresh新世界Start/Panel重启、073正常/unhealthy Web及后续专项仍待实际完成，不能把开发验证转记为候选验收。
-- 下一次专项须验证固定140无passwd条件下的JunimoServer真实提取及三个helper数值用户契约、125 legacy兼容，再在新候选完成新空Panel/新世界201、Start202同job成功、四核心/stamp、运行状态与Panel重启、精确清理；同一新候选还须完成正式073来源的正常与unhealthy Web链、两套数据比较及后续维护/UI。Steam/手机段按用户确认保留既有已测范围，不改写两个failed安装任务、不再次触发批准。
-- 后续证据布局采用 `E:/task-evidence/panel-release-20261028-numeric-root/` 为073来源parent：完整072冷点恢复、实际pointer/session及新073Ready在此生成；新候选使用独立 `candidate-all-helpers-v2/` 子根保存proof/pin/archive/feed/observer/collector。旧parent b060输入和旧root冻结证据不改。子根仅wx clone实际来源pointer/session并记录sourceRoot、原path/SHA，候选身份只读子根的新proof；现有 `/new-evidence` mount覆盖该子目录，无需改冷恢复HostConfig。上述新来源和新候选专项尚待实际完成。
+- 完整commit：`8b348b0095f990f17bf6307c2346c8b73cc3586b`；build date：`2026-10-28T12:44:54Z`。
+- 唯一digest：`sha256:65cf87fd343bd823bf6dd3c686b76d6a0a6a4417f3db3d8fdee1ab142387ad28`。
+- candidate [40690368111](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40690368111)、compat [40690058668](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40690058668)、真实验收 [40784861028](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40784861028)、自动tag [40784922437](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40784922437)、正式提升 [40784965514](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40784965514)均success。
+- annotated `v0.8.0`指上述commit；三仓六引用、OCI、四Release脚本逐byte及同run正式回拉冒烟通过，未重建候选。
+- GitHub latest保持v0.7.3；Docker三仓`0.8.0/latest`同digest。新装固定v0.8.0入口，旧≤072先073再Web确认080。
 
-| 080专项 | 正常路径与关键边界 | 权限、恢复、数据与清理 |
-| --- | --- | --- |
-| 全新安装与新世界 | health/version、未初始化、默认140/正式Auth140、Panel重启；合法游戏/SDK缓存与真实生产SMAPI组件装配后创建LAN新世界、Start及重启 | 保留两次手机批准超时failed安装；用户已测Steam段不重复。fresh核Auth140配置/镜像，AuthReady/邀请码由同候选主世界与恢复实证独立证明；新装来源合法，既有安装缺073记录拒绝 |
-| 安装与重装恢复 | 固定镜像patched SMAPI核心哈希/标记，create前journal与同卷续装；新装和保留旧source的删除路径；支持Mod同步、JunimoServer提取、legacy安装/缓存迁移helper统一数值用户 | 自动回归覆盖unknown create、丢卷拒绝、旧125 AuthOnly配对与范围阻断；真实Docker验证foreign holder及精确删除。补齐本次提取路径及125兼容专项；失败任务与journal保留，new-game回滚无残留后用新幂等键复验，不补写成功或伪造marker |
-| 真实Web升级 | 正式073检查、目标/提示、精确世界范围、单次管理员确认、预期断线重连、实例Prepare明确收敛 | 072直升、过期/重复确认和范围变化由自动回归及边界专项覆盖；同候选unhealthy得到failed_rolled_back/health_check_failed并恢复073 |
-| 运行栈与长期数据 | 140/正式Auth140/Control实际身份、有效非空邀请码，保留原072和新增073两套基线 | 存档/角色、Mod文件配置/启停/导出、备份恢复/导出、用户/专用会话、非目标容器/卷、原运行选择与维护后资源清理 |
-| 重启、UI与CLI | 升级得到的080 Panel重启后再验界面，1440/390/360两主题、固定底栏、唯一操作及零pageerror | 同次operation/plan恢复、073准备记录持久化，脚本073交接Web、080不被GitHub latest073降级；不重放已接受请求 |
+### 本版变更与实际专项矩阵
 
-- 自动门禁由 `scripts/run-release-gates.sh` 对上一tag到候选SHA的路径差异实际选择并记录：后端test/vet/build、前端状态/浏览器/production build、脚本/ShellCheck、兼容清单、updater/Docker integration始终执行；本版清单变化须触发对应真实SMAPI下载、远程制品与Junimo长integration；网站依据website/公开文档/README变化选择。未运行的链路只接受脚本生成的跳过理由，不预先把历史成功计作本候选通过。
-- 新增 `PANEL_INSTALL_DELETE_DOCKER_TEST=1` / `TestInstallGameVolumeDeletionDocker`至候选和独立兼容门禁，覆盖fresh及retained-source两种真实卷关系；两入口当前共11条真实Docker调用均显式禁结果缓存，前端轻量契约核ENV与父项选择。本地响应式及关联四组检查、默认140兼容清单24项和安装脚本五边界/ShellCheck已通过；真实删除与fresh游戏链仍以新候选实际结果回填。
-- 本地后端按全量及仅受影响包续测完成：2340项通过、9项条件跳过、19包无最终失败，vet/build均exit0；仅web/Docker测试fixture修正后续测，已通过game包不重复。summary SHA256 `c3522e35420bc31103a8208083495a30b473e4294712d7b0595938ed7d086e2e`。独立空DinD真实删除也已通过fresh/retained-source两场景，foreign holder保护与产品Apply删除精确，测试容器/卷归零；实际binary SHA256 `60251e301fcf6ad94dfd546481d868808f9821a22497298b8ea6085d535862aa`，receipt `fresh140-20261028/real-delete-regression-v2.safe.json`。随后已在该独立DinD载入999精确候选并完成上述真实fresh部分步骤；当前失败及numeric修复开发验证分别保留，新候选完整新世界结果待回填。
-- 本候选真实专项完成后封存acceptance，再由同digest候选创建annotated tag并提升三仓 `0.8.0/latest`；GitHub latest保持 `v0.7.3`。正式OCI、单仓回拉health/version、Release资产及官网上线完成后，回填实际候选/接受/正式/Pages run、digest、选择/跳过矩阵、耗时、故障和精确资源结果。任一必跑失败即停发布，保留原失败，只续受影响步骤。
-- 前序候选 `40635176841`（main `7895b0a66ea11a3835b2102f27e58658003566ad`）在代码门禁holder-wait回归的timeout场景失败，镜像构建、推送及proof均未执行；同输入独立兼容 `40635147573`成功。旧文档提交 `71bbb083…`的兼容 `40634616234`也已成功。后续运行契约与测试输入变化须以新main身份验证；实际失败保留，不提升该输入。
+默认140/正式Auth140/Control0.3.9，patched SMAPI完整性、安装journal/owned卷恢复与删除、125/140导入兼容、073全栈激活、Junimo helper数字`0:0`及部署资产为本版输入。
 
-- main `7957430124d22e45a863e882e42562560cae9811` 的独立兼容 `40644662683`完整成功（353秒），候选 `40644763471`在真实 `TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady`失败，镜像构建/推送/proof全部未执行。真实SMAPI下载和回滚材料integration已先通过；失败是该历史125/Auth2测试的辅助metadata循环仍读新Builtin140，而Driver夹具已显式legacy125，真实Auth ID因而赋给错误候选。生产强ID检查正确拒绝；回滚health超时来自测试故意的timeout模式。只将同一integration文件的辅助清单切为legacy125并移除未用import，未改生产或断言。
-- 修后单次本地真实复验最初因测试服务APK冷下载超2分钟而在断言前取消，保留原失败；单独有界预热相同FROM/RUN层并精确移除owned预热tag后，以原预算/同binary新attempt执行。实际父项及404/500/bad-json/timeout/unreachable五回滚子项全部通过，15.85秒、exit0，pure `/health`、不调用SteamReady、Control-only和隔离断言保留；结束0容器/0卷、仅原alpine和默认三网络。新测试源码SHA256 `578fc50487d574903a8d7ac2381adc82ecee2063cc34ab34e1e66a5dded7d63b`，binary SHA256 `88f21f7f8f512920959e7b1d634ae06a1b63125c7e408ce32fbb7266b4cf539a`。该测试输入修正须以新的干净同步main候选重新执行正式门禁，795失败与compat成功均保留。
+| 专项 | 实际结果与范围 |
+| --- | --- |
+| 自动代码门禁 | contracts、scripts/ShellCheck、backend test/vet/build、frontend状态/浏览器/build、兼容/updater/Docker全部通过。 |
+| 条件门禁 | 运行栈差异选择SMAPI/remote artifacts、Junimo真实网络/runtime；公开文档差异选择website build，无skip分支输出。 |
+| 正式073 Web | check/dry/prepare/一次管理员确认/正常终态与同候选unhealthy回滚均通过；Prepare明确收敛、同op/plan续观。 |
+| 升级后功能/数据 | 140/Auth140/Control0.3.9、四核/stamp、邀请码、备份恢复/导出/Mod开关/重启、CLI与UI通过；072/073双基线保持。 |
+| fresh | 空Panel/default140、3839许可cache校验、生产Provision201、原Start202同job成功、新档1、LAN启动/Panel重启与strict50通过。 |
+| 启动负例/隔离 | 本65cf缺bridge在DB前拒绝、DB字节/目录保持、synthetic数据精确清理；不触生产数据。 |
 
-- 上述单测修正/真实复验/原APK失败/预热/归零闭环receipt为 `audit080-monitor-40644763471/auth-acceptance-fix-v1/auth-acceptance-fix.safe.json`，SHA256 `d393432a1c6377f954111e91bb6563310309ea9a3b3ba171062ff7f4250df90d`；真实成功日志SHA256 `ebefb93836815147f32f8f3a38f30a4281dff77348d2dae298ad491475a909ec`。源码精确比较只含上述测试来源替换和import删除，生产未改。
+fresh的模板诊断`unknown/installed=false`如实保留，由生产Provision验真。fresh Auth disabled，`freshAuthReady=false/fullFreshInstallClaimed=false`；Auth140 ready/邀请码由主升级链证明。Steam/手机为用户确认完成段，原两failed不改，不扩写成本轮登录成功。
+
+healthy `transientDisconnects=0`保持。验收以Ready绑定的Source073旧Panel→65cf新Panel身份、同operation/plan/update、GET apply200 succeeded及重连证明真实切换，未为计数重测。
+
+### 实际耗时与原件
+
+- code-gate step日志跨度677.087981秒；candidate run窗口1031秒、job日志跨度1022.229111秒；compat窗口376秒、日志跨度370.069379秒。
+- 验收workflow28秒，自动tag24秒；正式job78秒、run窗口82秒。fresh证据范围6576.376秒含准备/等待/只读续接，不作为单job耗时。
+- CI原档：`candidate-terminal-summary.safe.json` SHA `34a04b225d2a304fbfe42f95b75a7251cc6397b7481eb12b7df58206644361a0`；step7 log SHA `c1aac5c163f4d8c626d69537313e2b44f1e257ffa4f86dde84eb7f644605ba23`。
+- 来源Ready：parent `source073-ready080-compact.safe.json` SHA `e4c311b4d26efbf1f3f64c691ee951da14efa93afbfc829e16216806a8c25e7a`，绑定新072恢复closure/073 Web及双基线，原192封存不改。
+- 最终输入：`acceptance-input080.json` SHA `0082b7f5fdb70408952b6ebf40ffd7ade0d7fa95574e57e961086b7618c697b4`。
+- 最终manifest：`acceptance-evidence080-manifest.json` SHA `9c72a5e1565a446859084d882e0f09c8e6bf57d5162478a2cb9002d11f4d494f`，26checks/1705refs。
+- 正式确认：`formal080-release-confirmed.json` SHA `fe8a22f408fed4e01b0f61b80f440d233d191a543f17db9273d31d8ecbb2b1fc`，188refs。
+
+### 故障保留、恢复与清理
+
+- 999/b060实测先后发现支持Mod与提取helper依赖root用户名；修为数字`0:0`后，由本8b候选完整链验收，旧candidate/failed job不覆盖。
+- 维护导出后缺冻结输入仅materialize原bytes并续接；cleanup原3Stop/tar复用，SQLite WAL头/SHM与对象键序接收器按原证据窄修后仅续outer动作。
+- OLD fixed unhealthy073导入Parent/annotations表示差异有原archive/Engine/actual proof，保留`rawExact=false`；原cache load不重放。
+- seed输入被全文件端口替换误改1hex；按原sealed inventory/archive证明并派生新reference correction与verification seal，原checksum/SDK和失败保持。
+- NEW cleanup-v8通过：SHA `9f651048e109fcba4ddc3c986cabc6f3ccb2514eba1e4bbf6b2144a1fddfd5f6`。OLD13images与原server/Auth身份、会话、运行选择恢复；`source-resumed.safe.json` SHA `479119865eeaf9ffa67e7bda37a4c2607d1fb6206cd5094c15ac1e25892d46a3`。
+- fresh结果SHA `f2dae6ed84895fb4960ad48ac40b8b1848b588af3e2da44889021e4c53b69ec7`；cleanup SHA `d904f7a08e2965e4238bcd04c8bb1608611cb45de1d2314b43b11d19e3fbfcf5`，containers/volumes/listeners均0、sourceTouched=false。
+- E中封存原件、私有数据快照、许可cache与OLD镜像是明确保留项；不以保留缓存冒充运行资源残留。
+
+### 官网与发布后提交
+
+- 网站main提交 `e00747677c0bb93763fca48f0d6a3590698e7260`；Pages [40786304505](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40786304505)成功，Node20 build22秒/deploy10秒。
+- 公开五页桌面/390手机共10内容/几何/截图通过；11route聚焦生命周期及独立fresh文档诊断0console/warn/pageerror/HTTP。
+- 原1条hydration console事件留存；等待app mounted、目标h1与2RAF后，11route聚焦console复验通过，复用原已过内容，不宣称精确Vue内部根因。
+- 官网最终收据`website080-public-final.safe.json` SHA `e537a4a487a5add436584410b413eb85e2afc224c51a929918ab36f16a136dab`（15refs），含10视口与视觉审阅、11route聚焦console；发布后提交不移动tag或重建digest。
 
 ## 2026-10-28 0.7.3 正式发布完成与收尾
 

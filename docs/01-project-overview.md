@@ -39,13 +39,21 @@
 
 ## 当前产品范围
 
-2026-10-28 当前正式版为 [v0.7.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.3)，commit `9a0309407618b12037945094c4c3b6591640c81b`。本版提供全局更新中心、发行说明和风险确认、旧版先升级073的版本分流、持久准备记录及恢复入口修复；运行栈保留 Junimo `.125` / Auth `1.5.0-anxi.2`，Control 为 `0.3.9`。
+2026-10-28 正式发布 [v0.7.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.3)，commit `9a0309407618b12037945094c4c3b6591640c81b`。本版提供全局更新中心、发行说明和风险确认、旧版先升级073的版本分流、持久准备记录及恢复入口修复；运行栈保留 Junimo `.125` / Auth `1.5.0-anxi.2`，Control 为 `0.3.9`。
 
 候选 `40475934168`、独立兼容 `40475934184`、真实专项封存 `40548614707` 和正式提升 `40551398256` 成功。三仓 `0.7.3/latest` 六引用均为 `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`；OCI及正式镜像 health/version通过，四份Release脚本与tag内Git blob逐字节一致。真实072及最老032的Web代表链、同候选unhealthy回滚、升级后数据/维护/重启和双主题三宽度界面验收均通过。自动tag下载失败及等价守卫恢复的完整记录见 `docs/09-image-build.md`。
 
-官网已同步073正式状态与升级指引；2026-10-28本对话继续已授权的080正式发布与官网上线。080全新安装默认使用 Junimo `.140` / 正式 Auth `1.5.0-preview.140-anxi.1`；已有服务器先完成073准备，再从Web更新中心确认范围，由同一事务升级Panel和游戏组到080/.140。`fullStackUpgrade.activate=true`负责受控迁移。候选必须从干净且同步的main显式生成 `version=0.8.0, previous_version=0.7.3, oldest_version=""`；073为上一正式版及最老支持来源，072直升080继续拒绝。GitHub latest保持073，Docker latest在080正式提升后指向080。
+## 2026-10-29 0.8.0 正式发布
 
-080验收来源已完成恢复与核验：新attempt从072故障回滚冷检查点恢复后，经独立一次真实Web操作升级到正式073，并新增073世界/账户基线。当前来源为073精确正式digest，运行125/Auth2/Control0.3.9，原1档3角色、用户/Mod/专用会话、非目标资源和有效邀请码均通过；旧072基线、全部旧outer与已封存192文件保持。`source073-ready080-compact.safe.json`绑定本次实际来源，详细closure与SHA见 `docs/09-image-build.md`。080候选、新装140、真实Web升级/同候选unhealthy回滚、数据维护/重启/UI及正式提升仍须对应新输入独立完成。
+当前正式版为 [v0.8.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.0)，由已验收的唯一候选直接提升，tag仍指向候选commit。
+
+- 新装默认 Junimo `1.5.0-preview.140`、正式 Auth `1.5.0-preview.140-anxi.1`、Control `0.3.9`。
+- v0.7.2及更早面板先到正式v0.7.3，再在Web更新中心确认一次范围，由同一事务升级Panel和游戏组。
+- GitHub latest保持v0.7.3；三仓Docker `0.8.0/latest`指向同一正式digest，新装入口固定v0.8.0。
+- 实际Web正常/回滚、维护、重启、UI、数据与独立新世界LAN验收通过，原资源已恢复/清理。
+- 官网Pages与公开五页桌面/手机内容、几何、截图及聚焦console验收完成。
+
+完整身份、矩阵、耗时、证据范围与收尾记录见[镜像与发布记录](09-image-build.md)。
 
 当前仓库已经围绕 Stardew driver 与动态实例路由形成完整闭环：
 

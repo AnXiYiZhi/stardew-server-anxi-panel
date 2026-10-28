@@ -1,4 +1,12 @@
-## 2026-10-28 0.8.0 发布前端接手增量
+## 2026-10-29 0.8.0 正式前端接手
+
+- 更新中心、一次范围确认、原operation/plan恢复、双主题与固定操作栏已随080实际升级链验收。
+- 真实080 Panel三宽度/双主题、唯一入口与弹窗、触点/溢出及零pageerror通过；历史样例不替代本轮证据。
+- 官网Pages [40786304505](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40786304505)、公开五页10视口及11route聚焦console通过，原唯一告警保持原件。
+- 官网最终收据为`website080-public-final.safe.json`；完整发布身份/SHA和失败续接记录见[docs09](../09-image-build.md)，当前界面状态见[docs03](../03-frontend.md)。
+- 后续维护继续从真实DOM href/目标挂载状态验收，只对新变化补受影响门禁，不重放已接受升级或用户确认的Steam段。
+
+## 2026-10-28 0.8.0 发布前接手记录（历史）
 
 - `frontend/scripts/test-responsive-layout.ts`现同时验证两pipeline的新装卷删除回归ENV与父项选择，11条真实Docker调用均须`-count=1`；本地响应式及关联四组检查通过。修改相关Go门禁时同时保留显式启用和覆盖检查，避免测试父项存在但默认Skip。
 - 本对话继续080正式发布及官网上线；新装默认140/正式Auth140，已有服务器先到073，再从更新中心检查范围并确认一次本次升级，由同一事务自动完成080 Panel和游戏组迁移。沿用昼夜主题/固定底栏及停服与Mod两项提醒，noticeDigest、精确operation/plan和恢复协议保持。073为上一版及最老来源，072直升拒绝。
