@@ -1,5 +1,6 @@
 ## 2026-10-28 0.8.0 正式候选接手增量
 
+- 795候选的真实Auth acceptance发现integration辅助循环尚读Builtin140，实际Driver夹具却为legacy125/Auth2；已仅修该_test.go的清单来源并删unused import。修后真实Docker父项与5个故障回滚子项全部通过，生产强身份/纯health/Control-only断言不改；首次本地APK setup超时与独立预热保留。以后变更默认矩阵时，legacy test的Driver与所有辅助metadata循环必须使用同一明确矩阵；tag/镜像不能使用795失败输入，后续新候选与证据见docs09。
 - 新增 `junimo140_install.go`及安装journal `.local-container/install-game-volumes/<volume>.json`：create前固定目标/来源/镜像身份并绑定，失败续用原卷；复用既有unused/label保护和patched SMAPI核心哈希/标记读回。涉及driver/installer/config、`docker/runtime_smapi_image.go`和删除planner；125基础安装仍要求全栈范围确认，AuthOnly按实际运行栈选原配对，125/140事务导入均保留。新卷及历史owned来源卷由实例删除清单枚举，foreign holder和其它世界引用继续阻止共享卷删除。后续须保留journal精确身份，不能以失败重试重置下载卷或放宽归属。
 - 当前开发证据为2340通过/9条件跳过、19包最终无失败，vet/build0；独立空DinD新装/保留来源两种删除关系、foreign holder在plan/apply保护和精确资源归零实际通过。后续正式CI仍从干净同步main完整复验，再由新080精确镜像执行fresh游戏和073 Web专项；不能把开发二进制或073来源证明当候选镜像验收。出处及SHA见docs09。
 - 本对话继续已授权的080正式发布：默认新装与受控升级统一采用140/正式Auth140/Control0.3.9，`runtime_stack_manifest.json`启用fullStackUpgrade，当前发行策略切080。已有服务器先完成073准备，再从Web更新中心确认一次本次范围，由driver在同一事务内完成Panel和游戏组迁移；新装来源走独立初始化。关联Web确认、073准备记录和CLI协议保持，Auth为db3f7d53…/digest4649205b…已有正式制品。

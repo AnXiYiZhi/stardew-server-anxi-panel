@@ -23,6 +23,11 @@
 - 本候选真实专项完成后封存acceptance，再由同digest候选创建annotated tag并提升三仓 `0.8.0/latest`；GitHub latest保持 `v0.7.3`。正式OCI、单仓回拉health/version、Release资产及官网上线完成后，回填实际候选/接受/正式/Pages run、digest、选择/跳过矩阵、耗时、故障和精确资源结果。任一必跑失败即停发布，保留原失败，只续受影响步骤。
 - 前序候选 `40635176841`（main `7895b0a66ea11a3835b2102f27e58658003566ad`）在代码门禁holder-wait回归的timeout场景失败，镜像构建、推送及proof均未执行；同输入独立兼容 `40635147573`成功。旧文档提交 `71bbb083…`的兼容 `40634616234`也已成功。后续运行契约与测试输入变化须以新main身份验证；实际失败保留，不提升该输入。
 
+- main `7957430124d22e45a863e882e42562560cae9811` 的独立兼容 `40644662683`完整成功（353秒），候选 `40644763471`在真实 `TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady`失败，镜像构建/推送/proof全部未执行。真实SMAPI下载和回滚材料integration已先通过；失败是该历史125/Auth2测试的辅助metadata循环仍读新Builtin140，而Driver夹具已显式legacy125，真实Auth ID因而赋给错误候选。生产强ID检查正确拒绝；回滚health超时来自测试故意的timeout模式。只将同一integration文件的辅助清单切为legacy125并移除未用import，未改生产或断言。
+- 修后单次本地真实复验最初因测试服务APK冷下载超2分钟而在断言前取消，保留原失败；单独有界预热相同FROM/RUN层并精确移除owned预热tag后，以原预算/同binary新attempt执行。实际父项及404/500/bad-json/timeout/unreachable五回滚子项全部通过，15.85秒、exit0，pure `/health`、不调用SteamReady、Control-only和隔离断言保留；结束0容器/0卷、仅原alpine和默认三网络。新测试源码SHA256 `578fc50487d574903a8d7ac2381adc82ecee2063cc34ab34e1e66a5dded7d63b`，binary SHA256 `88f21f7f8f512920959e7b1d634ae06a1b63125c7e408ce32fbb7266b4cf539a`。该测试输入修正须以新的干净同步main候选重新执行正式门禁，795失败与compat成功均保留。
+
+- 上述单测修正/真实复验/原APK失败/预热/归零闭环receipt为 `audit080-monitor-40644763471/auth-acceptance-fix-v1/auth-acceptance-fix.safe.json`，SHA256 `d393432a1c6377f954111e91bb6563310309ea9a3b3ba171062ff7f4250df90d`；真实成功日志SHA256 `ebefb93836815147f32f8f3a38f30a4281dff77348d2dae298ad491475a909ec`。源码精确比较只含上述测试来源替换和import删除，生产未改。
+
 ## 2026-10-28 0.7.3 正式发布完成与收尾
 
 - 正式版本 [v0.7.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.3) 已于UTC `2026-10-27T17:33:14Z` 发布。完整commit `9a0309407618b12037945094c4c3b6591640c81b`，固定build date `2026-10-27T08:47:06Z`，唯一digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。annotated tag对象 `ae0255a3bc30e9abe3cb2b3d69281903040c5fb3` 精确指向该commit，绑定候选与接受run，未移动既有tag。

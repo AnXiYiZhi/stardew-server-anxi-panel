@@ -14,7 +14,6 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
-	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -193,7 +192,7 @@ ThreadingHTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
 		t.Fatalf("unexpected auth probe paths: %q", requests)
 	}
 
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	manifest, err := legacy125RuntimeManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
