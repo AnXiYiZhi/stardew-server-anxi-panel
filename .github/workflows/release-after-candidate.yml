@@ -47,7 +47,7 @@ jobs:
             artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts")"
             mapfile -t names < <(jq -r '.artifacts[] | select((.name | startswith("release-acceptance-")) and (.expired | not)) | .name' <<<"$artifacts_json")
             [[ "${#names[@]}" -eq 1 ]]
-            gh run download "$SOURCE_RUN_ID" --name "${names[0]}" --dir "$acceptance_dir"
+            gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "${names[0]}" --dir "$acceptance_dir"
             acceptance="$acceptance_dir/acceptance.json"
             jq -e --arg sha "$SOURCE_SHA" --arg run "$SOURCE_RUN_ID" '.commit == $sha and .acceptanceWorkflowRunId == $run' "$acceptance" >/dev/null
             candidate_run_id="$(jq -r '.candidateWorkflowRunId' "$acceptance")"
@@ -86,7 +86,7 @@ jobs:
             echo "expected exactly one unexpired candidate proof artifact" >&2
             exit 1
           fi
-          gh run download "$CANDIDATE_RUN_ID" --name "${artifact_names[0]}" --dir "$proof_dir"
+          gh run download "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "${artifact_names[0]}" --dir "$proof_dir"
           if [[ ! -s "$proof_dir/candidate.json" ]]; then
             echo "candidate proof is missing" >&2
             exit 1

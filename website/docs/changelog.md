@@ -6,7 +6,17 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.7.2（最新版本）
+## v0.7.3（最新版本）
+
+**先完成升级准备**：v0.7.2 及更早版本先升级到 v0.7.3，再从更新中心继续后续大版本。此步保留 Junimo .125 与 Auth 1.5.0-anxi.2 的组合，按兼容规则同步所需 Control 补丁。
+
+**统一更新中心**：游戏库、世界列表和实例内版本入口共用更新内容、重要提示、预检、进度和历史记录。更新中心跟随页面的暖昼/静夜主题，桌面与窄屏都可查看并确认升级。
+
+**为实例大更新准备**：后续 v0.8.0 正式提供后，先预检目标与世界范围，再由管理员确认停服和第三方 Mod 兼容提示。下载预检与执行授权分开，失败恢复与断线重连继续关联同一次操作。
+
+GitHub latest Release 保持 v0.7.3，让旧版先取得准备版本；v0.7.3 及以后按正式 Release 列表选择满足前置条件的目标。Docker latest 另随正式镜像提升。操作顺序、备份和恢复方法见 [更新面板与游戏实例](/maintain/update)，完整说明见 [GitHub Release v0.7.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.3)。
+
+## v0.7.2
 
 **直连地址读取更可靠**：世界列表、桌面和手机总览直接读取当前世界的游戏端口，停服时也可展示与复制地址；外部公网 IP 查询失败不会再阻断显示。默认端口、自定义端口、IPv6 和重新同步保持一致。
 

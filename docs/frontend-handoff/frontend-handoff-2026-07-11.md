@@ -1,3 +1,12 @@
+## 2026-10-28 0.7.3 正式前端接手
+
+- 073正式版已包含 `PanelUpdateEntry`、唯一 `PanelUpdateProvider`/`UpdateDetailsDialog`、`FullStackUpgradeActions` 固定底栏、昼夜主题与提示摘要确认；commit `9a0309407618b12037945094c4c3b6591640c81b`，digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。candidate `40475934168`、acceptance `40548614707`、release `40551398256` 成功，tag `v0.7.3` 和三仓073/latest一致。
+- 候选前端状态/浏览器回归与production build通过；真实072→073的同digest Panel在维护和重启后完成1440/390/360、暖昼/静夜、固定底栏、唯一弹窗、触点/溢出及零pageerror验证。证据为 `E:/task-evidence/panel-release-20261027` 内 `ui073-9a030940-01` 及已封存192文件manifest，原样例API与V4截图不能替代本轮实际证明。
+- 官网只上线已发布073首页/变更记录和明确的先073升级指引，Pages上线结果见docs09。当前073/080历史记录保留原时点语义；当前正式版本以本节为准，080尚未正式发布。
+- 用户要求073收尾后新开对话再发布080；新对话须先读正式073确认与OPERATIONS，使用073真实场景新增基线，保持原072数据/会话和已封存证据。复用既有视觉和单次确认协议，080新候选完成真实Web升级/回滚、维护、重启后再跑双主题三宽度UI；fresh仍125/Auth2，显式升级目标140/Auth140，GitHub latest保留073。禁止复用073验收冒充080完成或重放已接受操作。
+
+以下为发布前历史交接，当前状态以上节为准。
+
 ## 2026-10-27 正式发布接手增量
 
 - 资源CI前置修复同步新增发布契约回归：responsive-layout解析命令/flags验证9条真实Docker调用-count=1，并按Go测试父项验证两入口覆盖RealDocker+Fixture，不使用整行字符串硬绑定；响应式与4子项通过。须挂完整仓库以读取.github/backend，UI像素图标/昼夜/固定底栏没有变更。

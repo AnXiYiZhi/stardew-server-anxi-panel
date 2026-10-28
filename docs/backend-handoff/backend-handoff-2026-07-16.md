@@ -1,3 +1,13 @@
+## 2026-10-28 0.7.3 正式发布接手
+
+- 073 已正式完成：commit `9a0309407618b12037945094c4c3b6591640c81b`，digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`；candidate `40475934168`、compat `40475934184`、acceptance `40548614707`、release `40551398256` 成功。annotated tag `v0.7.3` 保持不变，三仓073/latest六引用一致，OCI、正式镜像health/version与四份Release资产字节均通过核验，GitHub latest=`v0.7.3`。
+- 本版后端/发布关联文件包括 updatecheck 发行策略、updater/bridge、启动前置守卫、Web升级handlers、runtime manifest、deploy策略与release workflows；原候选已覆盖此前事务修复入口和异步Prepare等待修复。当前073 `activate=false`、fresh125/Auth2/Control0.3.9不变。代码门禁、072/032真实Web升级回滚及精确digest真实世界专项均已完成；专项18检查/192绑定文件，原1档/3角色、用户、Mod/配置、专用会话、非目标资源及Panel重启完整。
+- tag自动任务 `40548742682` 因checkout前下载缺少 `--repo` 失败；本地等价核验同run/SHA/digest、原始artifacts、矩阵、干净同步main和tag不存在后，仅推送一次annotated tag，由push自动触发正式提升，dispatch为0。后续下载必须显式repo，并保留真实失败及恢复证据；收尾工作流修复不回改073 tag或重建已发布镜像。
+- Docker Desktop数据盘已按授权迁至 `E:/DockerDesktopData`，原两个宿主服务恢复且身份/版本不变；原任务现场经过一致性冷归档、权限/文件/数据库验证后恢复，073正常升级、维护、重启/UI均基于该原现场。旧outer与独立回滚VHD仍保留，禁止为080重建或初始化它。新outer `pr-20261027-dind`，Panel `http://127.0.0.1:19212`，内层Docker `tcp://127.0.0.1:19211`；精确身份从现有daemon证明读取，不抄旧ID。
+- 080由新对话继续：先读取 `formal073-release-confirmed.json` 与外部 `OPERATIONS.md`，按既有工具新增073基线，保留072原基线和所有已封存字节。仅在新候选明确080后启用目标140/Auth140，最低/最老来源073，保留072跳级拒绝；fresh保持125/Auth2，GitHub latest保留073。必须完成同一候选的真实Web故障回滚和正常迁移、有效邀请码、数据/Mod/备份、重启与UI，再封存提升。完整run/digest/故障/清理记录见docs09；本对话仅收尾073记录和官网，不执行080发布。
+
+以下为发布前历史交接，当前状态以上节为准。
+
 ## 2026-10-27 正式发布接手增量
 
 - 等待修复已落在 `test_release_candidate_upgrade.sh`，新增 `test_release_candidate_holder_wait.sh` 并接入 `run-release-gates.sh`。只读等待intent/Compose/精确unknown-holder拒绝receipt，逐轮及GET后复核完整安全边界；重启另等持久scope/资源。Alpine v3行为回归22条摘要、三文件ShellCheck、bash语法及diff检查通过；本地首次mock变量动态作用域与裸负向断言已修正并记错题本。无生产代码或新增写协议变化，下一步提交新main候选、保留072/032两条真实Web链，再执行外部OPERATIONS真实世界维护/重启/UI专项，不能提升旧失败输入。

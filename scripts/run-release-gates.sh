@@ -75,6 +75,7 @@ bash scripts/tests/test_repair_junimo_upgrade.sh
 bash scripts/tests/test_release_matrix.sh
 bash scripts/tests/test_release_candidate_reuse.sh
 bash scripts/tests/test_release_candidate_holder_wait.sh
+bash scripts/tests/test_release_workflow_download.sh
 
 release_shell_files=(
   deploy/run.sh
@@ -92,6 +93,7 @@ release_shell_files=(
   scripts/tests/test_release_matrix.sh
   scripts/tests/test_release_candidate_reuse.sh
   scripts/tests/test_release_candidate_holder_wait.sh
+  scripts/tests/test_release_workflow_download.sh
 )
 for shell_file in "${release_shell_files[@]}"; do
   bash -n "$shell_file"

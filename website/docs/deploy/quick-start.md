@@ -37,7 +37,7 @@ Windows 用户完成后访问 `http://localhost:8090`。建议把 `~/.anxi-panel
 固定版本安装：
 
 ```bash
-PANEL_VERSION=0.1.0 PANEL_PORT=8090 bash run.sh install
+PANEL_VERSION=0.7.3 PANEL_PORT=8090 bash run.sh install
 ```
 
 ## 脚本菜单功能
@@ -46,24 +46,24 @@ PANEL_VERSION=0.1.0 PANEL_PORT=8090 bash run.sh install
 
 ## 更新面板
 
-```bash
-cd ~ && bash run.sh update
-```
+已有服务器优先从 Web 检查更新。`v0.7.2` 及更早版本先完成 `v0.7.3` 升级准备；达到073后，在游戏库、世界列表或实例版本入口打开“更新中心”，阅读提示并确认后续升级。
 
-如果更新后仍显示旧版本，强制重新拉取镜像并重建容器：
-
-```bash
-cd ~ && bash run.sh force-update
-```
-
-如果启动脚本本身也有更新，先更新脚本再更新面板：
+旧版本需要从命令行更新时，先更新脚本，再明确选择准备版本：
 
 ```bash
 cd ~ && bash run.sh update-script
-cd ~ && bash run.sh update
+cd ~ && PANEL_VERSION=0.7.3 bash run.sh update
 ```
 
-更新面板只会重建面板容器，不会删除 `~/.anxi-panel/data`，存档、Mod、数据库和备份会继续保留。
+旧版升级到073因拉取失败或缓存仍未生效时，可对同一目标使用：
+
+```bash
+cd ~ && PANEL_VERSION=0.7.3 bash run.sh force-update
+```
+
+达到 `v0.7.3` 后，当前脚本会把后续升级交给 Web 更新中心。需要恢复无法访问的 Panel 时，核对当前精确版本和原有数据挂载，恢复访问后继续同一次操作。
+
+Panel 升级会保留 `~/.anxi-panel/data` 中的数据；后续游戏实例大更新还会按确认范围保存、停服、备份与迁移，不能概括为“只重建面板”。停服、Mod 兼容性与恢复步骤见 [更新面板与游戏实例](/maintain/update)。
 
 ## 下一步
 

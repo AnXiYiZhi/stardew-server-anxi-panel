@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.7.2
+release: v0.7.3
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.7.2。直连地址读取更可靠，登录与总览更清晰，窄窗口布局完善，前端素材与构建输入更轻。
+    details: 当前最新 v0.7.3。统一更新中心展示更新内容与重要提示，先完成升级准备，再确认后续游戏实例大更新。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -46,7 +46,7 @@ features:
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
     <strong>{{ $frontmatter.release }}</strong>
-    <p>优化读取与静态资源性能，分层查看资源占用，清晰呈现安装失败原因，并修复未进入世界玩家的占位记录问题。</p>
+    <p>先完成 v0.7.3 升级准备；统一更新中心集中展示更新内容、重要提示与升级进度，后续游戏大版本另行确认影响范围。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

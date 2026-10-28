@@ -1,3 +1,12 @@
+## 2026-10-28 0.7.3 正式联调发布完成
+
+- `v0.7.3` 已正式发布：commit `9a0309407618b12037945094c4c3b6591640c81b`，唯一digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。candidate `40475934168`、compat `40475934184`、acceptance `40548614707`、release `40551398256` 成功；三仓073/latest六引用与OCI元数据一致，正式health/version和四个Release脚本字节已核验。
+- 发行body/targetVersion/noticeDigest、dry-run/apply与full-stack确认协议已在本版候选完成自动回归；072和最老032通过真实Web正常升级及unhealthy回滚。原072真实世界专项按同一候选先故障回滚、再单次正常升级073，期望断线重连与终态恢复通过；原1档/3角色、用户、Mod/配置、专用Auth会话、非目标资源保持，备份恢复/ZIP、有效邀请码、Panel重启和实际UI通过。封存18检查/192文件，不包含公开敏感账号、邀请码或存档标识。
+- 073持久准备记录已随原数据保留，运行栈升级开关仍false，fresh125/Auth2/Control0.3.9。自动tag `40548742682` 的checkout前下载缺repo失败已保留；全部等价run/SHA/digest与main守卫核验后只推送一次annotated tag，push触发正式提升，无重复dispatch。073 tag和镜像内容保持不变。
+- 按用户要求在记录/官网收尾后开新对话继续080：上一/最老来源均073，072直升拒绝，使用新的干净同步main候选；从正式073新增基线后验证同一候选的unhealthy恢复、真实Web范围确认/140/Auth140迁移、数据维护、重启及双主题UI。fresh保持125/Auth2，GitHub latest保留073。现有073确认在 `E:/task-evidence/panel-release-20261027/formal073-release-confirmed.json`，详细矩阵和资源保留见docs09，尚未形成080正式候选或发布证明。
+
+以下为发布前历史联调记录，当前状态以上节为准。
+
 ## 2026-10-27 正式升级联调门禁准备
 
 - 资源范围API契约不变；其真实Docker夹具在空daemon自行准备固定镜像并通过完整统计/共享卷断言。调用方不再靠其它测试副作用，CI的integration结果不使用Go缓存，资源真实测试和Fixture契约一并执行；失败日志保留原命令结果以便分辨准备失败与业务失败。
