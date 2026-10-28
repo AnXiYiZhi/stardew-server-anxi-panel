@@ -1,3 +1,9 @@
+## 2026-10-28 0.8.0 正式联调准备
+
+- 本轮启用080目标清单及发行策略，来源固定正式073；`version=0.8.0, previous_version=0.7.3, oldest_version=""`，072直升及缺073准备记录继续拒绝。全新安装默认125/Auth2，受控目标140/正式Auth `1.5.0-preview.140-anxi.1`。GitHub latest保留073，073及以后从正式列表选择080，Docker latest随正式同digest提升。
+- 隔离现场以新attempt恢复已封存的072故障回滚冷检查点，再受控到正式073并追加073基线；原072基线、旧outer及冻结证据保留。后续真实Web prepare/confirm必须保存本次HTTP状态与operation/plan，单次确认后只读观察终态与生产Prepare收敛，不以Panel健康代替实例完成，也不重放旧操作。
+- 本候选尚待验证：真实073→080、同候选unhealthy回滚073、提示/范围与CLI边界、140/Auth140及有效非空邀请码、两套数据基线、用户/专用会话/非目标资源、维护/导出/备份恢复、Panel重启和真实UI。维护任务详情保持 `{"job": ...}` 契约；原始证据最小投影并绑定候选完整SHA/digest。完整门禁、结果及封存入口见docs09。
+
 ## 2026-10-28 0.7.3 正式联调发布完成
 
 - `v0.7.3` 已正式发布：commit `9a0309407618b12037945094c4c3b6591640c81b`，唯一digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。candidate `40475934168`、compat `40475934184`、acceptance `40548614707`、release `40551398256` 成功；三仓073/latest六引用与OCI元数据一致，正式health/version和四个Release脚本字节已核验。

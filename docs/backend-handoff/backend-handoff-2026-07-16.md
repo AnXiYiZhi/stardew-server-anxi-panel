@@ -1,3 +1,9 @@
+## 2026-10-28 0.8.0 正式候选接手增量
+
+- 本对话继续已授权的080正式发布：`runtime_stack_manifest.json`启用fullStackUpgrade，当前发行策略切080；默认新装125/Auth2/Control0.3.9保持，范围确认后的目标为140/正式Auth140。关联driver、Web确认、073准备记录和CLI协议沿用现有实现，目标Auth为db3f7d53…/digest4649205b…已有正式制品。
+- 当前任务DinD停机，先核对容量/身份/只读状态。以新attempt从已封存072故障回滚冷检查点受控恢复，再建立正式073来源和新增073基线；保留原072基线、全部旧outer和冻结文件。该恢复不初始化替换原数据，不冒称冷点是073终态，不重放旧073操作。
+- 新候选必须干净同步main，显式080/previous073/oldest空；073为最老来源，072直升继续拒绝。当前本候选验收尚待执行：自动门禁、真实073 Web正常升级/同候选unhealthy回滚、140/Auth及有效邀请码、数据/Mod/备份维护、Panel重启与UI/CLI。完成后封存同digest再正式提升；GitHub latest保持073，Docker latest提升080。完整矩阵和待回填实际run/digest/资源结果见docs09。
+
 ## 2026-10-28 0.7.3 正式发布接手
 
 - 073 已正式完成：commit `9a0309407618b12037945094c4c3b6591640c81b`，digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`；candidate `40475934168`、compat `40475934184`、acceptance `40548614707`、release `40551398256` 成功。annotated tag `v0.7.3` 保持不变，三仓073/latest六引用一致，OCI、正式镜像health/version与四份Release资产字节均通过核验，GitHub latest=`v0.7.3`。

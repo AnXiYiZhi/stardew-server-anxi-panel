@@ -1,5 +1,23 @@
 # Junimo 更新替换交接 2026年10月15日
 
+## 2026-10-28 0.8.0 正式候选执行准备
+
+- 本对话按既有授权继续080正式发布及对应官网上线，直接使用main，不建立分支/worktree。当前正式版仍为073；本节为080准备与待验收清单，不宣称候选或发布已完成。
+- 本版变更清单：启用 `runtime_stack_manifest.json` 的 `fullStackUpgrade.activate=true`，将 `deploy/updates/0.8.0.json` 用作当前发行策略；复用073已发布的更新中心、提示摘要/精确范围确认、持久准备记录和driver协调器，受控迁移 Junimo `1.5.0-preview.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。全新安装默认保留 Junimo `.125` / Auth `1.5.0-anxi.2` / SMAPI `4.5.2` / Control `0.3.9`。Auth固定来源db3f7d53…、digest4649205b…，已有正式制品不重建。
+- 受影响链路：正式073更新检查/发行内容→目标预取与世界范围→管理员提示确认→Panel替换与SQLite保护→游戏组保存/备份/停服/140与Auth迁移/恢复→有效邀请码→维护与重启。另覆盖072跳级与CLI交接、全新安装、非目标资源、候选封存/正式提升和正式后官网。
+- 现场恢复独立于080候选验收：任务DinD停机且三持久来源为tmpfs，先核对Docker、宿主容量、精确身份和只读状态；从 `consistent-fixture-checkpoint-9a030940-01` 的072故障回滚场景使用新attempt受控恢复，再建立正式073来源并追加073基线。原072基线、旧outer、冻结输入与既有073证明全部保留；该冷检查点不是073终态，不直接start后假定数据存在，不重放历史操作。
+- 候选前提交带 `[manual-release-candidate]`，抑制自动递增074；仅从干净且与origin/main精确同步的新输入显式dispatch `version=0.8.0, previous_version=0.7.3, oldest_version=""`。073同时为上一正式版与最老支持来源，072直升拒绝。固定完整commit/UTC日期/唯一候选身份，正式仅提升其精确digest。
+
+| 080专项 | 正常路径与关键边界 | 权限、恢复、数据与清理 |
+| --- | --- | --- |
+| 全新安装 | health/version、未初始化、默认125/Auth2、Panel重启 | 新装来源记录合法；既有安装缺073记录启动拒绝 |
+| 真实Web升级 | 正式073检查、目标/提示、精确世界范围、单次管理员确认、预期断线重连、实例Prepare明确收敛 | 072直升、过期/重复确认和范围变化由自动回归及边界专项覆盖；同候选unhealthy得到failed_rolled_back/health_check_failed并恢复073 |
+| 运行栈与长期数据 | 140/正式Auth140/Control实际身份、有效非空邀请码，保留原072和新增073两套基线 | 存档/角色、Mod文件配置/启停/导出、备份恢复/导出、用户/专用会话、非目标容器/卷、原运行选择与维护后资源清理 |
+| 重启、UI与CLI | 升级得到的080 Panel重启后再验界面，1440/390/360两主题、固定底栏、唯一操作及零pageerror | 同次operation/plan恢复、073准备记录持久化，脚本073交接Web、080不被GitHub latest073降级；不重放已接受请求 |
+
+- 自动门禁由 `scripts/run-release-gates.sh` 对上一tag到候选SHA的路径差异实际选择并记录：后端test/vet/build、前端状态/浏览器/production build、脚本/ShellCheck、兼容清单、updater/Docker integration始终执行；本版清单变化须触发对应真实SMAPI下载、远程制品与Junimo长integration；网站依据website/公开文档/README变化选择。未运行的链路只接受脚本生成的跳过理由，不预先把历史成功计作本候选通过。
+- 本候选真实专项完成后封存acceptance，再由同digest候选创建annotated tag并提升三仓 `0.8.0/latest`；GitHub latest保持 `v0.7.3`。正式OCI、单仓回拉health/version、Release资产及官网上线完成后，回填实际候选/接受/正式/Pages run、digest、选择/跳过矩阵、耗时、故障和精确资源结果。任一必跑失败即停发布，保留原失败，只续受影响步骤。
+
 ## 2026-10-28 0.7.3 正式发布完成与收尾
 
 - 正式版本 [v0.7.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.3) 已于UTC `2026-10-27T17:33:14Z` 发布。完整commit `9a0309407618b12037945094c4c3b6591640c81b`，固定build date `2026-10-27T08:47:06Z`，唯一digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。annotated tag对象 `ae0255a3bc30e9abe3cb2b3d69281903040c5fb3` 精确指向该commit，绑定候选与接受run，未移动既有tag。

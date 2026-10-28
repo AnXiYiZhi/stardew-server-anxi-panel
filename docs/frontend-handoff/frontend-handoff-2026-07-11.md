@@ -1,3 +1,9 @@
+## 2026-10-28 0.8.0 发布前端接手增量
+
+- 本对话继续080正式发布及官网上线；沿用既有更新中心/昼夜主题/固定底栏，当前080策略保留停服与Mod两项确认，noticeDigest、精确operation/plan和恢复协议保持。目标140/正式Auth140，fresh125/Auth2，来源及最老来源073，072直升拒绝。
+- 隔离现场先以新attempt从072故障回滚冷检查点受控到正式073并追加来源基线，保留原072/冻结证明。新候选通过真实Web正常升级及同候选unhealthy回滚、维护与重启后，须在得到的080 Panel验证三宽度双主题、唯一入口/弹窗、固定操作栏、触点/溢出与pageerror；当前尚未完成080证明。
+- 官网保持已发布073到080正式提升、Release与正式冒烟全部完成，再修改首页/变更记录和具体升级文案，记录实际Pages与线上内容/href核验。GitHub latest保持073，Docker latest正式提升080；本轮不修改既有视觉或用073截图替代080。文件/门禁/最终记录入口见docs03、docs09。
+
 ## 2026-10-28 0.7.3 正式前端接手
 
 - 073正式版已包含 `PanelUpdateEntry`、唯一 `PanelUpdateProvider`/`UpdateDetailsDialog`、`FullStackUpgradeActions` 固定底栏、昼夜主题与提示摘要确认；commit `9a0309407618b12037945094c4c3b6591640c81b`，digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。candidate `40475934168`、acceptance `40548614707`、release `40551398256` 成功，tag `v0.7.3` 和三仓073/latest一致。

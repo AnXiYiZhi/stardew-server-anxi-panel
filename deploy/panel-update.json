@@ -1,21 +1,27 @@
 {
   "schemaVersion": 1,
-  "version": "0.7.3",
-  "minimumUpdaterVersion": "0.0.0",
-  "title": "v0.7.3 · 升级准备与更新中心",
-  "summary": "先把升级过程准备好，再放心更新游戏实例。",
+  "version": "0.8.0",
+  "minimumUpdaterVersion": "0.7.3",
+  "title": "v0.8.0 · Junimo .140 与实例升级",
+  "summary": "升级游戏与认证服务，保留现有世界和数据。",
   "changes": [
-    "游戏库和世界列表新增更新入口，实例内也可随时打开同一个更新中心。",
-    "直接查看更新内容、重要提示和升级影响，进度与历史记录更清晰。",
-    "后续大版本更新按顺序提供，先完成 0.7.3，再升级到包含 Junimo .140 的 0.8.0。",
-    "补齐升级准备、目标校验和失败恢复，保留现有存档、Mod 与认证会话。"
+    "更新至 Junimo .140，并配套升级认证服务。",
+    "升级前自动保存和备份，完成后恢复原来运行的世界。",
+    "保留存档、Mod、配置和登录会话，可继续查看或恢复升级进度。"
   ],
   "notices": [
     {
-      "level": "info",
-      "title": "本次先完成面板升级准备",
-      "message": "此版本保留当前游戏运行栈。完成后，更新中心会显示后续实例大版本更新；届时会单独展示受影响世界并要求确认。",
-      "requiresConfirmation": false
+      "level": "warning",
+      "title": "需要短暂停服",
+      "message": "在线玩家将断开连接。系统会先保存和备份，完成后恢复原来运行的世界。",
+      "requiresConfirmation": true
+    },
+    {
+      "level": "warning",
+      "title": "确认 Mod 兼容性",
+      "message": "现有 Mod 和配置会保留；部分第三方 Mod 可能需要更新，请提前确认兼容性。",
+      "requiresConfirmation": true
     }
-  ]
+  ],
+  "blocked": false
 }

@@ -1,3 +1,9 @@
+## 2026-10-28 0.8.0 正式候选准备
+
+- 本对话继续已授权的080正式发布。运行栈清单启用 `fullStackUpgrade.activate=true`，`deploy/panel-update.json` 使用080发行策略，最低来源073；目标为 Junimo `.140` / 正式 Auth `1.5.0-preview.140-anxi.1`，全新安装仍为 `.125/Auth 1.5.0-anxi.2/Control 0.3.9`。沿用driver协调器、提示摘要/精确范围确认及073准备记录门禁。
+- 先以独立新attempt从072故障回滚冷检查点恢复隔离现场，再受控建立正式073来源和新增073基线；保留原072基线、旧outer与全部冻结文件。冷检查点不代表073终态，不重放历史已接受操作。
+- 新候选输入固定 `version=0.8.0, previous_version=0.7.3, oldest_version=""`，073同时为最老支持来源，072跳级仍拒绝。当前为准备阶段，后端/脚本/兼容/Docker门禁、真实Web正常升级和同候选unhealthy回滚、140/Auth140及有效邀请码、原数据/维护/重启边界尚待本候选验收；以docs09实际run/digest和证明为准。发布后GitHub latest保留073，三仓Docker latest提升080同digest。
+
 ## 2026-10-28 0.7.3 正式发布完成
 
 - 正式版 `v0.7.3` 已发布，commit `9a0309407618b12037945094c4c3b6591640c81b`，唯一 digest `sha256:3fbc285b1eb258c8816fc392582117c0e606bcde5540e7daef58f56a2dbac85f`。候选 `40475934168`、独立兼容 `40475934184`、专项封存 `40548614707` 与正式提升 `40551398256` 成功；三仓 `0.7.3/latest` 六引用一致，正式镜像 health/version 和四份 Release 脚本逐字节核验通过。GitHub latest 为 `v0.7.3`。
