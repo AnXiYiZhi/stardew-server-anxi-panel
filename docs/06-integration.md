@@ -4,6 +4,7 @@
 - `GET /api/system/update/full-stack` 新增兼容性可选字段 `confirmationExpired`；新服务端 GET 显式 true/false，持久 Public 不保存该观测，plan hash 不变。过期仅限未授权的 awaiting_confirmation。
 - confirm 区分 `full_stack_preflight_incomplete`、`full_stack_preflight_failed`、`full_stack_confirmation_unavailable` 和原 `full_stack_confirmation_expired`；actor、operation、plan、目标和范围检查保持。运行中存档只读捕获最多等90秒并服从取消。
 - 073 使用正式 Release 列表发现最高兼容版；实际073/080客户端对未知未来081先走普通 Panel check/dry-run/notice/apply，刷新后的081再检查当前游戏范围。旧二进制的080内置目标不变，新版本目标投影按自身发行版本。
+- `GET /api/system/update/full-stack`可能返回上次已授权操作，不代表它属于当前Panel apply。前端以operation/panelUpdateId、目标版本及可用的旧终态先后关系选择当前范围；旧080成功不能覆盖新081的`manual_action/legacy_full_stack_confirmation_required`。原始历史保留；旧manual_action另列原目标恢复，按原actor/operation/hash发既有recover，身份改变零POST，原恢复完成前按后端full_stack_busy阻止新prepare。实际旧响应已纯函数复现误投影，状态、22个Chrome入口和17个生命周期回归通过；新候选实际界面复验待完成。
 - 真实 SDK253 Docker staging 与坏游戏/截断SDK负例已通过；用户授权服务器的080→140运行栈恢复已 succeeded，独立备份和原记录保留。081候选的080/073代表链、同候选unhealthy回滚、升级后功能/数据/重启和实际Auth会话仍按 docs09 完成并绑定精确digest。
 
 ## 2026-10-29 0.8.0 联调验收完成

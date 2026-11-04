@@ -35,6 +35,7 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
   const progress = apply?.fullStack?.progress ?? apply?.progress ?? 0
   const successfulHistory = apply && ['succeeded', 'not_needed'].includes(phase)
   const completedGameUpgrade = data.fullStackUpgrade?.phase === 'succeeded'
+  const historicalRecovery = data.historicalFullStackRecovery
   const authorizedGameUpgrade = Boolean(data.fullStackUpgrade?.authorizedAt && !['succeeded', 'failed_safe', 'panel_failed_rolled_back'].includes(data.fullStackUpgrade.phase))
   const newAuthorization = !authorizedGameUpgrade && Boolean(status?.updateAvailable || scopedUpgrade && !completedGameUpgrade)
   const visibleNotices = content?.notices?.filter(notice => newAuthorization || content?.blocked || notice.level === 'danger' || notice.level === 'warning' && !notice.requiresConfirmation) || []
@@ -62,7 +63,7 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
   }, [close])
 
   const progressCard = apply ? <section className={'sd-update-apply sd-update-apply--' + apply.phase} aria-live="polite">
-    <div><strong>{panelUpdatePhaseLabel(phase)}</strong><span>{progress}%</span></div>
+    <div><strong>{panelUpdatePhaseLabel(phase,apply.fullStack?.errorCode)}</strong><span>{progress}%</span></div>
     <p>{withVersionPrefix(apply.fromVersion)} → {withVersionPrefix(apply.toVersion)}</p>
     <progress max="100" value={progress} />
     {apply.fullStack?.result || apply.result ? <p>{apply.fullStack?.result || apply.result}</p> : null}
@@ -95,12 +96,14 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
       {content?.blocked ? <p className="sd-update-error" role="alert">此版本暂缓升级，请按照重要提示处理并等待后续通知。</p> : null}
       {status?.checkError || data.updateError ? <p className="sd-update-error" role="alert">{status?.checkError || data.updateError}</p> : null}
       {active || apply && !successfulHistory ? progressCard : null}
+      {historicalRecovery ? <section className="sd-update-dry-run" aria-label="历史全栈恢复"><strong>历史目标 {withVersionPrefix(historicalRecovery.panel.version)} 需要恢复</strong><p>先恢复该次已授权事务，再检查当前版本的升级范围。</p><button type="button" className="sd-update-apply-button" disabled={data.fullStackBusy || historicalRecovery.actorId !== user.id} onClick={() => void data.recoverFullStack(historicalRecovery)}>继续恢复历史事务</button>{historicalRecovery.actorId !== user.id ? <p>请由原授权管理员继续恢复。</p> : null}</section> : null}
       {showScope ? <FullStackUpgradePanel compact hideActions /> : null}
       {environmentReady && status?.updateAvailable && !active ? <p className="sd-update-environment-result">升级环境检查通过</p> : null}
       {data.updateDryRunError || data.updateApplyError ? <p className="sd-update-error" role="alert">{data.updateDryRunError || data.updateApplyError}</p> : null}
       {successfulHistory ? <details className="sd-update-history"><summary>上次升级已完成 · {withVersionPrefix(apply.toVersion)}</summary>{progressCard}{completedGameUpgrade ? <><FullStackUpgradePanel readOnly compact />{admin && !status?.updateAvailable && data.versionInfo?.runtimeUpgrade?.requiresScopeConfirmation ? <button type="button" className="sd-update-environment" disabled={data.fullStackBusy} onClick={() => void data.prepareFullStack(data.versionInfo?.version || '')}>重新检查游戏组件更新</button> : null}</> : null}</details> : null}
       <details className="sd-update-technical"><summary>版本与诊断详情</summary>
         <dl className="sd-update-details"><div><dt>发布时间</dt><dd>{date(status?.publishedAt)}</dd></div><div><dt>最近检查</dt><dd>{date(status?.checkedAt)}</dd></div><div><dt>构建提交</dt><dd>{status?.currentCommit || data.versionInfo?.commit || '—'}</dd></div><div><dt>升级环境</dt><dd>{dryRun?.capability.reason || '尚未检查'}</dd></div></dl>
+        {data.rawFullStackUpgrade && data.rawFullStackUpgrade !== data.fullStackUpgrade ? <dl className="sd-update-details"><div><dt>历史全栈目标</dt><dd>{withVersionPrefix(data.rawFullStackUpgrade.panel.version)}</dd></div><div><dt>历史操作状态</dt><dd>{data.rawFullStackUpgrade.phase}</dd></div></dl> : null}
         {dryRun?.error ? <p>{dryRun.error}</p> : null}
         {dryRun?.logs.map((log, index) => <p key={index}>{log.message}</p>)}
         {apply?.logs.map((log, index) => <p key={index}>{log.message}</p>)}

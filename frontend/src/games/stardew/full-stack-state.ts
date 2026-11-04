@@ -2,6 +2,30 @@ import type { FullStackUpgradeStatus, PanelUpdateApplyStatus } from '../../api'
 
 export const fullStackTerminal = (phase: string) => ['succeeded','failed_safe','manual_action','preflight_failed','panel_failed_rolled_back'].includes(phase)
 
+function explicitlyLinkedApply(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus): boolean {
+  return Boolean(base && (base.operationId && base.operationId === op.operationId || op.panelUpdateId && op.panelUpdateId === base.updateId))
+}
+
+export function selectCurrentFullStackUpgrade(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string): FullStackUpgradeStatus | null {
+  if (!op) return null
+  if (explicitlyLinkedApply(base, op)) return op
+  // A current preparation or recovery remains actionable independently of when
+  // the browser loaded the Panel status. Only unrelated terminal history ages out.
+  if (!fullStackTerminal(op.phase)) return op
+  const normalize = (value: string) => value.replace(/^[vV]/, '')
+  const current = normalize(currentVersion || (base?.phase === 'succeeded' ? base.toVersion : base?.fromVersion) || '')
+  const target = normalize(op.panel.version)
+  if (current && target !== current || base && normalize(base.toVersion) !== target) return null
+  const created = Date.parse(op.createdAt)
+  const panelStarted = Date.parse(base?.startedAt || '')
+  if (Number.isFinite(created) && Number.isFinite(panelStarted) && created < panelStarted) return null
+  return op
+}
+
+export function selectHistoricalFullStackRecovery(raw: FullStackUpgradeStatus | null, current: FullStackUpgradeStatus | null): FullStackUpgradeStatus | null {
+  return raw && raw !== current && raw.authorizedAt && raw.phase === 'manual_action' ? raw : null
+}
+
 export function fullStackConfirmationExpired(op: FullStackUpgradeStatus | null): boolean {
   if (!op || op.authorizedAt || op.phase !== 'awaiting_confirmation') return false
   return op.confirmationExpired === true
@@ -36,8 +60,9 @@ export const fullStackPhaseLabel = (phase: string) => ({
 }[phase] ?? phase)
 
 export function projectFullStackApply(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string): PanelUpdateApplyStatus | null {
+  op = selectCurrentFullStackUpgrade(base, op, currentVersion)
   if (!op?.authorizedAt) return base
-  const matching = base && (base.operationId === op.operationId || op.continuation && base.toVersion.replace(/^v/,'') === op.panel.version)
+  const matching = base && (explicitlyLinkedApply(base, op) || op.continuation && base.toVersion.replace(/^v/,'') === op.panel.version)
   const panel = matching ? base : {
     updateId:op.panelUpdateId || op.operationId,phase:op.continuation ? 'succeeded' as const : 'checking' as const,
     progress:0,fromVersion:currentVersion,toVersion:op.panel.version,originalImage:'',originalDigest:'',

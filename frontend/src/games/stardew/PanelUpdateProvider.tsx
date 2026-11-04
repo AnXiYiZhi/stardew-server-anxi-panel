@@ -10,13 +10,13 @@ import {
   getVersion,
   runPanelUpdateDryRun,
 } from '../../api'
-import type { PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
+import type { FullStackUpgradeStatus, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
 import type { CurrentUser } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import { isPanelUpdateActive, isPanelUpdateTerminal, panelUpdatePhaseLabel, reconnectDelay } from './panel-update-machine'
 import './PanelUpdateProvider.css'
 import { useFullStackUpgrade } from './useFullStackUpgrade'
-import { projectFullStackApply } from './full-stack-state'
+import { projectFullStackApply, selectCurrentFullStackUpgrade, selectHistoricalFullStackRecovery } from './full-stack-state'
 import { UpdateDetailsDialog } from './UpdateDetailsDialog'
 import { storedGameLibraryBackground, type GameLibraryBackground } from '../game-library-state'
 
@@ -27,6 +27,8 @@ export type PanelUpdateContextValue = ReturnType<typeof useFullStackUpgrade> & {
   updateStatus: PanelUpdateStatus | null
   updateDryRun: PanelUpdateDryRunStatus | null
   updateApply: PanelUpdateApplyStatus | null
+  rawFullStackUpgrade: FullStackUpgradeStatus | null
+  historicalFullStackRecovery: FullStackUpgradeStatus | null
   updateError: string | null
   updateDryRunError: string | null
   updateApplyError: string | null
@@ -105,7 +107,9 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     setUpdateDialogOpen(true)
     window.dispatchEvent(new CustomEvent('panel-update-recovered'))
   },[]))
-  const projectedApply = useMemo(()=>projectFullStackApply(updateApply,fullStack.fullStackUpgrade,versionInfo?.version || updateStatus?.currentVersion || ''),[updateApply,fullStack.fullStackUpgrade,versionInfo?.version,updateStatus?.currentVersion])
+  const currentFullStackUpgrade = useMemo(()=>selectCurrentFullStackUpgrade(updateApply,fullStack.fullStackUpgrade,versionInfo?.version || updateStatus?.currentVersion || ''),[updateApply,fullStack.fullStackUpgrade,versionInfo?.version,updateStatus?.currentVersion])
+  const historicalFullStackRecovery = useMemo(()=>selectHistoricalFullStackRecovery(fullStack.fullStackUpgrade,currentFullStackUpgrade),[fullStack.fullStackUpgrade,currentFullStackUpgrade])
+  const projectedApply = useMemo(()=>projectFullStackApply(updateApply,currentFullStackUpgrade,versionInfo?.version || updateStatus?.currentVersion || ''),[updateApply,currentFullStackUpgrade,versionInfo?.version,updateStatus?.currentVersion])
 
   const refreshUpdateStatus = useCallback(async (manual = false) => {
     if (manual && !isAdmin) return
@@ -205,7 +209,7 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
   }, [isAdmin, updateDryRun])
 
   useEffect(() => {
-    if (!isAdmin || fullStack.fullStackUpgrade?.authorizedAt || !isPanelUpdateActive(updateApply)) return
+    if (!isAdmin || currentFullStackUpgrade?.authorizedAt || !isPanelUpdateActive(updateApply)) return
     let cancelled = false
     let timer = 0
     const generation = reconnectGenerationRef.current
@@ -272,12 +276,14 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [isAdmin, reconnectGeneration, updateApply?.phase, updateApply?.toVersion, updateStatus?.latestVersion,fullStack.fullStackUpgrade?.authorizedAt])
+  }, [isAdmin, reconnectGeneration, updateApply?.phase, updateApply?.toVersion, updateStatus?.latestVersion,currentFullStackUpgrade?.authorizedAt])
 
   const openUpdateDialog = useCallback(() => setUpdateDialogOpen(true), [])
   const closeUpdateDialog = useCallback(() => setUpdateDialogOpen(false), [])
   const value = useMemo<PanelUpdateContextValue>(() => ({
     ...fullStack,
+    fullStackUpgrade:currentFullStackUpgrade,rawFullStackUpgrade:fullStack.fullStackUpgrade,
+    historicalFullStackRecovery,
     versionInfo, updateStatus, updateDryRun, updateApply:projectedApply,
     updateError, updateDryRunError, updateApplyError,
     updateChecking, updateDryRunChecking, updateApplyStarting,
@@ -287,14 +293,14 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     closeUpdateDialog,
     continueReconnect,
   }), [
-    versionInfo, updateStatus, updateDryRun, projectedApply,fullStack,
+    versionInfo, updateStatus, updateDryRun, projectedApply,fullStack,currentFullStackUpgrade,historicalFullStackRecovery,
     updateError, updateDryRunError, updateApplyError,
     updateChecking, updateDryRunChecking, updateApplyStarting,
     updateDialogOpen, updateTheme, reconnectMode, reconnectAttempts,
     refreshUpdateStatus, runUpdateDryRun, applyUpdate, continueReconnect, openUpdateDialog, closeUpdateDialog,
   ])
 
-	const overlayPhase = panelUpdatePhaseLabel(projectedApply?.fullStack?.phase ?? projectedApply?.phase ?? '')
+	const overlayPhase = panelUpdatePhaseLabel(projectedApply?.fullStack?.phase ?? projectedApply?.phase ?? '',projectedApply?.fullStack?.errorCode)
   return (
     <PanelUpdateContext.Provider value={value}>
       {children}

@@ -12,7 +12,7 @@ export function FullStackUpgradeActions({ noticeDigest, noticesAccepted = true, 
   const expired=fullStackConfirmationExpired(op)
   const authorized=Boolean(op?.authorizedAt && !['succeeded','failed_safe','panel_failed_rolled_back'].includes(op.phase))
   const future=target?.replace(/^v/,'')!==data.versionInfo?.version.replace(/^v/,'')
-  const canPrepare=Boolean(target) && (!future || data.updateDryRun?.phase==='succeeded') && !preparing && !authorized
+  const canPrepare=Boolean(target) && (!future || data.updateDryRun?.phase==='succeeded') && !preparing && !authorized && !data.historicalFullStackRecovery
   if (!hasGameUpgradeFlow(data.versionInfo, op, data.updateStatus)) return null
   return <div className="sd-update-actions">
     {op?.phase==='awaiting_confirmation' || op?.phase==='scope_changed' ? <button type="button" className="sd-update-dismiss" disabled={data.fullStackBusy} onClick={()=>void data.cancelFullStack()}>{compact ? '取消本次准备' : '撤销本次授权'}</button> : null}

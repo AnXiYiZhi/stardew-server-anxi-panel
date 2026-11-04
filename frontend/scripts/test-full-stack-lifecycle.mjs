@@ -17,7 +17,7 @@ const entry = [
   "import {FixtureProvider} from '/fixture-context'",
   "import {markSessionAuthenticated} from '/src/auth-session-events.ts'",
   "import '/src/games/stardew/UpdateDetailsDialog.css'",
-  "function App(){const [admin,setAdmin]=useState(window.fixture.admin),[user,setUser]=useState(41),[on,setOn]=useState(true);const data=useFullStackUpgrade(user,admin,()=>{},v=>window.fixture.offline=v,()=>window.fixture.finished++);window.fixture.confirm=data.confirmFullStack;window.fixture.recover=data.recoverFullStack;window.fixture.logout=()=>{markSessionAuthenticated();setUser(42);setAdmin(false)};window.fixture.unmount=()=>setOn(false);const projected=projectFullStackApply(null,data.fullStackUpgrade,'0.7.3');return on?React.createElement(FixtureProvider,{value:{...data,versionInfo:{version:'0.7.3',runtimeUpgrade:{requiresScopeConfirmation:true,serverVersion:'1.5.0-preview.140',authVersion:'1.5.0-anxi.3'}},updateStatus:{updateAvailable:false}}},React.createElement('output',null,JSON.stringify({status:data.fullStackUpgrade,projected})),admin?React.createElement(FullStackUpgradePanel):null):React.createElement('output',null,'unmounted')}",
+  "function App(){const [admin,setAdmin]=useState(window.fixture.admin),[user,setUser]=useState(41),[on,setOn]=useState(true);const data=useFullStackUpgrade(user,admin,()=>{},v=>window.fixture.offline=v,()=>window.fixture.finished++);window.fixture.confirm=data.confirmFullStack;window.fixture.recover=data.recoverFullStack;window.fixture.prepare=data.prepareFullStack;window.fixture.logout=()=>{markSessionAuthenticated();setUser(42);setAdmin(false)};window.fixture.unmount=()=>setOn(false);const projected=projectFullStackApply(null,data.fullStackUpgrade,'0.7.3');return on?React.createElement(FixtureProvider,{value:{...data,versionInfo:{version:'0.7.3',runtimeUpgrade:{requiresScopeConfirmation:true,serverVersion:'1.5.0-preview.140',authVersion:'1.5.0-anxi.3'}},updateStatus:{updateAvailable:false}}},React.createElement('output',null,JSON.stringify({status:data.fullStackUpgrade,projected})),admin?React.createElement(FullStackUpgradePanel):null):React.createElement('output',null,'unmounted')}",
   "createRoot(document.getElementById('root')).render(React.createElement(StrictMode,null,React.createElement(App)))",
 ].join('\n')
 const contextModule = "import{createContext,useContext}from'react';const C=createContext(null);export const FixtureProvider=C.Provider;export const usePanelUpdate=()=>useContext(C)"
@@ -152,9 +152,13 @@ try{
         assert.equal(posts.length,0,'refresh must resume by GET without another migration request')
       }else if(scenario==='manual recovery'){
         assert.equal(await page.getByRole('button',{name:'下载并预检全栈升级'}).count(),0)
+        await page.evaluate(()=>window.fixture.prepare('0.7.3'))
+        assert.equal(posts.length,0,'manual recovery must finish before a new preflight can replace its authorization')
+        await page.evaluate(()=>window.fixture.recover({operationId:'stale-recovery',planSha256:'0'.repeat(64)}))
+        assert.equal(posts.length,0,'a changed historical recovery identity must not send a POST')
         await page.evaluate(()=>{window.fixture.recover();window.fixture.recover()})
         await page.waitForFunction(()=>JSON.parse(document.querySelector('output').textContent).status?.phase==='recovering')
-        assert.equal(posts.length,1);assert.equal(posts[0].planSha256,status.planSha256)
+        assert.deepEqual(posts,[{action:'recover',confirm:true,operationId:status.operationId,planSha256:status.planSha256}])
         status={...status,phase:'failed_safe'}
         await page.waitForFunction(()=>JSON.parse(document.querySelector('output').textContent).status?.phase==='failed_safe')
         assert.equal((await read(page)).projected.fullStack.progress,0)

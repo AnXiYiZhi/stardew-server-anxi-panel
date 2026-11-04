@@ -2,6 +2,9 @@
 
 - 更新中心按服务端 GET 的 `confirmationExpired` 显式布尔显示过期与重新下载预检入口，每 5 秒只读刷新跨期；浏览器绝对时钟不决定授权是否有效。旧 API 缺省时交由后端最终判断，同 operation 的过期拒绝可续观，新的计划或明确有效状态会清除旧提示。
 - 已授权操作保持原 operation/plan 的观察与恢复；过期组卡显示“上次预检结果，需重新检查”，有效待确认流程保持。
+- 2026-11-05 补充：当前全栈范围由原始 operation、Panel apply 和当前版本通过纯 selector 派生；无关联的旧终态不能覆盖新 Panel 更新或倒写目标版本。显式 operation/panelUpdateId 关联优先并保留真实Panel版本路径，非终态准备与恢复不按时间过滤，旧时间缺省时不推定先后；原始历史保留诊断。
+- 旧已授权manual_action另列历史目标和恢复入口，不替代当前081卡片；原授权管理员按原operation/hash恢复，身份改变不发请求。按后端full_stack_busy契约，原恢复完成前显示但禁用新的范围检查，hook也拒绝新prepare。实际080→081的旧080成功误报已复现；状态回归、22个Chrome入口场景、17个生命周期场景和production build通过。原候选停止提升，新候选仍须真实升级后界面复验，旧截图不作为修复后的通过证明。
+- `legacy_full_stack_confirmation_required`在进度卡、总览和顶栏统一显示“等待游戏迁移确认”；其它真正manual_action仍显示人工恢复，历史恢复区不受此文案映射影响。
 - 073 读取最高兼容正式发行，081/未来082的说明明确先更新 Panel，再由刷新后的新版本检查实际游戏范围。已激活版本的 scope 目标使用当前 Panel 版本。
 - 涉及 `FullStackUpgradePanel.tsx`、`useFullStackUpgrade.ts`、`full-stack-state.ts`、API DTO、更新入口/状态脚本。真实 Chrome 覆盖新旧 API、服务端跨期、浏览器时钟前后偏移、授权后续观、073发现081/082和新版本范围入口；聚焦回归通过。
 - 正式081升级后的双主题/三宽度验收随同候选继续执行。公开081入口已封存并通过网站构建，正式提升后再应用和部署，记录见 docs09。

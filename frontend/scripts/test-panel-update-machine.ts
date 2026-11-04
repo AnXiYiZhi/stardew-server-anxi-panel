@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import type { PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus } from '../src/api.ts'
+import type { FullStackUpgradeStatus, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus } from '../src/api.ts'
+import { projectFullStackApply, selectCurrentFullStackUpgrade, selectHistoricalFullStackRecovery } from '../src/games/stardew/full-stack-state.ts'
 import {
   canStartPanelUpdate,
   hasGameUpgradeFlow,
@@ -55,6 +56,8 @@ assert.equal(panelUpdatePhaseLabel('waiting_health'), '正在等待新版本健�
 assert.equal(panelUpdatePhaseLabel('rolling_back'), '正在回滚')
 assert.equal(panelUpdatePhaseLabel('verifying_auth'), '正在验证认证服务健康（不等待 Steam 登录）')
 assert.equal(panelUpdatePhaseLabel('verifying_runtime'), '正在验证 SMAPI 实际加载版本')
+assert.equal(panelUpdatePhaseLabel('manual_action','legacy_full_stack_confirmation_required'),'等待游戏迁移确认')
+assert.equal(panelUpdatePhaseLabel('manual_action'),'运行栈需要人工恢复')
 
 const pulling = panelUpdateSurface(update, apply('pulling', 65), { version: '0.1.14' })
 assert.equal(pulling.topbarText, '正在全栈升级 65%')
@@ -135,5 +138,67 @@ const runtimeSafeFailure = { ...apply('succeeded', 100), fullStack: { phase: 'fa
 assert.equal(isPanelUpdateActive(runtimeSafeFailure), false)
 assert.equal(isPanelUpdateTerminal(runtimeSafeFailure), true)
 assert.deepEqual([0, 1, 2, 6, 20].map(reconnectDelay), [800, 1200, 2000, 10000, 10000])
+
+// The actual080 -> 081 failure: an older authorized080 scope must not replace
+// the newer Panel apply's explicit request for runtime-scope confirmation.
+const current081: PanelUpdateApplyStatus = {
+  ...apply('succeeded', 100), updateId:'panel-081', fromVersion:'0.8.0', toVersion:'0.8.1',
+  startedAt:'2026-11-05T00:00:00Z',
+  fullStack:{phase:'manual_action',progress:100,runtimeRequired:true,errorCode:'legacy_full_stack_confirmation_required'},
+}
+const history080: FullStackUpgradeStatus = {
+  operationId:'scope-080',planSha256:'1'.repeat(64),phase:'succeeded',actorId:41,
+  panel:{version:'0.8.0',image:'panel:080',imageId:'sha256:'+'2'.repeat(64),revision:'3'.repeat(40),buildDate:'2026-10-28T00:00:00Z'},
+  runtimeVersion:'1.5.0-preview.140',runtimeDigest:'sha256:'+'4'.repeat(64),
+  controlVersion:'0.4.0',controlSha256:'5'.repeat(64),gameBuildId:'game',sdkBuildId:'sdk',smapiIdentity:'patched SMAPI',
+  createdAt:'2026-10-28T00:00:00Z',expiresAt:'2026-10-29T00:00:00Z',authorizedAt:'2026-10-28T00:01:00Z',
+  panelUpdateId:'panel-080',continuation:false,groups:[],
+}
+const historyCopy = structuredClone(history080)
+assert.equal(selectCurrentFullStackUpgrade(current081,history080,'0.8.1'),null)
+assert.equal(projectFullStackApply(current081,history080,'0.8.1'),current081)
+const manualSurface = panelUpdateSurface({...update,currentVersion:'0.8.1',latestVersion:'v0.8.1',updateAvailable:false},projectFullStackApply(current081,history080,'0.8.1'),{version:'0.8.1'})
+assert.equal(manualSurface.topbarText,'等待游戏迁移确认')
+assert.equal(manualSurface.overviewText,'等待游戏迁移确认')
+assert.equal(manualSurface.targetVersion,'0.8.1')
+assert.deepEqual(history080,historyCopy,'raw history must remain intact')
+for (const phase of ['failed_safe','manual_action','preflight_failed','panel_failed_rolled_back']) {
+  assert.equal(selectCurrentFullStackUpgrade(current081,{...history080,phase},'0.8.1'),null)
+}
+const currentScope: FullStackUpgradeStatus = {
+  ...history080,operationId:'scope-081',panel:{...history080.panel,version:'0.8.1'},
+  panelUpdateId:undefined,continuation:true,createdAt:'2026-11-05T00:02:00Z',authorizedAt:'2026-11-05T00:03:00Z',
+}
+assert.equal(selectCurrentFullStackUpgrade(current081,currentScope,'v0.8.1'),currentScope)
+assert.equal(projectFullStackApply(current081,currentScope,'0.8.1')?.fullStack?.phase,'succeeded')
+assert.equal(selectCurrentFullStackUpgrade(current081,{...currentScope,createdAt:history080.createdAt},'0.8.1'),null,'same-version terminal history cannot replace a later unrelated Panel apply')
+const explicitlyLinked = {...currentScope,createdAt:history080.createdAt,panelUpdateId:current081.updateId}
+assert.equal(selectCurrentFullStackUpgrade(current081,explicitlyLinked,'0.8.1'),explicitlyLinked,'explicit persisted identity takes precedence over timestamps')
+const panelIdOnlyLinked = {...explicitlyLinked,continuation:false}
+const projectedLinked = projectFullStackApply(current081,panelIdOnlyLinked,'0.8.1')
+assert.equal(projectedLinked?.updateId,current081.updateId,'panelUpdateId-only association retains the accepted Panel update')
+assert.equal(projectedLinked?.fromVersion,'0.8.0')
+assert.equal(projectedLinked?.toVersion,'0.8.1')
+const operationLinked = {...current081,operationId:currentScope.operationId}
+assert.equal(selectCurrentFullStackUpgrade(operationLinked,currentScope,'0.8.1'),currentScope)
+for (const phase of ['preparing','awaiting_confirmation','waiting_panel','migrating','recovering','scope_changed']) {
+  const pending = {...currentScope,phase,createdAt:history080.createdAt,authorizedAt:phase==='preparing'||phase==='awaiting_confirmation'?undefined:currentScope.authorizedAt}
+  assert.equal(selectCurrentFullStackUpgrade(current081,pending,'0.8.1'),pending,'current nonterminal scope is not discarded by timestamp alignment')
+}
+for (const createdAt of ['', 'unknown']) {
+  const unaligned = {...currentScope,createdAt}
+  assert.equal(selectCurrentFullStackUpgrade(current081,unaligned,'0.8.1'),unaligned,'missing legacy timestamps do not invent a stale ordering')
+}
+const futurePanelScope = {...currentScope,panel:{...currentScope.panel,version:'0.8.2'},phase:'waiting_panel',continuation:false}
+assert.equal(selectCurrentFullStackUpgrade(current081,futurePanelScope,'0.8.1'),futurePanelScope,'a newly authorized future Panel transaction stays observable')
+const currentPrepared = {...currentScope,phase:'awaiting_confirmation',authorizedAt:undefined}
+assert.equal(projectFullStackApply(current081,currentPrepared,'0.8.1'),current081,'preflight alone does not manufacture Panel success')
+assert.equal(selectCurrentFullStackUpgrade(null,currentScope,'0.8.1'),currentScope)
+assert.equal(selectCurrentFullStackUpgrade(null,history080,'0.8.1'),null)
+const recoveryHistory = {...history080,phase:'manual_action'}
+assert.equal(selectHistoricalFullStackRecovery(recoveryHistory,null),recoveryHistory,'an old manual transaction remains available for its original recovery')
+assert.equal(selectHistoricalFullStackRecovery(recoveryHistory,recoveryHistory),null,'a current recovery is not duplicated as history')
+assert.equal(selectHistoricalFullStackRecovery(history080,null),null)
+assert.equal(selectHistoricalFullStackRecovery({...recoveryHistory,authorizedAt:undefined},null),null)
 
 console.log('panel update state machine tests passed')

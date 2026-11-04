@@ -8,6 +8,12 @@
 
 下一步：公开081九文件已封存并通过 docs:build，工作树保留已发布080入口；正式提升后按同字节补丁回放，再记录 Pages 和线上验收。原080和本轮候选证据保持各自身份。
 
+2026-11-05 补充：实际080→候选081的当前apply为成功、游戏范围需明确确认，但历史080 scope成功被`projectFullStackApply`无条件覆盖，导致目标倒退和全部完成误报。`full-stack-state.ts`新增当前范围纯selector，`PanelUpdateProvider.tsx`统一用于投影、当前操作和Panel观察；原始operation保留为`rawFullStackUpgrade`，无关联的旧成功只在技术详情标示。旧已授权manual_action独立显示历史目标和原管理员恢复入口，`useFullStackUpgrade.ts`核原operation/hash后走既有recover，身份变化不请求；按后端busy契约，旧恢复未完时新prepare入口保留禁用且hook拒绝覆盖。
+
+验证与后续：同operation/panelUpdateId投影保留真实版本路径，新081 continuation、未来Panel操作、未授权预检、缺省旧时间及同版本旧终态有状态回归；22个Chrome入口场景、17个生命周期场景及生产构建通过，包含历史恢复可达/原actor/原hash、新prepare及过时恢复零POST。原候选界面失败和只读原响应保留；新候选须重验实际modal、范围入口及三宽度/双主题，不能用旧断言或主apply成功代替全栈终态。
+
+文案：`panel-update-machine.ts`按`legacy_full_stack_confirmation_required`统一投影“等待游戏迁移确认”，供当前进度卡、总览与顶栏复用；真实恢复失败保留人工恢复语义，历史恢复按钮仍按原事务处理。
+
 ## 2026-10-29 0.8.0 正式前端接手
 
 - 更新中心、一次范围确认、原operation/plan恢复、双主题与固定操作栏已随080实际升级链验收。

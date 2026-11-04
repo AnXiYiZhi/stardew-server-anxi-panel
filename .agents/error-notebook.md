@@ -10,6 +10,8 @@
   最近复发/补充（2026-10-29，pwsh7/Python，全部先于未发动作）：复制接收器仍从 HERE.parent 推导冷源、按旧 basename 拼稀疏续接目录，或未核 ancillary fixture，分别在 prestart、只读诊断和维护导出后失败。正确做法是从 entry、prepared.dependencies 与每条 ref 的显式 base 解析全部传递依赖，逐角色核真实 name/attempt/port/path，并在第一写请求前运行实际输入的只读前置；同源输入只有字节/SHA相同才可独占 materialize，记录来源。保留原失败与已接受操作，只续未发动作；不能靠重建目录、复制当前输出为 expected 或重放业务解决。
 
   最近复发/补充（2026-11-04，Python/tar 导出）：先启动 tar 子进程，随后因输出文件父目录缺失而打开目标失败，归档未完成。按精确进程身份停止并确认退出后，改为先验证批准的父目录、独占打开输出，再启动生产者。预防同时执行现有输入前置与 AGENTS 的 PID/归属/有界退出规则；适用于流式导出，不能遗留无人接收输出的子进程或重做已完成业务。
+
+  最近复发/补充（2026-11-05，081临时工具身份与ACL）：复用v1目录保护器时，新V4/V5/bridge阶段前缀在任何目标动作前被旧正则拒绝；纯模块测试不能证明真实stage可用。新补件只允许已批准的精确根及声明阶段前缀，逐祖先拒绝越界/链接，并以实际空目录验证protected ACL及错误根/嵌套/非空目录拒绝；原helper和失败保留。调用新验证器前先读parser/help并携带其要求的manifest与SHA；无参调用曾由argparse拒绝，不能当验证成功。适用于任务临时工具，不扩大目标动作授权。
 - 最近补充（2026-10-28，资源探针投影）：VM df按overlay路径匹配，输出了判断空间无需的存储标识，随后又发现同一文件系统在多个namespace视图重复。原raw保持私有；改只选已确认挂载点并输出容量数字，多行要求容量tuple一致，不假定只有一行。任何资源探针都应在输出前完成必要字段白名单投影。
 
   最近补充（2026-10-29，resource preflight原始事实）：aggregate guard在保存各条件前throw generic failure，丢失首轮individual容量/端口值，未运行bootstrap或其它夹具变更。保留首失败；新facts-only scope先持久每条件观测与原native终态，再做聚合准入。后续独立观测的MemAvailable确实低于固定cap+reserve，但不能倒推首轮未保存的数值。事实采集与行动准入分段，禁止用swap信用、降低reserve或重跑写动作补事实。
@@ -38,10 +40,18 @@
 
   最近复发/补充（2026-10-29）：prepared.sources 有 keyed object 与 array 两种真实版本；可空 inputs/Labels/Tmpfs、字符串 imageID、原 stdout.safe 与追加 observedAtUtc 的宿主 receipt 也被误当相邻包结构。先列键、类型与条目数，再按已确认 ABI 读取；缺省 Labels 用存在性检查处理，不能在 StrictMode 下先访问缺失属性。生产 operation ID 必须取源码 canonical stack_ 前缀与32位小写hex契约，并与原 prepared op/plan 精确相等、校验路径 containment。bool、整数、字符串、内联 Linux 文件与外部路径分别校验；AST负向检查只分析实际执行源，不扫描测试断言自身或把 pruneUsed:false 当命令。原失败和原证据字节保持。 本轮Origin guard纠正：先在同一输入运行实际失败guard并保存字段差异，不能仅发现optional Labels就判其为唯一根因。实际首先失败是RepoDigests基线取自system/df摘要（3项各1），而原已批准完整image inspect与实际恢复为2/4/2且全部13身份精确；新receiver只从immutable原full inspect取完整expected集合，不adopt当前快照。摘要可供容量判断，不能代替完整身份基线。
 
+  最近复发/补充（2026-11-05，081真实ABI）：IPAM.Config实际可为null，旧服务创建器按list遍历在首个写动作前失败；新接续仅将该精确字段的null解释为无声明子网，其它非list拒绝，原失败保留后只续未发资源。正式080 check的latestVersion实际带v前缀，HTTP200已成功，不能因旧无v断言失败重发check；新只读接收器绑定原body/状态及同一持久结果，dry/apply的targetVersion仍按原无v契约。相同文件的E:/与E:\写法须各自校SHA、resolve及samefile，不能只因字典path字符串不同误拒，也不能接受另一处同字节副本。原workerSourceRef若指向后来变化的工作区，只能从已绑定原执行载荷恢复精确原SHA归档，不能改baseline或用当前worker冒充原读数。
+
+  最近复发/补充（2026-11-05，restore重建与有序配置）：真实restore202同job已成功后，Compose会force-recreate目标pair；自动Hostname、精确replace标签、原声明environment_file标签省略及唯一Env键值不变但原序改变，使旧“Config全不变”夹具误拒。独立谱系必须绑定同job/旧目标与创建窗口，明确记录仅获准的两目标差异、原/新完整Config与ordered Env指纹，并锁住实际新Config/HC/Mount原序；回投只证明差异完备，不声称原数组未变。其它目标、镜像、挂载和所有非目标仍严格，原失败与raw保持；后续只读接收，不重发restore。
+
+  最近复发/补充（2026-11-05，存档路径与运行日志）：真实reader以配置根为基准返回Saves/<save>/<member>，旧恢复checker少Saves/而把五个完全相同的备份hash误报missing。须从原plan/active SaveXML定位严格完整路径，逐member唯一并精确核hash/角色；不能任意suffix搜索。Panel重启快照还把ErrorLogs/SMAPI-latest.txt当不可变游戏数据；只读证明原前缀SHA完整保留、权限/归属与同game运行身份不变，新增固定INFO行仅报告类型/hash；所有存档、Mod、session、metadata与其它文件仍精确。此为一份具体运行日志的追加证明，不豁免整个目录或任意日志。
+
   最近补充（2026-10-29，fresh inspector真实输入）：固定Auth已按精确root digest加载，配置镜像mirror alias却未在本地命名；原readonly inspector对该alias返回NoSuchImage。配置引用须按runtime allowlist验证，已加载内容另按固定digest/platform/正式OCI验证，不能为满足夹具而补tag/pull。生产新世界env没有COMPOSE_PROJECT_NAME，依据原201世界ID、生产目录/project label、service及registered GAME_DATA_VOLUME闭合身份，不补env键或把构造的容器名当authority。Panel可无compose.service；取可选label先核存在并在断言前保存最小事实。原World/Start和失败inspector保留，新显式readonly接收器通过后只续未发阶段。
 
   最近补充（2026-10-29，脱敏后的typed ABI）：shared.safe按password/token键名替换值，连VNC的长度/布尔元数据也变成字面字符串[redacted]；另一预检把live provision-token与已脱敏记录全比，在任何删除前误拒。先核真实持久类型和原serializer，再以相同明确投影比较。仅原201/env绑定的唯一GAME卷、固定key、saved字面[redacted]及live32位lowerhex允许该表示处理，其它记录字段严格；current值仅存标明算法的SHA，originalTokenRawBaselineUnavailable=true/tokenRawEqualityClaimed=false。VNC原typed元数据无法从masked值还原，须保留原字符串并以封存源数据流、原managed0、唯一changedKey和intent/readback env hashes验证，不伪补原bool。预检失败仅输出field/type/hash，避免deepEqual异常dump原秘密；原失败、输入、env不改，不重做VNC/World/Start。
 - 最近补充（2026-10-28，OCI层级与平台形态）：只读checker误将合法direct platform root当index，另把加载后的Docker image ID与build config ID硬等，均执行前拒绝且无helper。先核原root/platform/config descriptor bytes；direct/index按真实media type分支，允许ID只取已证明的三层唯一集合，容器身份与完整OCI另核。不得扩大到任意当前ID或用版本tag代替内容身份；复用已验证的candidate identity工具，禁止在新探针重写层级假设。
+
+  最近复发/补充（2026-11-05，Docker29/Windows表示）：Auth的config.digest不是该daemon实际image.Id；按原OCI root/platform/config关联及实际native inspect分别记录，不混称Engine ID。按@digest拉取也不保证配置tag已命名，先核实际引用及已加载固定内容；曾补拉080 tag后才确认原configure本已本地tag，此次额外拉取只作无内容变化的历史事实，不宣称修复必要步骤。negative夹具根DB选择须限定原/data根，不能因归档内updater backup同basename误拒；原非空WAL/SHM整组保留。已accepted create后如Mount.Source以原Windows路径返回，需由原request、samefile和完整组SHA闭合同源；Docker合并显式Env覆盖的顺序不可凭镜像默认顺序猜测，锁实际新Config/Env原序后只续同ID未发start/rm，不能重create或放宽现有容器数组比较。
 
   最近补充（2026-10-29，native OCI导入metadata）：一次已成功的073 cache load后，原postcheck只在固定synthetic unhealthy073的Parent/Descriptor表示失败。原artifact index的3项annotations与导入后逐项相等，原Parent精确指向healthy root而导入后为null；Config/RootFS/ID/全部aliases及其它字段保持。来源以固定Engine源码、原fullinspect、原archive与实际postinspect的精确proof闭合，原rawExact=false、原failed/native load原样保存；新finish073仅0load只读接收。仅此固定对象/两表示差异可接收，不能忽略整个metadata、把摘要当fullinspect基线、重load或把rawExact改true。
 - 最近补充（2026-10-28，Docker进程探针）：docker top -eo args缺PID列而exit1；真实默认列已支持，改bare docker top并仅在内存判断SteamCMD，不打印或落盘可能含密码的完整参数。另误将原世界server名用于fresh daemon，inspect返回不存在；先枚举该专属daemon真实容器并核归属，再以确切名称读取，不能跨夹具套名称。原两个Steam任务终态和新请求ID独立保留，不因诊断失败重发动作。
@@ -100,6 +110,12 @@
 - 最近复发/补充（2026-10-28，080准备文档检索）：主代理与只读审计代理对docs09使用宽标题/版本模式，输出超工具预算而截断；原命令退出0不代表内容已读。先停止宽检索，以`rg -n -m 8`定位080精确章节，再逐份读取已确认的短行段；文件库存也限制到任务根当前层或精确后缀，不把递归历史receipt列表当工作清单。原截断输出不作为审计证据，不整篇重读。预防继续遵循AGENTS的80行/12000字符限制，并给标题检索同样设置命中上限。
 
   最近复发（2026-10-29，补丁阅读总预算）：合并读取04前75行与05前25行，工具实际只返回67个长行仍由5890tokens截至5500，不能因行数少而称已读。发现后仅补04缺失24–33行（1091tokens），原截断未作完成依据。随后旧外部NEXT的前7个长行也超出1000token工具预算；未据旧待办执行动作，改用短完成状态指针覆盖其入口并原字节保留历史。后续逐文档独立输出，发送前将总字符限制在9500以内，并为工具返回预算保留余量；补丁优先只读added lines与必要短context，不能合并长期diff，也不能仅用行数限制替代字符预算。
+
+  最近复发/补充（2026-11-05，pwsh7只读证据）：长目录库存/合并源码再次被工具截断时，不据截断内容宣称已读；使用完整捕获及原exit，再在内存投影精确文件/短段，任务reader同时强制80行/9500字符。猜测路径Get-Content失败曾被后续成功掩盖，包装须ErrorActionPreference=Stop且先验证真实库存。混合PSCustomObject与原生文本并立即exit曾使自动formatter漏显示对象，改为单一显式JSON形状后再执行原生命令。固定代码封存清单若误包含可变pending错题本，须保留原manifest与不匹配，单独核全部固定源未变，不能回滚pending内容伪造全匹配。
+
+  最近复发/补充（2026-11-05，时间与文本ABI）：ConvertFrom-Json将OCI created转DateTime后与原字符串比较会误拒；先核类型、按不变区域规范UTC，再与固定build date比较，原OCI bytes/label检查保留。公开Markdown回放受autocrlf影响时，只能对声明的公开文档做EOL-aware canonical核验并保留rawSHA，不将换行归一化用于私有快照、SDK或通用配置。Python文本与stdout都显式UTF-8；新runtime/Node子项目先核实际解释器和scripts，不猜路径、包脚本或跨夹具资源名。
+
+  最近复发/补充（2026-11-05，真实UI与动态accessible name）：更新入口初始“检查更新”会随异步状态变“升级中”，缓存第一次完整aria-label再getByRole(exact)会在同一唯一按钮仍存在时得到0；真实diagnostic先定位源码行及fresh DOM，再用已证唯一button/class和稳定aria片段定位，保留原失败。六图布局/主题断言通过仍不能证明业务状态正确，须同时对当前操作身份/目标/完成声明作语义断言并实际view截图；不因几何0错误把旧范围成功或manual_action当本次全部验收完成。
 
 - 最近补充（2026-10-27–28，pwsh7/.NET原生客户端）：bounded pull假进程首轮真实exit0却因VoidTaskResult泄漏误失败；fake的failure OR flaky AND firstAttempt未分组又使exit7场景第二次变成功，仅给fake的flaky子条件加括号，生产安全断言不变。6场景实测保留原二进制stdout/stderr、argv和终态，所有owned客户端/独立哨兵已退出；超时先核精确PID/Path/StartTime/argv，仅停止本任务客户端并WaitForExit，停止不完整禁止第二次pull。冷恢复审查另发现release.json先出现再写完的race与输入打开晚于客户端启动的异常缺口：改为同目录wx临时inode写完、flush/fsync后原子无覆盖link，输入预开；异常也只按相同归属核验停止客户端并记录退出。CompactOS只读query曾在原exit102时先退出而未先保存输出，状态未分类；native必须先持久化双流/原exit再断言，不把观察/投影失败改判产品失败。
 

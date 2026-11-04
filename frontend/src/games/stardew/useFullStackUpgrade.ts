@@ -108,7 +108,13 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
       if(epoch===generation.current){acting.current=false;setBusy(false)}
     }
   },[isAdmin])
-  const prepare=useCallback((version:string)=>act(()=>prepareFullStackUpgrade(version)),[act])
+  const prepare=useCallback((version:string)=>{
+    if(statusRef.current?.authorizedAt && statusRef.current.phase==='manual_action') {
+      setError('请先恢复原已授权全栈事务，再检查新的升级范围。')
+      return Promise.resolve()
+    }
+    return act(()=>prepareFullStackUpgrade(version))
+  },[act])
   const confirm=useCallback((noticeDigest?: string)=>{
     const plan=statusRef.current
     if(!plan || plan.phase!=='awaiting_confirmation')return Promise.resolve()
@@ -122,8 +128,12 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
     const plan=statusRef.current
     return plan ? act(()=>cancelFullStackUpgrade(plan.operationId)) : Promise.resolve()
   },[act])
-  const recover=useCallback(()=>{
+  const recover=useCallback((expected?: Pick<FullStackUpgradeStatus,'operationId'|'planSha256'>)=>{
     const plan=statusRef.current
+    if(expected && (!plan || plan.operationId!==expected.operationId || plan.planSha256!==expected.planSha256)) {
+      setError('原恢复操作已变化，请重新读取同一任务。')
+      return Promise.resolve()
+    }
     return plan ? act(()=>recoverFullStackUpgrade(plan)) : Promise.resolve()
   },[act])
   return {fullStackUpgrade:status,fullStackError:error,fullStackBusy:busy,prepareFullStack:prepare,confirmFullStack:confirm,cancelFullStack:cancel,recoverFullStack:recover}

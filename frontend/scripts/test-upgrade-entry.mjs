@@ -19,13 +19,15 @@ const entry = [
   "import {createRoot} from 'react-dom/client'",
   "import {UpdateDetailsDialog} from '/src/games/stardew/UpdateDetailsDialog.tsx'",
   "import {FixtureProvider} from '/fixture-context'",
+  "import {projectFullStackApply,selectCurrentFullStackUpgrade,selectHistoricalFullStackRecovery} from '/src/games/stardew/full-stack-state.ts'",
   "const f=window.fixture,noop=()=>{},data={updateTheme:f.theme||'day',versionInfo:{version:'0.7.3',runtimeUpgrade:{requiresScopeConfirmation:f.game,serverVersion:f.game?'1.5.0-preview.140':'1.5.0-preview.125',authVersion:f.game?'1.5.0-preview.140-anxi.1':'1.5.0-anxi.2'}},updateDialogOpen:true,updateStatus:{currentVersion:'0.7.3',latestVersion:'v0.8.0',updateAvailable:true,checkStatus:'ok',releaseUrl:'https://example.test/release'},updateDryRun:{phase:'succeeded',targetVersion:'0.8.0',logs:[],capability:{supported:true,conversionRequired:false}},updateApply:null,players:{players:[]},fullStackUpgrade:null,fullStackBusy:false,closeUpdateDialog:noop,refreshUpdateStatus:noop,runUpdateDryRun:noop,prepareFullStack:()=>f.prepared++,applyUpdate:()=>f.applied++,continueReconnect:noop};",
   "if(f.knownTarget)Object.assign(data.versionInfo.runtimeUpgrade,{targetPanelVersion:f.knownTarget,serverVersion:'1.5.0-preview.140',authVersion:'1.5.0-preview.140-anxi.1'});if(f.nextVersion){data.updateStatus.latestVersion='v'+f.nextVersion;data.updateDryRun.targetVersion=f.nextVersion}",
   "data.updateStatus.content={schemaVersion:1,title:'升级准备与更新中心',summary:'先准备好升级，再放心更新游戏实例。',changes:['游戏库和世界列表新增更新入口','直接查看重要提示与升级影响','保留现有存档、Mod 和认证会话'],notices:[],blocked:!!f.blocked};if(f.notice){data.updateStatus.noticeDigest='fixture-notice';data.updateStatus.content.notices=[{level:'warning',title:'请预留维护时间',message:'运行中的世界会保存、备份并重新启动。',requiresConfirmation:true}]}if(f.history)data.updateApply={updateId:'previous',fromVersion:'0.7.2',toVersion:'0.7.3',phase:'succeeded',progress:100,result:'面板升级已完成',logs:[]};",
   "if(f.releaseContent)data.updateStatus.content=f.releaseContent;if(f.loadedVersion){data.versionInfo.version=f.loadedVersion;Object.assign(data.versionInfo.runtimeUpgrade,{requiresScopeConfirmation:true,targetPanelVersion:f.loadedVersion});data.updateStatus.currentVersion=f.loadedVersion;data.updateStatus.latestVersion='v'+f.loadedVersion;data.updateStatus.updateAvailable=false;data.updateDryRun.targetVersion=f.loadedVersion}",
   "if(f.finishedGame){data.versionInfo.version='0.8.0';Object.assign(data.versionInfo.runtimeUpgrade,{requiresScopeConfirmation:true,targetPanelVersion:'0.8.0'});data.updateStatus.currentVersion='0.8.0';data.updateStatus.latestVersion=f.nextPatch?'v0.8.1':'v0.8.0';data.updateStatus.updateAvailable=!!f.nextPatch;data.updateDryRun.targetVersion=f.nextPatch?'0.8.1':'0.8.0';data.updateApply={updateId:'previous-game',fromVersion:'0.7.3',toVersion:'0.8.0',phase:'succeeded',progress:100,result:'全部世界升级已完成',logs:[]};data.fullStackUpgrade={operationId:'stack_complete',phase:'succeeded',authorizedAt:'2026-10-26T00:00:00Z',panel:{version:'0.8.0'},groups:[]}}",
-  "if(f.authorized)data.fullStackUpgrade={operationId:'stack_fixture',phase:f.recovery?'manual_action':'waiting_panel',authorizedAt:'2026-10-25T00:00:00Z',panel:{version:'0.8.0'},groups:[]};data.recoverFullStack=()=>f.recovered++;const {fullStackUpgrade,...dashboardData}=data;",
+  "if(f.authorized)data.fullStackUpgrade={operationId:'stack_fixture',phase:f.recovery?'manual_action':'waiting_panel',authorizedAt:'2026-10-25T00:00:00Z',panel:{version:'0.8.0'},groups:[]};data.recoverFullStack=expected=>{f.recovered++;f.recoveredPlan=expected};const {fullStackUpgrade,...dashboardData}=data;",
   "if(f.scopePrepared){data.fullStackUpgrade={operationId:'stack_prepared',phase:'awaiting_confirmation',panel:{version:'0.8.0'},groups:[]};data.confirmFullStack=digest=>{f.confirmed++;f.confirmDigest=digest};data.cancelFullStack=()=>f.cancelled++}",
+  "if(f.staleScope){data.updateApply={updateId:'actual-panel-081',fromVersion:'0.8.0',toVersion:'0.8.1',phase:'succeeded',progress:100,startedAt:'2026-11-05T00:00:00Z',logs:[],fullStack:{phase:'manual_action',progress:100,runtimeRequired:true,errorCode:'legacy_full_stack_confirmation_required'}};data.rawFullStackUpgrade={operationId:'old-scope',planSha256:'6'.repeat(64),actorId:f.oldActor||41,phase:f.oldPhase||'succeeded',authorizedAt:'2026-10-28T00:01:00Z',createdAt:'2026-10-28T00:00:00Z',panelUpdateId:'old-panel',panel:{version:f.oldTarget||'0.8.0'},groups:[]};data.fullStackUpgrade=selectCurrentFullStackUpgrade(data.updateApply,data.rawFullStackUpgrade,data.versionInfo.version);data.historicalFullStackRecovery=selectHistoricalFullStackRecovery(data.rawFullStackUpgrade,data.fullStackUpgrade);data.updateApply=projectFullStackApply(data.updateApply,data.fullStackUpgrade,data.versionInfo.version)}",
   "createRoot(document.getElementById('root')).render(React.createElement(FixtureProvider,{value:data},React.createElement(UpdateDetailsDialog,{user:{id:41,role:'admin',username:'admin'},dashboardData})))",
 ].join('\n')
 
@@ -64,6 +66,10 @@ const patchScenarios=[
   {name:'bridge latest patch 082',game:false,knownTarget:'0.8.0',nextVersion:'0.8.2',notice:true,releaseContent:{...maintenanceTemplate,version:'0.8.2',title:'v0.8.2 · '+maintenanceTemplate.title}},
   {name:'loaded 081 runtime continuation',game:true,loadedVersion:'0.8.1'},
   {name:'loaded 082 runtime continuation',game:true,loadedVersion:'0.8.2'},
+  {name:'081 manual confirmation after historical080 success',game:true,loadedVersion:'0.8.1',staleScope:true},
+  {name:'081 manual confirmation after historical080 recovery',game:true,loadedVersion:'0.8.1',staleScope:true,oldPhase:'manual_action'},
+  {name:'081 historical recovery requires original administrator',game:true,loadedVersion:'0.8.1',staleScope:true,oldPhase:'manual_action',oldActor:42},
+  {name:'081 new apply after same-version historical success',game:true,loadedVersion:'0.8.1',staleScope:true,oldTarget:'0.8.1'},
 ]
 try {
   for (const scenario of [{ name: 'ordinary Panel patch', game: false }, { name: 'junimo140', game: true }, { name: 'bridge before major', game: false, knownTarget: '0.8.0', nextVersion: '0.7.4' }, { name: 'bridge to declared major', game: false, knownTarget: '0.8.0', expectGame: true }, { name: 'unknown future release', game: true, knownTarget: '0.8.0', nextVersion: '0.8.1', expectGame: false }, { name: 'authorized reconnect', game: false, authorized: true }, { name: 'important notice', game: false, notice: true }, { name: 'blocked release', game: false, blocked: true }, { name: 'successful history', game: false, history: true }, { name: 'completed game history', game: false, finishedGame: true, notice: true }, { name: 'patch after game upgrade', game: false, finishedGame: true, nextPatch: true }, { name: 'blocked release retains authorized recovery', game: false, authorized: true, blocked: true, recovery: true }, { name: 'prepared scope requires notice confirmation', game: true, notice: true, scopePrepared: true }, { name: 'night important notice', game: false, notice: true, theme: 'night' },...patchScenarios]) {
@@ -96,7 +102,16 @@ try {
       assert.equal(await page.getByRole('button', { name: scenario.scopePrepared ? '确认范围并升级' : '立即升级', exact: true }).isEnabled(), true)
     }
     if (scenario.history) assert.equal(await page.locator('.sd-update-history').getAttribute('open'), null)
-    if (process.env.QA_ARTIFACT_DIR && ['important notice','blocked release','successful history','completed game history','bridge latest patch 081','bridge latest patch 082'].includes(scenario.name)) {
+    if (scenario.staleScope) {
+      const progress = await page.locator('.sd-update-apply').textContent()
+      assert.ok(progress.includes('v0.8.0 → v0.8.1'))
+      assert.ok(progress.includes('等待游戏迁移确认'))
+      assert.ok(!progress.includes('运行栈需要人工恢复'),'a new-scope prerequisite is not a failed recovery')
+      assert.ok(!progress.includes('Panel 与全部目标游戏组验收完成'))
+      assert.equal(await page.getByRole('button',{name:'检查升级范围',exact:true}).isEnabled(),scenario.oldPhase!=='manual_action','old recovery preserves the current scope entry but blocks another preparation until recovery finishes')
+      assert.equal(await page.locator('.sd-update-history').count(),0,'unrelated historical success must not become the current successful apply')
+    }
+    if (process.env.QA_ARTIFACT_DIR && (scenario.staleScope || ['important notice','blocked release','successful history','completed game history','bridge latest patch 081','bridge latest patch 082'].includes(scenario.name))) {
       assert.ok(path.isAbsolute(process.env.QA_ARTIFACT_DIR))
       await mkdir(process.env.QA_ARTIFACT_DIR, { recursive: true })
       const name = scenario.name.replaceAll(' ', '-')
@@ -109,6 +124,19 @@ try {
       assert.equal(await page.locator('.sd-update-center-body .sd-update-actions').count(), 0)
       await page.getByRole('button', { name: '确认范围并升级', exact: true }).click()
       assert.deepEqual(await page.evaluate(() => ({ confirmed: window.fixture.confirmed, digest: window.fixture.confirmDigest, applied: window.fixture.applied })), { confirmed: 1, digest: 'fixture-notice', applied: 0 })
+    } else if (scenario.staleScope && scenario.oldPhase === 'manual_action') {
+      const historical = page.getByRole('region',{name:'历史全栈恢复',exact:true})
+      assert.ok((await historical.textContent()).includes('v0.8.0'))
+      const recover = historical.getByRole('button',{name:'继续恢复历史事务',exact:true})
+      if (scenario.oldActor) {
+        assert.equal(await recover.isDisabled(),true)
+        assert.equal(await page.evaluate(()=>window.fixture.recovered),0)
+      } else {
+        assert.equal(await recover.isEnabled(),true)
+        await recover.click()
+        assert.deepEqual(await page.evaluate(()=>({recovered:window.fixture.recovered,operationId:window.fixture.recoveredPlan.operationId,planSha256:window.fixture.recoveredPlan.planSha256})),{recovered:1,operationId:'old-scope',planSha256:'6'.repeat(64)})
+      }
+      assert.deepEqual(await page.evaluate(()=>({applied:window.fixture.applied,prepared:window.fixture.prepared})),{applied:0,prepared:0})
     } else if (scenario.recovery) {
       await page.getByRole('button', { name: '继续恢复', exact: true }).click()
       assert.equal(await page.evaluate(() => window.fixture.recovered), 1)

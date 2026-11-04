@@ -59,7 +59,8 @@ export function isPanelUpdateTerminal(apply: PanelUpdateApplyStatus | null): boo
 	return TERMINAL_FULL_STACK_PHASES.has(apply.fullStack.phase)
 }
 
-export function panelUpdatePhaseLabel(phase: string): string {
+export function panelUpdatePhaseLabel(phase: string, errorCode?: string): string {
+  if (phase === 'manual_action' && errorCode === 'legacy_full_stack_confirmation_required') return '等待游戏迁移确认'
   switch (phase) {
     case 'checking': return '正在检查升级条件'
     case 'backing_up': return '正在备份'
@@ -151,7 +152,7 @@ export function panelUpdateSurface(
   if (apply?.phase === 'succeeded' && terminalApplyMatchesCurrent && !detectedUpdateSupersedesTerminal) {
     if(apply.fullStack && ['failed_safe','manual_action','awaiting_confirmation'].includes(apply.fullStack.phase)) return {
       currentVersion:current,targetVersion:target,topbarText:apply.fullStack.errorCode==='legacy_full_stack_confirmation_required' ? '等待游戏迁移确认' : '全栈升级需要处理',
-      mobileTopbarText:'需要处理',overviewText:panelUpdatePhaseLabel(apply.fullStack.phase),tone:'error',
+      mobileTopbarText:'需要处理',overviewText:panelUpdatePhaseLabel(apply.fullStack.phase,apply.fullStack.errorCode),tone:'error',
     }
     const upgraded = apply.toVersion || current
     return {
