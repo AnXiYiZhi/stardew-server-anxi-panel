@@ -582,6 +582,7 @@ func (s *server) handleVersion(w http.ResponseWriter, _ *http.Request) {
 		BuildDate: s.config.BuildDate,
 	}
 	if policy, err := sjconfig.BuiltInRuntimeUpgradePolicy(); err == nil {
+		policy = policy.ForPanelVersion(s.config.Version)
 		response.RuntimeUpgrade = &policy
 	}
 	writeJSON(w, http.StatusOK, response)

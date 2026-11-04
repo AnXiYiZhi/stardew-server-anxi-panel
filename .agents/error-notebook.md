@@ -3,9 +3,13 @@
 ## 2026-10-27 正式发布工具记录
 
 - 最近补充（2026-10-28，PowerShell 数组与单项集合）：专属清理把 `@($prefix+'-docker',$prefix+'-fixtures')` 解析成一个拼接字符串，原账号窗口又把管道筛选结果当数组访问 `.Count`，分别在删除前和 Docker 调用前失败。保留原失败，名称每项加括号，筛选结果外再用 `@(...)` 收集；先以真实输入断言两名称、单项及空集合再执行。新工具的 Join-Path 数组同样每项完整括起，不把两个调用串成路径。StrictMode 读取混合容器角色的可选 Compose label 前先核属性存在，不能假定所有 inspect 条目形状一致。适用 Windows pwsh7 StrictMode 与任务清理/续接工具。
+
+  最近复发/补充（2026-11-04，pwsh7/Docker 夹具）：拼接数组再次把多个名称合成一个非法 volume 名，创建前已拒绝。改为每项拼接完整加括号后构造数组，再核数量、唯一性及名称格式；沿用 AGENTS 的数组与精确资源归属规则，适用于任务卷、容器和清理名单，不重放创建动作。
 - 最近补充（2026-10-28，固定目标与复制工具守卫）：冷恢复复用了字节相同的 Engine helper，却遗漏其旧容器名正则，Create 在 HTTP intent 和发送前退出1。只读确认原响应全无、目标不存在、原导入与请求 body 不变后，仅为新精确名称派生 continuation；不重导入、不删 intent、不重发旧 Create。派生工具必须逐项检查硬编码身份，解析通过和依赖 SHA 相同不能代替真实参数契约检查。准备时已存在的073 proof仅在原路径、SHA与字节完全相同时复用，其它输出继续wx拒绝，不删除别的协作者已供应输入。
 
   最近复发/补充（2026-10-29，pwsh7/Python，全部先于未发动作）：复制接收器仍从 HERE.parent 推导冷源、按旧 basename 拼稀疏续接目录，或未核 ancillary fixture，分别在 prestart、只读诊断和维护导出后失败。正确做法是从 entry、prepared.dependencies 与每条 ref 的显式 base 解析全部传递依赖，逐角色核真实 name/attempt/port/path，并在第一写请求前运行实际输入的只读前置；同源输入只有字节/SHA相同才可独占 materialize，记录来源。保留原失败与已接受操作，只续未发动作；不能靠重建目录、复制当前输出为 expected 或重放业务解决。
+
+  最近复发/补充（2026-11-04，Python/tar 导出）：先启动 tar 子进程，随后因输出文件父目录缺失而打开目标失败，归档未完成。按精确进程身份停止并确认退出后，改为先验证批准的父目录、独占打开输出，再启动生产者。预防同时执行现有输入前置与 AGENTS 的 PID/归属/有界退出规则；适用于流式导出，不能遗留无人接收输出的子进程或重做已完成业务。
 - 最近补充（2026-10-28，资源探针投影）：VM df按overlay路径匹配，输出了判断空间无需的存储标识，随后又发现同一文件系统在多个namespace视图重复。原raw保持私有；改只选已确认挂载点并输出容量数字，多行要求容量tuple一致，不假定只有一行。任何资源探针都应在输出前完成必要字段白名单投影。
 
   最近补充（2026-10-29，resource preflight原始事实）：aggregate guard在保存各条件前throw generic failure，丢失首轮individual容量/端口值，未运行bootstrap或其它夹具变更。保留首失败；新facts-only scope先持久每条件观测与原native终态，再做聚合准入。后续独立观测的MemAvailable确实低于固定cap+reserve，但不能倒推首轮未保存的数值。事实采集与行动准入分段，禁止用swap信用、降低reserve或重跑写动作补事实。
@@ -22,6 +26,8 @@
 
   最近复发/补充（2026-10-29，Windows Python3.12/SQLite）：已quiesce tar的原WAL-mode DB头[2,2]用 sqlite3.deserialize 后 integrity_check 报 unable to open database file；同原bytes写任务临时文件，用 URI mode=ro&immutable=1、query_only、finally close 则通过。先证明源DB长度/SHA/头与原tar相同，WAL/journal为空或不存在及原源端文件检查已通过；非空32768B SHM仅为本次确证索引形态，不等于有待提交WAL。保留原tar、失败和原sidecars，禁止改头、改 journal_mode、删SHM或泛化 immutable 忽略有数据的WAL。归档校验逐成员拒路径穿越/软链接跟随/SDK payload，并核实际存档角色与数据完整性。
 - 最近补充（2026-10-28，精确Git来源字节）：正式核验fixture把Windows CRLF工作树当Git blob，组件副本又用git archive导出后发现101组CRLF而原blob为LF，均在执行前SHA门禁拒绝。保留原失败；改git ls-tree -r -z与git cat-file --batch读取原始blob bytes，546文件逐blob/SHA/字节数绑定。版本化源码/Release资产/编译副本不得由checkout行尾或archive转换推断；不能靠去CR后相等冒称原字节相等，预防已固化到副本脚本。 同轮审阅CRLF文档时误用git -c core.autocrlf=false diff，导致只读diff膨胀26015行；恢复仓库正常diff后仅99行，并按缺失范围补读。语义审阅沿用仓库过滤设置，原blob字节验证另用cat-file，不能混用配置。
+
+  最近复发/补充（2026-11-04，Windows Git/Python 回放）：把反向 `git diff -R` 的真实头部仍按正向 a→b 解释，实际 b→a 导致断言失败且零修改；须先核实际头部及已绑定的源/目标。随后 Git HEAD 的 LF 与 Windows CRLF 副本语义相同但 SHA 不同，原失败保留，仅用已独立证明字节/SHA 的 CRLF 副本回放才恢复。沿用 AGENTS 精确来源与换行规则；适用于源码封存/回放，语义相等不得替代原始字节证明，也不以当前目标反造 expected。
 - 最近补充（2026-10-28，当前输入与JSON契约）：原生组件把retry前envSHA当成retry后的当前快照，在0.26秒只读guard退出，未进入生产复制；旧before仅SHA，不能追造changed键。新namespace只钉当前真实raw SHA并保留前后不变守卫；每次已知写操作之后须重新采当前输入。其它准备断言曾误把licensed seed存在的sourceExisted当false、字符串workflowRunId当整数、job.errorMessage当job.error；先只投影真实字段/类型/存在性，再绑定，不改数据迎合测试。AST差异校验仅规范化已声明版本标签，不删除行为断言。
 
   最近补充（2026-10-29，descriptor与checksum ABI）：referenceCorrection初版把cfg.cacheDelivery指向的4774B descriptor JSON当成401078B checksum文件，在任何输出/写动作前assert拒绝。原脚本/失败保留；新派生按已固定probe-input checksum ref的path/bytes/SHA c2a00fa6891e3d72aa1154d92fff8a4febf57fcee5a6d58f32f3654616dadbd3定位，不以cache字段名或相邻文件角色猜内容。修接收器不能修改原checksum/descriptor来迎合错误schema。
@@ -68,6 +74,8 @@
 - 最近复发/补充（2026-10-28，新恢复工具AST探针）：内联Python -c跨pwsh反斜杠引号导致零执行SyntaxError，改独立check-new-attempt.py后13份Python AST及PowerShell/行为审查通过。沿用复杂Python逻辑写任务脚本的既有规则，不继续拼多层引号。
 
   最近复发/补充（2026-11-04，pwsh7/Posh-SSH只读诊断）：JavaScript字符串承载Python时，SQL引号的反斜杠被外层消费，远端编译报SyntaxError/exit1，数据库未打开。改用SQL参数占位符和独立参数值后，仅续同一只读查询成功。Base64只保护传输，不验证编码前的源码；发送前核对最终载荷的引号契约，错误输出只投影类型/状态，不整段回显载荷。
+
+  同日补充（2026-11-04，子代理归档 AST 路径分类）：扩展名正则经 JavaScript 字符串承载时丢失字面点号，把 `push` 等词误标为路径；未按错误输出读文件或执行命令。改用 `endswith` 精确扩展名分类，并核对真实库存成员后再消费路径。沿用 AGENTS 多层转义与库存规则；适用于源码归档/审计分类，输出看似路径不能代替库存证据。
 
 - 最近复发/补充（2026-10-28，080外部夹具读取）：在已知maintenance脚本之后追加猜测的`panel-restart.mjs`，Get-Content退出1；该文件不存在，前段有效输出不覆盖失败。已独立`rg --files`按panel脚本后缀库存，后续文件名只来自库存并先Test-Path；与仓库源码同样执行精确路径规则。该读取没有运行脚本或变更测试现场。
 
@@ -136,9 +144,15 @@
 
 - 同轮真实旧版续验补充（2026-10-25，pwsh7/Playwright/Linux）：Mod 文件选择后仍需点击“上传并安装”；首次只选文件后等待 POST 超时，先只读核对未导入，再读当前 DOM 完成一次提交。旧版 GET jobs 响应为 `{job:{...}}`，观察器误读顶层 status 并持续等待；确认原 start job 已成功后，仅停止已核对 PID/命令行的观察器与 Chrome 子进程，以只读新观察器续接，不重放启动。邀请码字段实际为 inviteCode，安全投影只输出是否存在。存档配置根下还有 Saves 层，平铺查找的只读断言失败后，从实际 SaveGameInfo 定位同目录配对存档，冻结 1 档/3 角色基线；以上均不输出账号、邀请码或角色标识。任务 Python 脚本不得按文件关联直接执行（可无输出返回），必须先 Get-Command/版本探针，再显式调用已验证解释器。
 - 同轮 Linux 门禁续验补充（2026-10-25）：再次以裸 Alpine 工具集运行 FIFO 测试，BusyBox timeout 不支持 --kill-after，首次 full-v1 完整日志保留；正确 runner 先有界安装 coreutils/util-linux/git，并把 timeout/setpriv 版本落盘。修正后 full-v2 全包 2250 项、bridge-v4 全包 2258 项通过；不得把测试观察器或环境错误当成产品失败，也不得无变化复跑已通过独立门禁。新任务包装器安装步骤和版本探针固定在入口，沿用已有 GNU 工具前置规则。
+
+  最近复发/补充（2026-11-04，DinD Alpine/FIFO Unix 门禁）：先因 BusyBox `timeout` 不支持 `--kill-after` 失败，补工具后又因 BusyBox `setpriv` 不支持 `--reuid` 失败；完整原因及首失败均保留。安装 coreutils 9.11 与 util-linux setpriv 2.42.3，并核实际 `--reuid/--regid/--clear-groups` 能力后，两项真实 FIFO 通过。该类多次复发，已在 AGENTS 精简容器依赖段补充参数能力守卫；适用于 Linux 门禁，不改生产脚本或把同名命令存在当能力证明。
 - 同轮回滚观察补充（2026-10-25）：Panel helper终态不代表自动组件job已结束，首次数据核验准确捕获仍有1个job；须等待该原job终态后只读复核。session卷中的settings.json不能算登录会话，按实际username+refreshToken字段识别。存档任务hash变化先与精确原始tar的save SHA核对，再逐字段定位，最终只有_questTitle显示缓存变化，其它任务进度完整；后续断言明确排除这一缓存，保留原严格失败和诊断。再次猜测不存在的apply_types.go被库存守卫零读取拒绝；独立rg --files定位真实types.go后续接。候选文件清单无命中退出1时包装器仍须显式exit 0，不能让最后原生命令的正常无命中泄漏成工具失败。长期文档密集长行必须同时限制字符，不能把80行当默认安全长度。
 - 同轮门禁/容量续记（2026-10-25）：镜像构建后C盘降至约8.5GiB，fresh守卫在创建前拒绝；停止新夹具，未重启Docker。82项已关闭诊断文件逐个独占读取、复制到E并核对SHA后才移除源；清理9388个可重建浏览器/图形/未使用Playwright缓存文件，跳过27项在用文件，保留cookies/password/history；Go模块23556文件逐个SHA核对迁到E并在原精确路径建立junction，C恢复约12.18GiB。OrderedDictionary数组用Measure-Object -Property bytes得到0，汇总须先ForEach-Object取键值再求和；原逐文件字节和hash证据有效，不重做移动。后续继续用C/E实际余量守卫，不能只看DinD tmpfs。2026-10-27日志投影又对[ordered]哈希用Select-Object -ExpandProperty Output而报属性缺失；先转[pscustomobject]后只读解析同一已结束JSONL，未重跑测试。PS对象投影前须核对实际类型，字典使用键索引或显式转换，不能让聚合器把字典适配器当普通属性对象。
 - 同轮工具前置故障（2026-10-25）：full-v4 vet首次在apk索引TLS失败、未开始Go时退出3；宿主调用还提前结束、原容器存在，先inspect终态并恢复完整tools日志，没有重复创建同名门禁。以本轮已通过unit的精确owned容器冻结GNU工具链镜像（源码/cache/evidence均为bind、不会进入commit），复用同base和已安装工具；仅重跑未执行的vet，以retry1日志保留首故障，随后通过。另一次猜instance_routes.go被rg拒绝，独立库存后定位lifecycle_handlers.go；余下检索仅允许已确认目录，读取走read-verified。apply_patch不接受同一载荷同时Delete/Add同一路径，零执行拒绝后保留旧脚本，使用独立新版checkpoint文件，不重放同一补丁。
+
+  最近复发/补充（2026-11-04，apply_patch）：同一文件的 Delete+Add 组合再次被工具拒绝，零修改。保留原文件并改为单个 Update File 补丁；发送前核同一路径的操作唯一性和真实完整行，继续执行 AGENTS 已有补丁分段规则，适用于既有文件替换，不原样重放拒绝载荷。
+
+  最近复发/补充（2026-11-04，Alpine 离线工具包前置）：缺缓存索引的 `apk fetch` 异常仍退出 0 且未产出 .apk，随后空 glob 离线安装失败；改为先 `apk update` 并断言实际包产物。首次递归包全装又因新 libcrypto3 与镜像既有 libssl/openssl 精确版本冲突而退出 7，零安装。保留失败，仅安装所需 coreutils/acl/attr/utmps、setpriv 及 cap-ng/econf 依赖，保留系统 crypto/musl/busybox，最终探针通过。适用于隔离 runner 工具准备；退出码、产物与依赖闭包须分别核验，不因工具升级扩大系统库替换范围。
 - 同轮restart API契约补充（2026-10-25）：把新Panel restart响应误当start的jobId，实际202 `{ok:true}`后断言失败，但原restart已经接受。读取当前handler/driver契约后，通过SQLite按原请求时间、目标、lifecycle类型和operation=restart唯一定位原job，只读公共GET续接并确认succeeded/邀请码恢复，绝不重放restart。首次bridge健康升级观察器超时准确来自Galaxy CONNECTION_FAILURE后code为空，不是Panel/Control失败；一次明确的新restart成功恢复。后续观察器先读具体端点响应形态，不跨动作复用jobId假设；.140邀请码status为connection_ready等，最终按用户明确的“拿到邀请码”标准检查非空有效码，不能硬套125的ready字面量。
 
 - 同轮探针与审计补充（2026-10-25）：空 Auth HTTP 探针凭记忆使用 `/validate/status`，实际404空响应导致JSON解析失败；该轮退出1且探针容器/两卷均清理，原证明保留。按当前 Program.cs 定位真实 `/game/validate-status` 后只重跑此短探针，同一固定镜像返回health200、ready503、validate200，清理证明通过。任务脚本AST审计曾以双反斜杠替换单分隔符，错误选中0文件；该数量不能算通过。改用 GetFullPath/GetDirectoryName 比较并添加最少文件数守卫，实际14个顶层任务脚本全部解析通过。数字结论从实际JSON计数：30项前端测试、27项补跑、Auth输入17文件，不凭先前摘要估算。Bundled Python未带PyYAML，Node候选路径也未带YAML解析器；未修改业务依赖，使用E盘任务专属prefix/cache安装固定yaml2.8.1且禁用安装脚本，随后工作流YAML与4段Bash语法通过。Auth工作流测试文件误猜被read-verified拒绝、组源码文件名前缀误作目录使rg退出2，均在写入前停止；按实际清单定位后余下检索固定已确认目录加-g，不再用职责猜路径。
@@ -149,11 +163,15 @@
 
 - 最近补充（2026-10-16，本地v3构建/诊断）：Docker build未命中旧依赖层，proxy.golang.org对go-winio的连接拒绝；宿主HEAD探针同源超时、goproxy.cn返回200。保留首轮完整失败日志，仅为本地工程镜像使用任务专属Dockerfile，将一行下载改为带镜像代理的go mod download并追加go mod verify；包装器断言除此行外与冻结Dockerfile完全一致，并将实际Dockerfile SHA写入镜像label和证明。没有修改仓库Dockerfile、go.mod或go.sum；不得把这种工程构建替代正式候选门禁。诊断Junimo API曾猜用3000端口，curl退出7；后续通过项目既有readJunimoAPI/配置契约查询，不再猜端口。Playwright错误自动携带临时fixture cookie头，已给后续错误加脱敏并对精确首轮日志生成脱敏证明，不在读日志时回显请求凭据。2026-10-27本机API定点回归再次遇到proxy.golang.org下载x/crypto v0.53.0与modernc/libc v1.74.1的EOF，未编译/执行测试；保留同一任务缓存和首轮JSONL，先探测精确版本goproxy.cn，补齐依赖并取得all modules verified后才执行测试。仅本机任务缓存切源，正式CI、Dockerfile和go.mod/go.sum未改；后续fixture失败另按实际测试终态处理，不把依赖失败混为产品失败。
 
+  最近复发/补充（2026-11-04，Linux Go/DinD 专属缓存）：首次 `go mod verify` 因缓存元数据未齐和 DinD 默认 GOPATH 不匹配而失败，测试尚未开始。保留原缓存/日志，先在同一归属缓存完成有界预热，再显式 `GOPATH=/go` 核对并 verify 后续测。沿用 AGENTS 独立 download/verify 前置；适用于新 module cache 与容器运行环境，不能以包载荷存在代替元数据、有效路径和验证成功。
+
 - 最近复发/补充（2026-10-16，Junimo P2/全栈本地修复，PowerShell 7）：嵌套 pwsh 外层单引号内又生成单引号 rg 模式，批次只读查询出现 parser/command error；改为已验证最小骨架、内层双引号。一次 functions.exec 补丁载荷引号未闭合产生 JS SyntaxError，零执行后重新构造完整载荷。apply_patch 一次按记忆插入空行导致 hunk 拒绝，检查实际文本后按精确完整行生成补丁。沿用 AGENTS 的零执行、最小骨架和精确上下文规则，不原样重放。2026-10-25 补充：嵌套单引号同样会吃掉 label 属性名引号，使 `.Labels.'anxi.task'` 变为错误属性链并触发归属守卫；守卫失败后没有删除或停止操作。复杂操作改用任务专属 `.ps1`，内联只用明确的双引号属性名。第二次误猜 `steamcmd.go` 后，所有源码读取固定通过 `read-verified.ps1` 的文件清单及存在性检查；不得继续靠模块职责推导路径。长测试先写完整日志，工具输出不足时只补读日志和进程状态，不重放终态未知的测试。 2026-10-27T11:46Z资源观察补充：functions.exec误写new Promise Promise(...)导致JS SyntaxError，执行前零操作；停止原载荷续写，以已验证最小exec_command完整骨架恢复只读投影，不重放Docker操作。
 - 同次 Docker 宿主容量故障：准备并发 v2 DinD 时 C 盘仅剩30257152 B（约29 MiB），E盘仍有约818 GiB；宿主 Docker 对任务容器 restart 返回 `/var/lib/docker/.../hosts: read-only file system`。此前只核对 docker info/VM虚拟容量，漏查宿主物理空闲，是前置检查遗漏。停止启动后续验收，未重启承载其他容器的 Desktop、未全局 prune/清理用户文件；保留任务资源待恢复。AGENTS 和本任务 build/prepare 脚本已提升为 C 盘至少10 GiB、按并发卷与备份追加预算的硬守卫。随后只读复查 C 盘恢复约38 GiB、daemon可访问；代理没有重启 Desktop，只按精确归属逐个恢复任务容器。fresh v2 已用现绑定通过并清理。DinD 留下 `/run/docker/containerd/containerd.pid`，首次续接因 stale PID 等待超时；先快照完整任务内进程、确认该 PID 非存活 containerd，再只移除该 pid 文件，未停止任何进程，恢复同卷 daemon并保留原 unhealthy 成功证据。不能因 read-only 把镜像判为产品失败。
 - 同次恢复调度补充：wait 返回仍运行时，误提前读取 target-exit 的 environment.json，start/browser 脚本均在首行失败，尚未发送任何业务请求；以后必须先见准备成功终态及该 artifact，再启动下游，不能把等待返回当完成。后来会话句柄失效返回 Unknown process id，已转而核对日志、gate.exit 与精确宿主进程，不重放创建或 image load。v3 Auth拒绝后，浏览器新预检只按phase匹配，误取上一op的preflight_failed并关闭页面；核对持久记录仍未授权后，改为等待operationId变化和终态一起匹配，scope-current仅复用已准备且未授权的当前计划，否则由UI新建预检，不重放确认。状态探针不得用ErrorAction SilentlyContinue读取尚不存在的未来日志；先Test-Path再读取，避免无意义退出1。
 - 同次夹具断言补充：Web 错误对象是 `error.code`，误取顶层 code 导致首轮范围拒绝后的断言失败；后端实际已409且未授权。续接只读原 plan，核对拒绝后撤销/恢复改名并新建范围，没有重放成功业务。终态刷新会自动弹版本对话框，先确认已开的 dialog，不能再点击其底层版本按钮。fresh 首次读取/版本/未初始化/重启日志已有证据，但重启后的固定旧端口探针超时；独立读取当前绑定可200，端口重分配假设的后续探针被宿主只读错误阻断，原因未完全证明，不能写成产品健康失败。
 - 同次续接执行补充：又猜测 updater/capability.go 与 internal/bootstrap 目录（真实 deployment.go、cmd/panel/runtime_bootstrap.go），已用独立库存/符号检索纠正；余下读取均逐项 Test-Path。CIM -Filter 内层单引号经嵌套 pwsh 截断为无效查询，改用无 SQL 字符串的 Get-CimInstance + Where-Object；确认旧测试进程已自然退出，没有停止无关进程。Node REPL 报 kernel assets 路径不存在，零浏览器执行，改用已验证的 Playwright CLI。恢复包装一度误把 Mounts[0] 当作命名卷，安全断言拒绝且零变更；正确做法与既有包装一致，按 Type/Name/Destination 筛选且断言恰好一个卷，不依赖 inspect 数组顺序。补丁曾再次包含凭记忆添加的空行而零执行；重读真实行后拆成单行完整上下文，不原样重放。
+
+  最近复发/补充（2026-11-04，Node REPL/pwsh7/Posh-SSH）：SSH 调用超过工具 30 秒限制，REPL 内核重置；不能据此认定子进程已退出。先核对唯一只读遗留进程的 PID、路径及归属，确认其已自然退出，改用有界一次性 SSH 调用并在 finally 关闭会话。适用长远程诊断；沿用 AGENTS 进程终态和 SSH 内存凭据规则，不复用失效句柄，不回显 argv 或秘密。
 - 同次浏览器夹具补充：旧游戏库按钮有独立 aria-label，不能把 allTextContents 的文本当 accessible name；初次无匹配后改读完整 label/title/可见属性。未初始化世界会弹“请先安装游戏”，modal 将底层版本按钮排除在 AX 树；先在真实对话框点击“稍后”，再开版本详情，不能等待底层 role 来判断 modal 是否结束。所有测试默认 UI timeout 限为10秒，POST 不确定时只查持久状态，不重放写请求；首次失败尚未发送 update apply。
 - 同次冻结守卫补充：全输入字节审计发现此前已存在且本轮未改的 MobileControlPage 混合换行与 smoke-test.ps1 等旧脚本 BOM；未改这些用户工作。修正冻结脚本只允许与 before-inputs 精确 hash 一致的既存混合换行及既存 PS BOM，并把清单写入 manifest；本轮新增 BOM/混合换行仍拒绝。所有 .sh 保持 LF，Go 按 gofmt；工程输入886文件与镜像固定后禁止覆盖。2026-10-25 新冻结器遗漏既存 PS BOM 例外，在复制前拒绝未改的 smoke-test.ps1；核对与本轮 before.json 的 hash 完全相同后补回同一例外并记录清单，未重编码旧脚本。镜像构建另因 C 盘仅余约11 GiB、无法追加构建预算而在 Docker build 前停止，保留已运行的测试环境并请求释放空间。
 - 同次路径/输出补充：猜测 junimo_api.go、web/server.go、updater/apply_service.go 均错误；实际 readJunimoAPI 在 save_import_evidence.go、server 在 handler.go、StartApply 在 service.go。续接又误猜日志 .stderr（真实为 .stderr.log）与 handler_test.go（实际现有 updater_handlers_test.go/auth_handlers_test.go），只读 fail-fast 中断，未执行后续读取。后续先独立 rg --files / 符号检索，再读命中路径；本任务已经多次复发，余下源文件与日志必须从已取得的清单选择并逐项 Test-Path，不能在有效读取后追加猜测路径，沿用 AGENTS 已提升的硬规则。多份长期文档合并结果被总预算截断后已按顶部短段分别补读；未把截断部分当成已读。读取运行中的 Go JSONL 可能遇到末行尚未完整写出，必须等终态或仅处理完整行；监控读取失败不代表测试失败。
@@ -184,6 +202,8 @@
 - 同次Web升级夹具续验（2026-10-15，隔离DinD）：Phase A复制当前Control DLL/manifest，却把options版本硬编码0.3.8，正确触发save_import_maintenance_control_mismatch，导致后面的不可见目标断言无法到达。核对完整日志与实际复制源后，从manifest的Version生成options；jq取值独立赋值，保持失败可见。首轮失败及资源退役证据保留，同一工程镜像经修正后的完整v0.7.2 Web链通过，不放宽产品版本守卫。预防：测试状态版本必须来自本次复制的同一制品，不能复用历史常量。
 
 - 同次续接执行补充（2026-10-15，PowerShell7）：只读命令把已知脚本误放在web-current-v5子目录，并把backend-current-v7.sh误记为backend-v7.sh，均fail-fast且未修改业务资源；独立rg文件清单后按实际路径继续。Get-Command git返回两份Application，未先选唯一结果，拼出的bash路径成为数组并导致调用拒绝；改为Select-Object -First 1后再从Source解析Git根，版本探针、逐文件bash语法和ShellCheck通过。沿用现有inventory/read-verified规则，不把父目录存在视为文件存在；命令探针先明确单个Application对象再构造路径。此类路径失误已重复，不新增平行泛化规则，继续执行AGENTS现有硬检查。
+
+  最近复发/补充（2026-11-04，pwsh7/Git Bash 探针）：`Get-Command git` 再次返回多个 Source，派生 Bash 路径成为数组，构造阶段已中止。该轮改用已验证 Linux runner，没有试跑不明 Bash。执行 AGENTS 已提升的单一绝对路径与版本守卫，不能任取 first/last；适用于 PATH 多候选和 Windows Bash 路径推导。
 
 - 同次工程门禁 runner（2026-10-15，ShellCheck0.10）：后端全包/vet/build 已实际成功后，新增任务 runner 的内联 EXIT trap 被静态检查报 SC2154，未加引号的 `step=test` 报 SC2209。保留首次 lint 输出，在运行 cell 结束后才将 trap 改成独立 finish 函数并为字面量加引号；测试/vet/build 命令、冻结源码和退出结果不变，没有为样式调整重跑已通过整包。四个新增任务 Shell 脚本随后 ShellCheck通过，完整日志分别留存。
 
@@ -256,9 +276,15 @@
 - 2026-09-19 API 冒烟夹具补充：用户列表的 before 快照误放在注销/重新登录之前，而列表包含 lastLoginAt，导致重启后的全对象比较失败。读取 users_handlers.go 的真实响应契约后，把快照移到最后一次登录之后、重启之前；保留完整相等断言，重新创建同归属的空测试卷复验 24 项通过，原失败输出已保留。没有修改产品行为。
 - 2026-09-19 续验：WSL/Docker 已恢复，三个原有容器的镜像、脱敏挂载投影及创建时间核对后全部 running/healthy，两个 Panel health/database 正常。第一次比较误把基线中主动隐藏的 volume Source 当作实际路径差异，并把审计日期零点当作开始时间；改为同形投影与 before/hashes.json 的实际 UTC 建立时间，保护断言此前未启动任何容器。
 - 2026-09-19 证据工具补充：恢复副本还包含嵌入二进制，不能把 before/source 全部当 UTF-8 文本；首轮归档遇 UnicodeDecodeError 后未删除原文件，改为原始字节归档并验证全部 CRC/SHA-256，再清理副本。Docker buildx 的 `--format json` 输出是逐行 JSON，即使文件名为 .json 也须按记录解析，不能直接 ConvertFrom-Json -Raw。恢复归档可供差异检查直接读取，不再需要解压完整副本。最近补充：npm 锁文件 packages 包含合法的空字符串键，PowerShell 解析须用 ConvertFrom-Json -AsHashtable，普通对象模式会拒绝；Git 差异检查的换行提示写入任务 stderr 日志，避免掩盖结构化校验结果。最终换行校正按与基线相等的行恢复原始字节，新增行采用原文件主导换行，并比较 ignore-space-at-eol 差异确保语义不变。 最近复发/补充（2026-10-27 cleanup元数据）：隐藏库存含.git叶文件，Test-Path成功后Get-Item未带-Force却报缺失；仅将投影改为-LiteralPath -Force，复用原库存完成28559项元数据，不重做清理。buildx v0.34.1-desktop.1的JSON Size实际为32B等显示字符串，数字强断言失败；先核字段类型，显示值不能逆推精确bytes。仅复用已私存的原生buildx/Engine两份证据投影精确计数，不为统计启动helper、prune未知归属或宣称非Sparse VHDX已回收C空间。
+
+  最近复发/补充（2026-11-04，pwsh7 更新政策库存）：混合库存中的 Markdown 被交给 `ConvertFrom-Json`，报 Unexpected character/退出 1，零写入。改为 `rg --files -g '*.json'` 取得精确 JSON 库存后逐份解析，Markdown 按 UTF-8 文本读取；解析前先核文件类型与接口契约，适用于 mixed-format 证据和发布政策目录。
 - 2026-09-19 检索/联网补充：一次凭记忆查询不存在的 router.go，随后未排除测试的全目录检索超出预算；改从实际命中 handler.go 精确读取，生产路由检索排除 *_test.go 并限制总命中。沿用 AGENTS.md 已有真实路径和全局输出预算硬规则。Python urllib 默认代理在 Windows 重启后连接被拒绝；用 task-local direct 探针确认公网可达后仅在本次只读链接检查禁用代理，没有修改系统设置或 TLS 校验。SMAPI 首页 HEAD 返回 405，GET 返回 200，不能据此判作失效链接。
 
   最近复发/补充（2026-11-04，主/子代理只读源码诊断）：按模块职责猜测不存在的源码路径，rg报退出2；主代理还把库存中的测试文件误认作同名实现文件，且组合命令后续成功掩盖原失败。改为完整捕获真实库存，只读取精确命中的路径。AGENTS补充库存精确成员检查，禁止去掉测试后缀推导实现路径；后续组合检索必须立即保存并检查各次原生退出码。未修改生产状态。
+
+  同日补充（2026-11-04，SDK 代理）：再次猜测不存在的 `runtime_components_test.go`，库存守卫在读取前拒绝。仅用保留的真实清单继续定位，不由模块名或测试后缀推导文件；本次属于已提升到 AGENTS 的同类约束复发，无需新增平行规则，也不把拒绝当产品失败。
+
+  同日补充（2026-11-04，Windows 编码/凭据只读审计）：对未跟踪新文件调用 `git ls-files --error-unmatch`，预期的未跟踪退出被包装器抛错，使审计中止，零写入。改为完整捕获 tracked 库存并保存原退出码，以 Set 精确成员关系分类；重新审计 55 个变更文件，UTF-8、BOM、新增 U+FFFD 与凭据均无问题，固定 game 226 hash 不变。沿用 AGENTS 库存与原生退出码规则；适用于同时包含 tracked/untracked 文件的审计，合法未跟踪状态不得当作查询执行失败。
 - WSL 恢复终态补充：`WslService` 长时间停在 `START_PENDING`，仅注册 docker-desktop 且 `hcsdiag list` 为空；重启空闲 vmcompute 后仍未就绪。已取消等待命令，不继续扩大到其它 Windows 服务。后续 Win32_Process 的 CIM 查询也挂起，取消后改用轻量服务状态读取，不反复调用已挂起的查询。原有三台容器尚未恢复；需要用户保存其它应用工作并重启 Windows，再从已保存的容器身份和恢复脚本续做。Docker 重启授权不能扩展为整机重启授权。
 - Docker 恢复补充：普通 restart 超时；force stop 和 WSL 停止也卡住。经用户明确授权并保存原有三台运行容器名单后，仅终止已核对路径的 Docker 进程与 docker-desktop distro。父进程退出使子 PID/Path 随后失效，改为预先快照 Id/Path、核对存活与有界 WaitForExit；预防规则已提升到 AGENTS.md。WSL stdout 是 UTF-16LE，不能以默认编码显示的乱码判断业务结果。启动日志定位到不可访问的零字节 AF_UNIX 类 IPC 端点；单个 reparse 文件查询/改名失败，核对父目录仅含已知零字节端点后以精确绝对路径移动整个目录并保留 ACL/备份，让 Docker 重建运行目录，未读取或删除凭据。之后的 WSL engine 启动阻塞须独立处理，不能将 UI 进程启动当作引擎就绪。 最近复发/补充（2026-10-27迁移）：用户明确授权维护后，desktop stop exit0、精确GUI/backend缺席且VHD可全程FileShare.None读取/SHA相同，即可证明离线；应用退出时desktop status的exit1/Could not retrieve status不反推stop失败。node_repl与cua_repl均在初始化前OS3失败，未操作UI且未证实与缓存清理有关；不反复重试，按实际CustomWslDistroDir及维护者说明完成停机复制/校验/单值配置迁移。首次启动fatal是遗留零字节engine.sock ReparsePoint，fsutil1920且tag未证，叶节点rename失败后不再重放；确认父目录只含该无持久字节节点，在精确边界内同级保留整个目录并沿用原ACL新建运行目录。原启动timeout不是永久daemon失败，也不能补造后续启动者。核对真实E盘活跃VHD和原容器/镜像/卷身份后，才按单文件SHA等值证明释放C原VHD；未触碰登录凭据或其它服务配置。
 - AST 清理补充：手抄正则块时多加一行空注释导致 apply_patch 校验失败；AGENTS.md 尾行手抄还出现同形字差异，均零修改。改为从真实完整段生成补丁，文档追加使用短而唯一的章节锚点。删除旧 Hub 辅助链后 fmt 导入失去引用，编译报告后同步删除；没有降低测试断言。
@@ -268,6 +294,8 @@
 
   最近复发/补充（2026-11-04，Posh-SSH只读状态投影）：远端Python以ensure_ascii=False输出中文JSON，经当前SSH/PowerShell通道显示为替换字符；改用默认ASCII JSON转义，经Node显式JSON.parse后中文正确，原状态文件未改。跨通道诊断先验证Unicode往返，未确认编码契约时优先ASCII JSON传输；不能将显示乱码当作持久数据损坏。
 - 文档标题、进程和 QA 检索批量输出再次超预算；完整结果应先落任务 JSON/日志，再投影少量字段和短段。沿用 AGENTS.md 的总字符/行数限制，不据截断内容作删除结论。 最近复发（2026-10-27–28）：宽资源文件名和递归*sqlite*检索意外进入历史Go module cache并截断；改为top-level --max-depth 1或明确文件/已批准attempt，截断清单不算已读。完成证明producer只接受显式证据白名单，不用递归glob；私有对象仅投影必要类型、计数与hash。
+
+  最近复发/补充（2026-11-04，46206 项库存摘要）：完整库存虽已保留，摘要仍超过工具输出预算。保留首轮截断，后续只按精确保留的库存路径和短段读取，不再输出整表；按 AGENTS 已提升的全局字符预算及截断后单文件规则续接，适用于大源码/归档库存，截断摘录不算读完原件。
 - 当前 Windows npm.ps1 下 `npm --prefix frontend install --package-lock-only --ignore-scripts --offline` 报仓库根 package.json ENOENT；改为独立 cell 的精确 frontend workdir 后执行安装命令，成功后逐项比较锁文件全部 version/resolved/integrity。构建/状态脚本的 `npm --prefix frontend run ...` 正常。没有删除 node_modules 或升级包。
 - 后续宿主 Node 启动/编译在约几十 MiB 时发生 native allocation / semi-space OOM（134、-2147483645），属于环境资源失败；记录原始日志，停止重复整套测试，仅在资源恢复后续验失败项。Docker 随后报告 containerd metadata 所在文件系统只读；不能用重复 build 或删共享 cache 处理，也不能未获授权重启承载现有游戏的 Docker Desktop。前后正式构建在该故障前均已成功。
 - dotnet.exe 存在但宿主未安装 SDK；版本探针明确失败后不继续宿主 C# 编译。本次未更改 Control 源码、DLL、manifest 或 NuGet 版本，不把该环境下的 C# 构建标为通过。
@@ -283,6 +311,8 @@
 - 全局减负扫描补充（2026-09-18，Windows / PowerShell 7）：开场宽匹配错题本导致输出截断，改为有界标题与精确短段；资产/CSS 完整分析落系统临时任务目录，只投影候选统计。补丁期间文件顶部被另一项进行中的工作新增记录，旧邻域匹配失败且零修改，重读当前内容后使用稳定章节锚点；共享工作区补丁必须保留并发更新。继续执行既有输出预算与精确补丁规则。最近复发（深度清理提示词编写）：按 58 行错题本、32 行 AGENTS.md 读取仍因长行超过工具 token 预算而截断，退出码均为 0；改为单文件 8 至 9 行短段及唯一锚点补读。发送前须同时核对实际字符量和工具输出预算，80 行只是上限，不是安全读取批量；本轮只读扫描未执行项目清理。
 - 全局减负执行补充：临时页面检查把正文长度大于 80 当作就绪，紧凑登录文本更短导致超时；改为实际按钮/根节点内容与加载状态。临时断言分析用全文 `from` 正则改导入，误改了断言内正则，改为 TypeScript AST 精确导入节点。两次附带只读检索猜测了不存在的前端路径，后续仅用已确认目录及文件清单，继续执行既有单目录检索规则；未据这些工具失败修改业务行为。
 - 全局减负图像 QA 补充：宿主 Python 版本探针通过但没有 Pillow，改用 `load_workspace_dependencies` 返回的精确 bundled Python；其默认 GBK 读取 UTF-8 中文 JSON 又报 UnicodeDecodeError，改为所有 `read_text(encoding='utf8')` 并设置 `PYTHONIOENCODING=utf-8`。预防：解释器版本、依赖可用性和文本编码分别确认；UTF-8 文件 I/O 要显式编码，不能仅固定 stdout。已补入 AGENTS.md。
+
+  最近复发/补充（2026-11-04，Windows Node 22/Chrome QA）：`require.resolve('playwright')` 在项目依赖中报 MODULE_NOT_FOUND/退出 1，尚未启动浏览器。通过 `load_workspace_dependencies` 取得 bundled 模块的精确路径，设置任务进程级 `PLAYWRIGHT_MODULE` 后验证通过，未安装全局包。解释器和模块分别探针，沿用既有依赖前置规则；适用于项目未声明 Playwright 的宿主 QA。
 - 注册全屏验收补充：CUA 的只读 evaluate 不提供完整浏览器全局，访问 screen.width 报 TypeError；改用 document.documentElement.clientWidth/clientHeight 核对实际视口。新建隐藏标签初始为 1280×720，未继承此前 1920×1080 覆盖，首次截图对照因此尺寸不一致；显式重设并读取两页尺寸后才比较几何与样式。预防：只使用已确认的 DOM 能力，新标签逐页核对实际尺寸；viewport reset 后也读取实际页面状态，不凭调用成功推断显示尺寸。
 - 登录卡片验收补充：首轮 Playwright 把卡片标题当作文档 title，断言期待 Stardew Anxi Panel；当前 App 未登录分支实际设置 Anxi Game Panel。核对 App title effect 后改用实际页面标题，并分别检查卡片 heading，重新验证通过。另有技能合并读取、源代码 diff 与失败断言输出超过预算；后续对精确片段补读，回归完整日志落系统临时文件后只投影终态，不把截断部分作为已读证据。
 - 全屏与紧凑布局验收补充（2026-09-18，Windows/Chrome/Playwright）：首次截图比较只等字体，React 挂载后背景图片可能尚未解码，像素断言不稳定；改为等待实际背景 URL 的 image.decode 后比较。另一次 getByLabel('密码', { exact: true }) 超时，因为同一 label 内还含“显示/隐藏”按钮文案；核对真实组件后用已有 input[name="password"]，复验通过。预防：截图须同时满足 DOM、字体与可见资源就绪；复合 label 的 accessible name 必须来自真实结构。续接时宽匹配多个长期文档再次超出输出预算，后续只取当前顶部章节与有界匹配，继续执行既有总行数/字符限制。
@@ -1141,6 +1171,8 @@
 - 正确做法：依赖卷挂到独立 `/modules`；先 clone 到全空目录并覆盖当前源码，再把 `/modules` 链接为 package 的 `node_modules`。
 - 预防检查：clone/copy 的目标必须在容器启动后仍为空或不存在；任何深层 mount target 都先检查它会创建哪些父目录。
 - 适用范围：Docker 隔离 Git clone、Node `node_modules` volume、构建缓存和所有嵌套挂载布局。
+
+- 最近复发/补充（2026-11-04，Docker 快照守卫）：镜像 WORKDIR 自动物化的空目录被首个快照前置拒绝。先证明该精确目录来自镜像声明、确为空且归属一致，保留原失败后仅续原首个快照；不把 Docker 启动附带目录当用户数据，也不泛化允许其它新增目录。适用于受控容器的快照/恢复，继续执行既有身份、输入与仅续未发动作规则。
 
 ## 2026-08-16：未读取 `package.json` 就猜测 npm 构建脚本名
 

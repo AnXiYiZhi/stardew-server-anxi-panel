@@ -48,10 +48,14 @@ func (f *smapiWorkflowFakeDocker) RuntimeReadContentManifests(context.Context, s
 	}
 	return paneldocker.RuntimeContentRead{
 		GameManifest:  acf("413150", manifest.Game.BuildID, "Stardew Valley"),
-		SDKManifest:   acf("1007", manifest.SDK.BuildID, "Steamworks Shared"),
+		SDKManifest:   manifestFixture("1007", manifest.SDK.BuildID, "4", "Steamworks Shared"),
 		FreeBytes:     20 * 1024 * 1024 * 1024,
 		GameDataBytes: 5 * 1024 * 1024 * 1024,
 	}, nil
+}
+
+func (f *smapiWorkflowFakeDocker) RuntimeReadContentVersions(ctx context.Context, dir, volume, image string) (paneldocker.RuntimeContentRead, error) {
+	return f.RuntimeReadContentManifests(ctx, dir, volume, image)
 }
 
 func (f *smapiWorkflowFakeDocker) RuntimeReadSMAPIMetadata(_ context.Context, _ string, volume, _ string) (paneldocker.RuntimeSMAPIMetadata, error) {

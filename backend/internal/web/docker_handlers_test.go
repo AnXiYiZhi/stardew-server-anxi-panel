@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,6 +49,21 @@ type fakeDockerService struct {
 	removedVolumes      chan<- []string
 	execFunc            func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	instanceState       string
+	runtimeContentRead  func(context.Context, string, string, string) (paneldocker.RuntimeContentRead, error)
+	mutationCalls       *atomic.Int32
+}
+
+func (f fakeDockerService) recordMutation() {
+	if f.mutationCalls != nil {
+		f.mutationCalls.Add(1)
+	}
+}
+
+func (f fakeDockerService) RuntimeReadContentVersions(ctx context.Context, dir, volume, image string) (paneldocker.RuntimeContentRead, error) {
+	if f.runtimeContentRead == nil {
+		return paneldocker.RuntimeContentRead{}, errors.New("fake runtime content reader is not configured")
+	}
+	return f.runtimeContentRead(ctx, dir, volume, image)
 }
 
 func (f fakeDockerService) DockerVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error) {
@@ -146,6 +162,7 @@ func (f fakeDockerService) RuntimeVolumeInspect(_ context.Context, _ string, nam
 }
 
 func (f fakeDockerService) RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	f.recordMutation()
 	for _, line := range f.steamAuthLines {
 		lineHandler(line)
 	}
@@ -164,6 +181,7 @@ func (f fakeDockerService) RunContainerTTY(ctx context.Context, opts paneldocker
 }
 
 func (f fakeDockerService) RemoveContainersByVolume(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	if f.removedByVolumes != nil {
 		f.removedByVolumes <- append([]string(nil), names...)
 	}
@@ -171,6 +189,7 @@ func (f fakeDockerService) RemoveContainersByVolume(ctx context.Context, workDir
 }
 
 func (f fakeDockerService) RemoveSteamInviteAuthSessionHolders(ctx context.Context, workDir, project, volume string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	if f.removedByVolumes != nil {
 		f.removedByVolumes <- []string{volume}
 	}
@@ -178,6 +197,7 @@ func (f fakeDockerService) RemoveSteamInviteAuthSessionHolders(ctx context.Conte
 }
 
 func (f fakeDockerService) RemoveVolumes(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	if f.removedVolumes != nil {
 		f.removedVolumes <- append([]string(nil), names...)
 	}
@@ -189,6 +209,7 @@ func (f fakeDockerService) ComposeUp(ctx context.Context, dir string) (paneldock
 }
 
 func (f fakeDockerService) composeUpResult(ctx context.Context) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	if f.composeUpGate != nil {
 		select {
 		case <-ctx.Done():
@@ -200,14 +221,17 @@ func (f fakeDockerService) composeUpResult(ctx context.Context) (paneldocker.Com
 }
 
 func (f fakeDockerService) ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
 func (f fakeDockerService) ComposeRestart(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
 func (f fakeDockerService) ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
@@ -216,10 +240,12 @@ func (f fakeDockerService) ComposeRecreateServices(ctx context.Context, dir stri
 }
 
 func (f fakeDockerService) RuntimeComposeStopServices(context.Context, string, string, ...string) error {
+	f.recordMutation()
 	return nil
 }
 
 func (f fakeDockerService) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
+	f.recordMutation()
 	if f.execFunc != nil {
 		return f.execFunc(ctx, dir, service, stdinData, args...)
 	}
@@ -227,6 +253,7 @@ func (f fakeDockerService) ComposeExecPipe(ctx context.Context, dir, service, st
 }
 
 func (f fakeDockerService) ComposeExecTTY(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.ComposeExecTTYResult, error) {
+	f.recordMutation()
 	return paneldocker.ComposeExecTTYResult{ExitCode: 0}, nil
 }
 

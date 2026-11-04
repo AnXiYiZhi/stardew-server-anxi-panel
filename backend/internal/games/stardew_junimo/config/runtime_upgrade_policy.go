@@ -105,6 +105,17 @@ func RuntimeUpgradePolicyForManifest(manifest RuntimeStackManifest) RuntimeUpgra
 	}
 }
 
+// An activated release describes the migration supplied by the running Panel,
+// rather than advertising the first release that introduced this game stack.
+// A bridge retains its one reviewed forward target until that Panel is loaded.
+func (p RuntimeUpgradePolicy) ForPanelVersion(version string) RuntimeUpgradePolicy {
+	if p.RequiresScopeConfirmation && PanelVersionSatisfies(version, version) &&
+		(p.TargetPanelVersion == "" || PanelVersionSatisfies(version, p.TargetPanelVersion)) {
+		p.TargetPanelVersion = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(version)), "v")
+	}
+	return p
+}
+
 // A bridge coordinates only its declared forward target. Unknown future
 // releases use an ordinary Panel update followed by that release's own scope
 // confirmation. Existing authorized operations remain independently resumable.

@@ -1,3 +1,14 @@
+## 2026-11-04 0.8.1 修复候选
+
+- SDK 与固定游戏清单分离：游戏保留原 build/depot/manifest、226 个核心 SHA 和 3560 项 Content 校验；SDK 按实际 App1007/Linux1006 安装清单与有界 ELF 程序头、segment、DYNAMIC 结构核验，完成 marker 写实际 manifest。参考 SDK build 仅用于诊断，检测状态不再据此要求更新。
+- `junimo140_game_integrity.go`、`junimo140_sdk.go` 与 Docker `runtime_junimo140_sdk.go` 共用迁移/新装验证；140 dry-run 在停服前检查游戏/SDK ACF。cached patched-SMAPI 路径仍跳过重复安装，但先重新核验 payload、刷新实际 marker，失败清除旧 verified 回执。
+- SMAPI 缺失状态也先核验游戏、SDK、Junimo 与 Control 前置；旧 dry-run 成功后源内容变坏时，apply 重新核验并在运行变更前拒绝，合法新 SDK 仍可安装/更新。
+- 运行中世界捕获活动存档时复用最多 90 秒的稳定读取，服从任务/请求取消；停止世界继续严格校验。确认阶段分别返回预检未完成、预检失败、当前不可确认和真正过期。
+- `GET /api/system/update/full-stack` 对待确认且未授权的操作派生 `confirmationExpired`，新服务端显式返回 true/false；持久记录及 plan hash 不含此观测，已授权执行继续按原 ID 恢复。
+- 已激活 Panel 的运行栈范围目标按当前发行版本投影；旧 073 发现后续正式版本时先更新 Panel，再由新版本确认其实际游戏范围。通用发行政策按目标版本实例化，最低更新器保持 073，真实生成器覆盖未来 082。
+- 用户授权服务器已通过保存回执、停服/SDK 原目录保留、受控重启及运行中范围确认完成 080 的 125→140 升级，终态 succeeded，存档与角色身份集合保持，临时容器和维护 session 已收尾。
+- 聚焦 Linux/Chrome 回归与真实 SDK253 Docker staging、游戏损坏和截断 SDK 拒绝已通过。081 尚需同一不可变候选完成 080/073 Web 升级、回滚、实际运行/Steam 链和正式提升；矩阵及证据入口见 docs09。
+
 ## 2026-10-29 0.8.0 正式后端收尾
 
 - 默认运行栈为Junimo140/正式Auth140/Control0.3.9；安装器复用固定140镜像patched SMAPI，核对四核与stamp。

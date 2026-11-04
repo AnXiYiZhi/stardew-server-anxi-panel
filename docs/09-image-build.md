@@ -1,5 +1,38 @@
 # Junimo 更新替换交接 2026年10月15日
 
+## 2026-11-04 0.8.1 修复候选与发布矩阵
+
+本版变更：SDK 与固定游戏 build/hash 分离，按实际安装清单和有界 ELF 段结构核验并写实际 marker；140 预检、普通检测、新装和 cached-SMAPI 快路径闭合。运行中保存窗口使用有界稳定读取，确认错误分阶段；GET 过期投影不入持久记录或授权hash，前端按服务端状态重新预检。通用发行政策按目标实例化，073可发现081及未来082；新版本范围目标取当前Panel版本。
+
+受影响链路为游戏/SDK安装与迁移、共享组预检/确认、更新中心及发行政策生成。Junimo140/Auth140/Control0.3.9制品身份保持，SDK参考build仅作诊断；实际运行和Steam链按本候选验收。候选版本为0.8.1，当前上一正式版取Release列表最高稳定080，受影响最老代表为073；GitHub网页latest073保留旧客户端桥，073本身读取正式列表。
+
+| 专项/门禁 | 本版范围与通过条件 |
+| --- | --- |
+| 代码门禁 | 后端test/vet/build；前端状态/浏览器/production build；脚本、ShellCheck、政策生成器、兼容矩阵、updater/Docker integration。条件矩阵由run-release-gates基于080→候选路径自动选择/跳过。 |
+| 新装冒烟 | 同一不可变候选的空Panel、health/version、未初始化状态及Panel重启。 |
+| SDK正常路径 | 旧SDK与实际SDK253均接受；实际ACF/库和源卷保持，SDK marker使用真实manifest；cached-SMAPI不重复安装但重验payload/刷新marker。 |
+| SDK关键边界 | 缺失/不完整ACF、错误depot/架构、link、ELF表/段越界或溢出、96B截断库拒绝；游戏固定build/核心hash/Content损坏继续拒绝，失败不发布marker。 |
+| SMAPI前置 | present/missing均先核游戏/SDK/运行栈；已成功dry-run后SDK缺失/不完整或游戏漂移时，apply复核拒绝且运行变更0；合法SDK253仍接受。 |
+| 权限/恢复/资源 | actor/operation/hash/scope仍严格；helper只在固定镜像和owned unused卷执行，恢复allowlist/取消及精确清理闭合；保留原失败与操作ID。 |
+| 运行中预检 | 真实运行源的保存/范围确认；瞬态保存写入可有界收敛，持续变化/损坏/取消拒绝且未授权前不执行停服；原容器/配置/运行选择变化仍拒绝。 |
+| 过期/界面 | 服务端未完成、失败、不可确认、真过期分码；新GET显式true/false，record/hash不变；客户端时钟偏移、新旧API、跨期、重新预检和授权后续观。升级后验双主题/1440、390、360。 |
+| 最新发行 | 实际生成器产出081及未来082政策，最低更新器073；旧073发现最高兼容正式版。旧073/080按其真实UI先Panel更新，新081再确认需迁移游戏范围。 |
+| 080→081 | 真实Panel Web check/dry-run/提示确认/apply/预期重连/终态；SQLite、初始化/用户、长期数据、非目标容器/volume与重启保持。 |
+| 同候选unhealthy | 同一候选引用注入目标不健康，必须failed_rolled_back/health_check_failed并恢复原080；只重跑失败及受影响下游。 |
+| 073代表链 | 恢复本任务专属073来源并验证本次seed-ready，再真实Web发现/更新081；新Panel执行实际游戏范围，验证SDK253、140/原专属Auth会话、邀请码、存档/角色、Mod、备份恢复/导出及重启。 |
+| 正式提升 | 干净且同步main的唯一候选证明、完整SHA/固定UTC build date、annotated tag和三仓081/latest同digest；一个正式引用回拉做health/version。 |
+| 公开入口 | 081 README/官网9文件已构建并封存，正式提升后同字节回放，再记录Pages与线上验收，避免提前公开尚未存在的下载资产。 |
+
+现有080生产恢复已完成：先取得同commandId的GameLoop.Saved回执，保留SQLite/停服存档/原SDK目录与tar，恢复已验收的SDK原始ACF和两库，再从健康运行125创建新范围并确认一次；同operation最终succeeded，固定140健康、实例running、存档及角色身份集合保持。临时下载helper已按归属删除，短期维护session已撤销，备份保留。该恢复与081候选证明各自绑定。
+
+候选前已通过：Linux聚焦SDK/预检/政策、真实Chrome生命周期17场景与更新入口18场景；独立DinD真实SDK253 staging及坏游戏/截断SDK负例通过。SDK根日志为`E:/task-evidence/runtime-sdk-repair-20261104-cf7d2ccb/sdk-real-docker.jsonl`；私有SDK原tar SHA为`85303acb5466d5610dd5f8ca96ea9d986a43542fb494e4bf9f51d37e00f26d45`。不输出账号、token或存档标识。
+
+本地整包首轮保留`backend-all-v3.jsonl`（2455 pass/9条件skip/17失败事件）：安装/Web fake缺少新证据、专用SMAPI fake继承固定读数，以及Alpine同名BusyBox缺GNU参数能力。夹具按完整证据补齐，另修复SMAPI missing前置短路；GNU工具能力核验后FIFO通过。随后两个受影响包`backend-affected-v4.jsonl`为1986 pass/3条件skip/0fail，另14个独立包的首轮通过保持；全后端vet/build通过。Node22洁净Linux快照的27条非浏览器状态脚本及production build通过，浏览器回归单独记录。不可变候选仍执行其规定全门禁。
+
+公开补丁封存为`E:/task-evidence/release081-public-20261104-d04b/post-release-public081-seal-v1/public081.apply_patch`，SHA`8a28ba0fc7c6571a3caaa7f346205f729e7c63514c5723bc1f0b98dddb136679`，9文件字节回放核验通过；原网站构建manifest SHA`d0863acdaee9bf8dd8892cc5a40ee26b12192b34584dfd164d433dae96e80a3e`。
+
+081候选workflow、正式workflow、唯一digest、实际条件矩阵/耗时及故障清理在完成后追加；本节目前只记录已完成的候选前检查和待执行门禁。
+
 ## 2026-10-29 0.8.0 正式发布与验收记录
 
 - 完整commit：`8b348b0095f990f17bf6307c2346c8b73cc3586b`；build date：`2026-10-28T12:44:54Z`。

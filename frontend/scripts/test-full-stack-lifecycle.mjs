@@ -3,6 +3,8 @@ import { createRequire } from 'node:module'
 import { createServer } from 'vite'
 import { fixturePort } from './fixture-port.mjs'
 import { fileURLToPath } from 'node:url'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
@@ -33,13 +35,17 @@ await server.listen()
 const url='http://127.0.0.1:'+server.httpServer.address().port+'/full-stack-test'
 const browser=await chromium.launch({channel:process.env.PLAYWRIGHT_CHANNEL||'chrome',headless:true})
 const results=[]
-const plan=()=>({operationId:'stack_'+'a'.repeat(32),planSha256:'b'.repeat(64),actorId:41,phase:'awaiting_confirmation',panel:{version:'0.7.3',image:'candidate:local',imageId:'sha256:'+'c'.repeat(64),revision:'d'.repeat(40),buildDate:'2026-10-16T00:00:00Z'},runtimeVersion:'1.5.0-preview.140',runtimeDigest:'sha256:'+'e'.repeat(64),controlVersion:'0.3.9',controlSha256:'f'.repeat(64),gameBuildId:'17945490',sdkBuildId:'fixture-sdk',smapiIdentity:'Junimo .140 image-owned patched SMAPI',createdAt:'2026-10-16T00:00:00Z',expiresAt:'2026-10-17T00:00:00Z',continuation:true,groups:[{primaryId:'a',members:['a','b','cold'],memberNames:{a:'农场 A',b:'农场 B',cold:'空模板'},runningWorlds:2,coldTemplates:1,savedWorlds:0,stoppedWorlds:0,updatedWorlds:0,scopeSha256:'1'.repeat(64),applyId:'original-apply',phase:'prepared'}]})
+const fixtureNow=Date.parse('2026-11-04T08:00:00Z')
+const evidenceDir=process.env.FULL_STACK_EVIDENCE_DIR
+if(evidenceDir)await mkdir(evidenceDir,{recursive:true})
+const plan=()=>({operationId:'stack_'+'a'.repeat(32),planSha256:'b'.repeat(64),actorId:41,phase:'awaiting_confirmation',confirmationExpired:false,panel:{version:'0.7.3',image:'candidate:local',imageId:'sha256:'+'c'.repeat(64),revision:'d'.repeat(40),buildDate:'2026-10-16T00:00:00Z'},runtimeVersion:'1.5.0-preview.140',runtimeDigest:'sha256:'+'e'.repeat(64),controlVersion:'0.3.9',controlSha256:'f'.repeat(64),gameBuildId:'17945490',sdkBuildId:'fixture-sdk',smapiIdentity:'Junimo .140 image-owned patched SMAPI',createdAt:new Date(fixtureNow).toISOString(),expiresAt:new Date(fixtureNow+24*60*60*1000).toISOString(),continuation:true,groups:[{primaryId:'a',members:['a','b','cold'],memberNames:{a:'农场 A',b:'农场 B',cold:'空模板'},runningWorlds:2,coldTemplates:1,savedWorlds:0,stoppedWorlds:0,updatedWorlds:0,scopeSha256:'1'.repeat(64),applyId:'original-apply',phase:'prepared'}]})
 const read=page=>page.locator('output').textContent().then(JSON.parse)
 async function until(page,condition){const deadline=Date.now()+5000;while(!condition()){assert.ok(Date.now()<deadline,'bounded request readiness');await page.waitForTimeout(20)}}
 try{
-  for(const scenario of ['explicit duplicate confirmation','stale GET after confirmation','logout during POST','ordinary user','interrupted reconnect','manual recovery','scope invalidation','preflight failure','historical success']){
-    const context=await browser.newContext({viewport:{width:390,height:844}})
-    const page=await context.newPage(),errors=[],posts=[]
+  for(const scenario of ['explicit duplicate confirmation','stale GET after confirmation','logout during POST','ordinary user','interrupted reconnect','manual recovery','scope invalidation','preflight failure','historical success','expired confirmation desktop','expired confirmation mobile','expires while open','server expiry with client clock behind','authorized past expiry','client clock ahead valid','legacy API valid with client clock ahead','legacy API expiry result']){
+    const expiryScenario=scenario.startsWith('expired confirmation')||scenario==='expires while open'||scenario==='server expiry with client clock behind'
+    const context=await browser.newContext({viewport:{width:scenario==='expired confirmation desktop'?1440:390,height:844}})
+    const page=await context.newPage(),errors=[],posts=[],consoleProblems=[]
     let status=plan(),gets=0,offline=false,releaseGet,releasePost
     let holdNextGet=false
     const getGate=new Promise(resolve=>{releaseGet=resolve}),postGate=new Promise(resolve=>{releasePost=resolve})
@@ -49,12 +55,28 @@ try{
     if(scenario==='scope invalidation')status.phase='scope_changed'
     if(scenario==='historical success'){status.phase='succeeded';status.authorizedAt='2026-10-16T00:01:00Z'}
     if(scenario==='preflight failure'){status.phase='preflight_failed';status.errorCode='junimo140_auth_target_unpublished';status.error='自有 .140 SteamAuth 尚未发布，原游戏保持运行。'}
+    if(scenario==='server expiry with client clock behind')status.confirmationExpired=true
+    if(scenario==='authorized past expiry'){
+      status.phase='migrating'
+      status.authorizedAt='2026-11-03T08:00:00Z'
+      status.expiresAt=new Date(fixtureNow-1).toISOString()
+      status.confirmationExpired=true
+    }
+    if(scenario.startsWith('expired confirmation')){
+      status.createdAt=new Date(fixtureNow-24*60*60*1000).toISOString()
+      status.expiresAt=new Date(fixtureNow).toISOString()
+      status.confirmationExpired=true
+    }
+    if(scenario.startsWith('legacy API'))delete status.confirmationExpired
+    if(scenario==='legacy API expiry result')status.expiresAt=new Date(fixtureNow-1).toISOString()
     page.on('pageerror',error=>errors.push(error.message))
-    await page.addInitScript(({admin})=>{
-      window.fixture={admin,finished:0,offline:false}
+    page.on('console',message=>{if(['error','warning'].includes(message.type()))consoleProblems.push(message.text())})
+    await page.addInitScript(({admin,now})=>{
+      window.fixture={admin,finished:0,offline:false,now}
+      Date.now=()=>window.fixture.now
       const original=window.setTimeout
       window.setTimeout=(fn,ms,...args)=>original(fn,ms===1500?70:ms===5000?120:ms,...args)
-    },{admin:scenario!=='ordinary user'})
+    },{admin:scenario!=='ordinary user',now:scenario.includes('clock ahead')?fixtureNow+2*24*60*60*1000:fixtureNow})
     await page.route('**/api/**',async route=>{
       const request=route.request(),path=new URL(request.url()).pathname
       if(path.endsWith('/full-stack')){
@@ -67,10 +89,15 @@ try{
         }else{
           const body=request.postDataJSON();posts.push(body)
           if(body.action==='confirm'){
+            if(scenario==='legacy API expiry result'){
+              await route.fulfill({status:409,json:{error:{code:'full_stack_confirmation_expired',message:'本次确认已过期或预检尚未完成。'}}})
+              return
+            }
             status={...status,phase:'waiting_panel',authorizedAt:'2026-10-16T00:01:00Z'}
             if(scenario==='logout during POST')await postGate
           }else if(body.action==='recover')status={...status,phase:'recovering'}
           else if(body.action==='cancel')status={...status,phase:'failed_safe',errorCode:'administrator_cancelled'}
+          else if(body.action==='prepare')status={...plan(),operationId:'stack_'+'9'.repeat(32),planSha256:'',phase:'preparing',groups:[]}
           await route.fulfill({status:202,json:status}).catch(()=>{})
         }
       }else if(path.endsWith('/apply'))await route.fulfill({json:{phase:'succeeded',toVersion:'0.7.3',logs:[]}})
@@ -145,6 +172,48 @@ try{
       }else if(scenario==='preflight failure'){
         assert.equal(await page.getByText('自有 .140 SteamAuth 尚未发布，原游戏保持运行。',{exact:true}).count(),1)
         assert.equal(await page.getByRole('button',{name:'确认上述目标和世界范围，开始升级'}).count(),0)
+      }else if(scenario==='authorized past expiry'){
+        assert.equal(await page.getByRole('button',{name:'重新下载并预检全栈升级'}).count(),0)
+        assert.equal(await page.getByRole('button',{name:'确认上述目标和世界范围，开始升级'}).count(),0)
+        assert.equal((await read(page)).projected.fullStack.phase,'checking_runtime')
+        assert.equal(posts.length,0,'an already authorized transaction keeps observing its original operation')
+      }else if(scenario==='client clock ahead valid'||scenario==='legacy API valid with client clock ahead'){
+        assert.ok(await page.evaluate(expires=>Date.now()>Date.parse(expires),status.expiresAt),'fixture browser clock must be two days ahead')
+        await page.getByRole('button',{name:'确认上述目标和世界范围，开始升级',exact:true}).click()
+        await page.waitForFunction(()=>JSON.parse(document.querySelector('output').textContent).status?.authorizedAt)
+        assert.deepEqual(posts,[{action:'confirm',confirm:true,operationId:plan().operationId,planSha256:plan().planSha256}],'browser wall-clock skew must not reject a server-valid scope')
+      }else if(scenario==='legacy API expiry result'){
+        await page.getByRole('button',{name:'确认上述目标和世界范围，开始升级',exact:true}).click()
+        const retry=page.getByRole('button',{name:'重新下载并预检全栈升级',exact:true})
+        await retry.waitFor({state:'visible'})
+        const before=gets
+        await until(page,()=>gets>=before+2)
+        assert.equal(await retry.isVisible(),true,'legacy GET without expiry metadata must retain the same rejected operation')
+        assert.equal(posts.length,1,'GET reconciliation must not replay confirmation')
+        await retry.click()
+        await page.waitForFunction(()=>JSON.parse(document.querySelector('output').textContent).status?.phase==='preparing')
+        assert.deepEqual(posts.map(body=>body.action),['confirm','prepare'])
+      }else if(expiryScenario){
+        if(scenario==='expires while open'){
+          await page.getByRole('button',{name:'确认上述目标和世界范围，开始升级',exact:true}).waitFor({state:'visible'})
+          status={...status,confirmationExpired:true}
+        }
+        const retry=page.getByRole('button',{name:'重新下载并预检全栈升级',exact:true})
+        await retry.waitFor({state:'visible'})
+        assert.equal(await page.title(),'Full stack lifecycle')
+        assert.equal(page.url(),url)
+        assert.equal(await page.locator('vite-error-overlay').count(),0)
+        assert.equal(await page.getByText('本次预检已过期，请重新检查升级范围',{exact:true}).count(),1)
+        assert.ok(!(await page.locator('section.sd-update-dry-run').textContent()).includes('等待确认'),'expired history must not imply that the old scope is ready for consent')
+        assert.equal(await page.getByRole('button',{name:'确认上述目标和世界范围，开始升级'}).count(),0)
+        if(evidenceDir)await page.screenshot({path:join(evidenceDir,scenario.replaceAll(' ','-')+'.png'),fullPage:false})
+        await page.evaluate(()=>window.fixture.confirm())
+        assert.equal(posts.length,0,'an expired saved plan cannot issue a confirmation request')
+        await retry.click()
+        await page.waitForFunction(()=>JSON.parse(document.querySelector('output').textContent).status?.phase==='preparing')
+        assert.deepEqual(posts,[{action:'prepare',targetVersion:'0.7.3'}])
+        assert.equal((await read(page)).status.operationId,'stack_'+'9'.repeat(32),'recheck must display the new operation')
+        assert.deepEqual(consoleProblems,[])
       }
       const size=await page.evaluate(()=>({body:document.body.scrollWidth,root:document.documentElement.scrollWidth,width:document.documentElement.clientWidth}))
       assert.ok(size.body<=size.width&&size.root<=size.width,'mobile scope and hashes must fit viewport')

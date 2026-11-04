@@ -168,6 +168,15 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	if err := addCheck("current_server_image", "ok", "当前 server 镜像与 digest 已确认。"); err != nil {
 		return err
 	}
+	if junimo140FixedTarget(status.Target) {
+		if err := d.preflightJunimo140Content(ctx, docker, instance, status.Current.Server.Image); err != nil {
+			_ = addCheck("game_sdk_installation", "error", paneldocker.RedactString(err.Error()))
+			return fail("game_sdk_installation_invalid", paneldocker.RedactString(err.Error()))
+		}
+		if err := addCheck("game_sdk_installation", "ok", "游戏安装身份与 SDK Linux depot 完整；实际运行文件将在隔离副本中再次验证。"); err != nil {
+			return err
+		}
+	}
 	if steamInviteEnabled {
 		authMetadata, err := docker.RuntimeImageInspect(ctx, instance.DataDir, status.Current.SteamAuth.Image)
 		if err != nil || !runtimeImageDigestPattern.MatchString(authMetadata.Digest) {

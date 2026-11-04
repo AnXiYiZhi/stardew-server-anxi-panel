@@ -58,6 +58,8 @@ type FullStackUpgradeStatus struct {
 	ErrorCode      string                 `json:"errorCode,omitempty"`
 	Error          string                 `json:"error,omitempty"`
 	JobID          string                 `json:"jobId,omitempty"`
+
+	ConfirmationExpired *bool `json:"confirmationExpired,omitempty"`
 }
 
 type fullStackPreparedGroup struct {
@@ -87,7 +89,7 @@ func (d *Driver) FullStackUpgradeAvailable() bool {
 
 func (d *Driver) FullStackUpgradeAppliesToPanelVersion(current, version string) bool {
 	policy, err := sjconfig.BuiltInRuntimeUpgradePolicy()
-	return err == nil && policy.AppliesToPanelVersion(current, version)
+	return err == nil && policy.ForPanelVersion(current).AppliesToPanelVersion(current, version)
 }
 
 func (d *Driver) fullStackRoot() (string, error) {
@@ -141,6 +143,7 @@ func (op fullStackOperation) validateGroups() error {
 }
 
 func (d *Driver) writeFullStackOperation(op fullStackOperation) error {
+	op.Public.ConfirmationExpired = nil
 	root, err := d.fullStackRoot()
 	if err != nil {
 		return err
@@ -237,6 +240,8 @@ func (d *Driver) FullStackUpgradeStatus() (FullStackUpgradeStatus, error) {
 	d.fullStackMu.Lock()
 	defer d.fullStackMu.Unlock()
 	op, err := d.readFullStackOperation()
+	expired := op.Public.Phase == "awaiting_confirmation" && op.Public.AuthorizedAt == nil && !time.Now().Before(op.Public.ExpiresAt)
+	op.Public.ConfirmationExpired = &expired
 	return op.Public, err
 }
 

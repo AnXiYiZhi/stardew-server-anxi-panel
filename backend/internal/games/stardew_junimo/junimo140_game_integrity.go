@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
@@ -21,7 +22,6 @@ type junimo140DepotPin struct{ AppID, BuildID, DepotID, ManifestID string }
 type junimo140GamePins struct {
 	SchemaVersion int               `json:"schemaVersion"`
 	Game          junimo140DepotPin `json:"game"`
-	SDK           junimo140DepotPin `json:"sdk"`
 	Content       struct {
 		ManifestSHA256 string `json:"manifestSHA256"`
 		Entries        int    `json:"entries"`
@@ -32,6 +32,7 @@ type junimo140GamePins struct {
 type junimo140GameIntegrityDocker interface {
 	RuntimeReadJunimo140GameEvidence(context.Context, string, string, string, string, string) ([]byte, error)
 	RuntimeVerifyJunimo140GameFiles(context.Context, string, string, string, string, string, map[string]string) (paneldocker.RuntimeGameFileStats, error)
+	RuntimeInspectJunimo140SDK(context.Context, string, string, string, string) (paneldocker.RuntimeGameFileStats, error)
 	RuntimeCommitJunimo140GameMarkers(context.Context, string, string, string, string, paneldocker.RuntimeGameDownloadMarker, paneldocker.RuntimeGameDownloadMarker) error
 }
 
@@ -68,8 +69,13 @@ func prepareJunimo140SharedGameStaging(ctx context.Context, docker junimo140Shar
 
 func fixedJunimo140GamePins() (junimo140GamePins, error) {
 	var pins junimo140GamePins
-	if json.Unmarshal(junimo140LegacyGamePins, &pins) != nil || pins.SchemaVersion != 1 || len(pins.CoreFiles) != 228 || pins.Content.Entries != 3560 || len(pins.Content.ManifestSHA256) != 64 {
+	if json.Unmarshal(junimo140LegacyGamePins, &pins) != nil || pins.SchemaVersion != 1 || len(pins.CoreFiles) != 226 || pins.Content.Entries != 3560 || len(pins.Content.ManifestSHA256) != 64 {
 		return pins, errors.New("invalid embedded legacy game integrity catalog")
+	}
+	for name := range pins.CoreFiles {
+		if strings.HasPrefix(name, ".steam-sdk/") {
+			return pins, errors.New("game integrity catalog contains independently installed SDK files")
+		}
 	}
 	return pins, nil
 }
@@ -77,7 +83,7 @@ func fixedJunimo140GamePins() (junimo140GamePins, error) {
 func verifyFixedDepotManifest(data []byte, pin junimo140DepotPin) error {
 	manifest, err := parseSteamAppManifest(data, pin.AppID)
 	if err != nil || manifest.BuildID != pin.BuildID || manifest.StateFlags != "4" || len(manifest.InstalledDepots) != 1 || manifest.InstalledDepots[pin.DepotID] != pin.ManifestID {
-		return errors.New("game or SDK does not match the supported complete legacy build")
+		return errors.New("game does not match the supported complete legacy build")
 	}
 	return nil
 }
@@ -110,17 +116,19 @@ func prepareJunimo140GameMarkers(ctx context.Context, docker junimo140GameIntegr
 	if err != nil {
 		return err
 	}
-	for _, item := range []struct {
-		kind string
-		pin  junimo140DepotPin
-	}{{"game", pins.Game}, {"sdk", pins.SDK}} {
-		data, err := docker.RuntimeReadJunimo140GameEvidence(ctx, dir, volume, image.Image, image.ImageID, item.kind)
-		if err != nil {
-			return fmt.Errorf("read legacy %s identity: %w", item.kind, err)
-		}
-		if err := verifyFixedDepotManifest(data, item.pin); err != nil {
-			return err
-		}
+	gameData, err := docker.RuntimeReadJunimo140GameEvidence(ctx, dir, volume, image.Image, image.ImageID, "game")
+	if err != nil {
+		return fmt.Errorf("read legacy game identity: %w", err)
+	}
+	if err := verifyFixedDepotManifest(gameData, pins.Game); err != nil {
+		return err
+	}
+	sdkData, err := docker.RuntimeReadJunimo140GameEvidence(ctx, dir, volume, image.Image, image.ImageID, "sdk")
+	if err != nil {
+		return fmt.Errorf("read installed SDK identity: %w", err)
+	}
+	if _, err := parseCompleteSDKManifest(sdkData); err != nil {
+		return err
 	}
 	data, err := docker.RuntimeReadJunimo140GameEvidence(ctx, dir, volume, image.Image, image.ImageID, "content")
 	if err != nil {
@@ -137,11 +145,19 @@ func prepareJunimo140GameMarkers(ctx context.Context, docker junimo140GameIntegr
 	core["Content/ContentHashes.json"] = pins.Content.ManifestSHA256
 	coreStats, err := docker.RuntimeVerifyJunimo140GameFiles(ctx, dir, volume, image.Image, image.ImageID, "sha256", core)
 	if err != nil {
-		return fmt.Errorf("verify complete legacy game and SDK core: %w", err)
+		return fmt.Errorf("verify complete legacy game core: %w", err)
 	}
 	contentStats, err := docker.RuntimeVerifyJunimo140GameFiles(ctx, dir, volume, image.Image, image.ImageID, "md5", content)
 	if err != nil {
 		return fmt.Errorf("verify complete legacy game content: %w", err)
+	}
+	sdkStats, err := docker.RuntimeInspectJunimo140SDK(ctx, dir, volume, image.Image, image.ImageID)
+	if err != nil {
+		return fmt.Errorf("verify installed SDK runtime files: %w", err)
+	}
+	sdkMarker, err := installedSDKDownloadMarker(sdkData, sdkStats, now)
+	if err != nil {
+		return err
 	}
 	marker := func(pin junimo140DepotPin, files, bytes int64) paneldocker.RuntimeGameDownloadMarker {
 		app, _ := strconv.ParseUint(pin.AppID, 10, 32)
@@ -149,9 +165,9 @@ func prepareJunimo140GameMarkers(ctx context.Context, docker junimo140GameIntegr
 		manifest, _ := strconv.ParseUint(pin.ManifestID, 10, 64)
 		return paneldocker.RuntimeGameDownloadMarker{AppID: uint32(app), DepotID: uint32(depot), ManifestID: manifest, TargetOS: "linux", TotalBytes: bytes, TotalFiles: files, DownloadedAt: now.UTC().Format(time.RFC3339Nano)}
 	}
-	if contentStats.SDKFiles != 0 || contentStats.GameFiles != int64(pins.Content.Entries) || coreStats.SDKFiles == 0 || coreStats.GameFiles == 0 {
+	if contentStats.SDKFiles != 0 || contentStats.GameFiles != int64(pins.Content.Entries) || coreStats.SDKFiles != 0 || coreStats.GameFiles != int64(len(core)) {
 		return errors.New("incomplete legacy game integrity proof")
 	}
 	return docker.RuntimeCommitJunimo140GameMarkers(ctx, dir, volume, image.Image, image.ImageID,
-		marker(pins.Game, coreStats.GameFiles+contentStats.GameFiles, coreStats.GameBytes+contentStats.GameBytes), marker(pins.SDK, coreStats.SDKFiles, coreStats.SDKBytes))
+		marker(pins.Game, coreStats.GameFiles+contentStats.GameFiles, coreStats.GameBytes+contentStats.GameBytes), sdkMarker)
 }

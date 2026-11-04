@@ -220,7 +220,7 @@ func (d *Driver) captureJunimo140Group(ctx context.Context, docker junimo140Grou
 		}
 		save := GetActiveSaveName(member.DataDir)
 		if save != "" {
-			if _, err := stableImportSaveDiskState(member.DataDir, save); err != nil {
+			if err := captureJunimo140SelectedSave(ctx, member.DataDir, save, original.ServerWasRunning); err != nil {
 				return txn, err
 			}
 			original.HasWorld = true
@@ -249,6 +249,25 @@ func (d *Driver) captureJunimo140Group(ctx context.Context, docker junimo140Grou
 	}
 	txn.InputSHA256 = txn.inputDigest()
 	return txn, nil
+}
+
+func captureJunimo140SelectedSave(ctx context.Context, dataDir, save string, running bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var err error
+	if running {
+		// A normal game save may atomically replace the selected file while this
+		// read-only preflight runs. Wait for the same selected save to settle;
+		// consent still binds its identity and the original running choice.
+		_, err = waitStableImportSaveDiskState(ctx, dataDir, save, defaultImportDurableSaveOptions().TransitionTimeout)
+	} else {
+		_, err = stableImportSaveDiskState(dataDir, save)
+	}
+	if err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func checkpointJunimo140Group(journal *junimo140GroupJournal, txn *junimo140GroupTransaction, phase string) error {

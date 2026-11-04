@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "version": "0.8.1",
+  "minimumUpdaterVersion": "0.7.3",
+  "title": "v0.8.1 · 运行栈升级与预检修复",
+  "summary": "修复 SDK 版本变化阻塞升级、预检过期提示和运行中存档读取问题。",
+  "changes": [
+    "游戏内容继续固定核验，Steam SDK 按实际 Linux 安装与运行文件独立校验。",
+    "区分预检执行中、预检失败和真正过期，过期后可直接重新检查升级范围。",
+    "运行中的存档短暂替换时等待稳定读取，保留原操作、范围、权限与回滚保护。",
+    "v0.7.3 及以后持续从正式发行列表发现适用的最新版本，后续补丁使用对应版本的发行策略。"
+  ],
+  "notices": [
+    {
+      "level": "info",
+      "title": "v0.7.3 的升级顺序",
+      "message": "v0.7.3 会先更新面板至 v0.8.1。页面刷新后，再在 v0.8.1 更新中心检查并确认游戏运行栈范围。",
+      "requiresConfirmation": false
+    },
+    {
+      "level": "warning",
+      "title": "需要短暂停服",
+      "message": "游戏运行栈迁移会使在线玩家断开。系统先保存和备份，完成后恢复原来运行的世界。",
+      "requiresConfirmation": true
+    },
+    {
+      "level": "warning",
+      "title": "确认 Mod 兼容性",
+      "message": "现有 Mod 和配置会保留；第三方 Mod 可能需要更新，请提前确认兼容性。",
+      "requiresConfirmation": true
+    }
+  ],
+  "blocked": false
+}

@@ -251,6 +251,16 @@ func (r *installRunner) ensureJunimo140SMAPIInstalled(ctx context.Context, jobCt
 		if err != nil || !plan.Prepared || plan.ImageID != image.ImageID {
 			return errors.New("verified SMAPI is outside the prepared installation volume journal")
 		}
+		// SteamCMD may have refreshed the independently installed SDK even when
+		// the cached patched SMAPI is unchanged. Reverify the downloaded payload
+		// and publish its actual SDK marker before accepting this installation.
+		plan.SMAPIVerified = false
+		if err := writeInstallVolumePlan(r.instance.DataDir, plan); err != nil {
+			return err
+		}
+		if err := prepareJunimo140GameMarkers(ctx, docker, r.instance.DataDir, volume, image, time.Now()); err != nil {
+			return fmt.Errorf("verify downloaded game with cached patched SMAPI: %w", err)
+		}
 		plan.SMAPIVerified = true
 		return writeInstallVolumePlan(r.instance.DataDir, plan)
 	}

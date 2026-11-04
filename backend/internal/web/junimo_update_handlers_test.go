@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -292,7 +294,19 @@ func TestSMAPIUpdateAPIPermissionsAndRejectsTargetParameters(t *testing.T) {
 }
 
 func TestJunimoUpdateDryRunAPI(t *testing.T) {
-	fake := fakeDockerService{instanceState: storage.InstanceStateGameInstalled, psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}}}}
+	var contentReads, mutations atomic.Int32
+	fake := fakeDockerService{
+		instanceState: storage.InstanceStateGameInstalled,
+		psResult:      paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}}},
+		mutationCalls: &mutations,
+		runtimeContentRead: func(context.Context, string, string, string) (paneldocker.RuntimeContentRead, error) {
+			contentReads.Add(1)
+			return paneldocker.RuntimeContentRead{
+				GameManifest: []byte(`"AppState" { "appid" "413150" "buildid" "16826371" "StateFlags" "4" "installdir" "Stardew Valley" "InstalledDepots" { "413153" { "manifest" "6005910083361727734" } } }`),
+				SDKManifest:  []byte(`"AppState" { "appid" "1007" "buildid" "25329704" "StateFlags" "4" "installdir" "Steamworks Shared" "InstalledDepots" { "1006" { "manifest" "4559160656493359681" } } }`),
+			}, nil
+		},
+	}
 	handler, store, dataRoot, cleanup := newDockerTestHandlerWithStore(t, fake)
 	defer cleanup()
 	adminCookie := setupDockerAdmin(t, handler)
@@ -339,6 +353,13 @@ func TestJunimoUpdateDryRunAPI(t *testing.T) {
 	if started.Code != http.StatusAccepted || !strings.Contains(started.Body.String(), `"phase":"starting"`) {
 		t.Fatalf("start = %d: %s", started.Code, started.Body.String())
 	}
+	var accepted struct {
+		DryRunID string `json:"dryRunId"`
+		JobID    string `json:"jobId"`
+	}
+	if err := json.Unmarshal(started.Body.Bytes(), &accepted); err != nil || accepted.DryRunID == "" || accepted.JobID == "" {
+		t.Fatal("accepted preflight omitted its operation or job identity", err)
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
@@ -349,7 +370,30 @@ func TestJunimoUpdateDryRunAPI(t *testing.T) {
 		if strings.Contains(status.Body.String(), "never-return-this") || strings.Contains(status.Body.String(), "never-return-token") || strings.Contains(status.Body.String(), "STEAM_PASSWORD") {
 			t.Fatalf("status leaked secrets: %s", status.Body.String())
 		}
-		if strings.Contains(status.Body.String(), `"phase":"succeeded"`) {
+		var current struct {
+			DryRunID string `json:"dryRunId"`
+			JobID    string `json:"jobId"`
+			Phase    string `json:"phase"`
+			Code     string `json:"errorCode"`
+		}
+		if err := json.Unmarshal(status.Body.Bytes(), &current); err != nil || current.DryRunID != accepted.DryRunID || current.JobID != accepted.JobID {
+			t.Fatal("preflight GET did not resume the accepted operation", err)
+		}
+		if current.Phase == "failed" || current.Phase == "unsupported" {
+			t.Fatalf("accepted dry-run terminated with phase=%s code=%s", current.Phase, current.Code)
+		}
+		if current.Phase == "succeeded" {
+			if contentReads.Load() != 1 || mutations.Load() != 0 {
+				t.Fatalf("preflight contract reads=%d runtime mutations=%d", contentReads.Load(), mutations.Load())
+			}
+			actualEnv, err := os.ReadFile(filepath.Join(instanceDir, ".env"))
+			if err != nil || !bytes.Equal(actualEnv, []byte(env)) {
+				t.Fatal("read-only preflight changed environment bytes", err)
+			}
+			actualCompose, err := os.ReadFile(filepath.Join(instanceDir, "docker-compose.yml"))
+			if err != nil || !bytes.Equal(actualCompose, []byte("services:\n  server: {}\n  steam-auth: {}\n")) {
+				t.Fatal("read-only preflight changed Compose bytes", err)
+			}
 			return
 		}
 	}

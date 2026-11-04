@@ -41,6 +41,20 @@ def policy_path(target, override=None, root=Path(".")):
     return exact if exact.is_file() else root / "deploy" / "panel-update.json"
 
 
+def load_policy(target, override=None, root=Path(".")):
+    path = policy_path(target, override, root)
+    content = json.loads(path.read_text(encoding="utf-8"))
+    if not override and path == root / "deploy" / "panel-update.json" and "version" not in content:
+        # Only the unversioned maintenance template can follow future patch
+        # releases. Explicit release policies must retain their exact identity.
+        exact = ".".join(map(str, version(target)))
+        if not content.get("title"):
+            raise ValueError("user-facing title, summary and changes are required")
+        content["version"] = exact
+        content["title"] = "v" + exact + " · " + content.get("title", "")
+    return validate(content, target)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=("newest", "notes", "validate"))
@@ -54,7 +68,7 @@ def main():
             raise ValueError("no published stable release")
         print(max(values, key=version))
         return
-    content = validate(json.loads(policy_path(args.version, args.policy).read_text(encoding="utf-8")), args.version)
+    content = load_policy(args.version, args.policy)
     if args.command == "notes":
         path = Path(args.output)
         original = path.read_text(encoding="utf-8")

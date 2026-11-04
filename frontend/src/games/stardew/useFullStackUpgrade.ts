@@ -3,7 +3,7 @@ import { ApiError, cancelFullStackUpgrade, confirmFullStackUpgrade, getFullStack
 import type { FullStackUpgradeStatus, PanelUpdateApplyStatus } from '../../api'
 import { currentSessionGeneration } from '../../auth-session-events'
 import { errorMessage } from '../../core/helpers'
-import { fullStackTerminal } from './full-stack-state'
+import { fullStackConfirmationExpired, fullStackTerminal } from './full-stack-state'
 
 export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (value:PanelUpdateApplyStatus)=>void, onConnection: (offline:boolean)=>void, onFinished:()=>void) {
   const [status,setStatus]=useState<FullStackUpgradeStatus|null>(null)
@@ -14,6 +14,7 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
   const acting=useRef(false)
   const finished=useRef('')
   const projection=useRef(0)
+  const expiredOperation=useRef('')
   const sessionGeneration=currentSessionGeneration()
   const callbacks=useRef({onPanel,onConnection,onFinished})
   callbacks.current={onPanel,onConnection,onFinished}
@@ -30,6 +31,7 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
     setError(null)
     setBusy(false)
     acting.current=false
+    expiredOperation.current=''
     if (!isAdmin) return ()=>{controller.abort();generation.current++}
     const poll=async()=>{
       if(reading || acting.current || document.visibilityState!=='visible' && !statusRef.current?.authorizedAt) {
@@ -40,8 +42,10 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
       reading=true
       const request=++projection.current
       try {
-        const value=await getFullStackUpgrade(controller.signal)
+        const observed=await getFullStackUpgrade(controller.signal)
         if(cancelled || epoch!==generation.current || session!==currentSessionGeneration() || request!==projection.current)return
+        const value=observed.confirmationExpired===undefined && observed.operationId===expiredOperation.current && !observed.authorizedAt && observed.phase==='awaiting_confirmation' ? {...observed,confirmationExpired:true} : observed
+        if(observed.operationId!==expiredOperation.current || observed.confirmationExpired===false || observed.authorizedAt || observed.phase!=='awaiting_confirmation')expiredOperation.current=''
         const previous=statusRef.current
         statusRef.current=value
         setStatus(value)
@@ -85,10 +89,20 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
     try {
       const value=await action()
       if(epoch!==generation.current || session!==currentSessionGeneration() || request!==projection.current)return
+      expiredOperation.current=''
       statusRef.current=value
       setStatus(value)
     } catch(e) {
-      if(epoch===generation.current && session===currentSessionGeneration())setError(errorMessage(e))
+      if(epoch===generation.current && session===currentSessionGeneration()) {
+        setError(errorMessage(e))
+        const plan=statusRef.current
+        if(e instanceof ApiError && e.code==='full_stack_confirmation_expired' && plan?.phase==='awaiting_confirmation' && !plan.authorizedAt) {
+          expiredOperation.current=plan.operationId
+          const expired={...plan,confirmationExpired:true}
+          statusRef.current=expired
+          setStatus(expired)
+        }
+      }
       // An uncertain POST is reconciled by GET; it is never replayed here.
     } finally {
       if(epoch===generation.current){acting.current=false;setBusy(false)}
@@ -98,6 +112,10 @@ export function useFullStackUpgrade(userId: number, isAdmin: boolean, onPanel: (
   const confirm=useCallback((noticeDigest?: string)=>{
     const plan=statusRef.current
     if(!plan || plan.phase!=='awaiting_confirmation')return Promise.resolve()
+    if(fullStackConfirmationExpired(plan)) {
+      setError('本次预检已过期，请重新检查升级范围。')
+      return Promise.resolve()
+    }
     return act(()=>confirmFullStackUpgrade(plan, noticeDigest))
   },[act])
   const cancel=useCallback(()=>{

@@ -1,6 +1,12 @@
 import type { FullStackUpgradeStatus, PanelUpdateApplyStatus } from '../../api'
 
 export const fullStackTerminal = (phase: string) => ['succeeded','failed_safe','manual_action','preflight_failed','panel_failed_rolled_back'].includes(phase)
+
+export function fullStackConfirmationExpired(op: FullStackUpgradeStatus | null): boolean {
+  if (!op || op.authorizedAt || op.phase !== 'awaiting_confirmation') return false
+  return op.confirmationExpired === true
+}
+
 export const fullStackPhaseLabel = (phase: string) => ({
   preparing:'正在下载和预检共享范围',
   prepared:'预检完成，等待确认',

@@ -6,11 +6,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from panel_release_policy import policy_path, validate, version  # noqa: E402
+from panel_release_policy import load_policy, version  # noqa: E402
 
 
 def feeds(root, target):
-    content = validate(json.loads(policy_path(target, root=root).read_text(encoding="utf-8")), target)
+    target = ".".join(map(str, version(target)))
+    content = load_policy(target, root=root)
     body = content["title"] + "\n\n" + content["summary"]
     body += "\n<!-- anxi-panel-update\n" + json.dumps(content, ensure_ascii=False, separators=(",", ":")) + "\n-->\n"
     release = {"tag_name": "v" + target, "name": content["title"], "body": body,

@@ -139,6 +139,7 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - 收到 Browser comments 或页面区域标注后，任何 locator 点击都必须立刻用 URL、ARIA 或 fresh DOM snapshot 核对效果；一次点击无变化时停止重放，先确认仍处于原状态，再对原生可访问按钮使用 `press("Enter")` 等已文档化的键盘等价路径。标注态下的指针无效不得直接归因为产品点击缺陷。
 - 应用内 Browser 的持久 tab 引用跨用户中断、turn 或自动清理后可能失效。关闭、读取或继续操作旧 tab 前，必须先用当前 browser 的 `tabs.list()` 按 id 核对仍存在；缺失时直接丢弃旧引用并按需要重新取得标签，不得对已知 stale 引用重放 `url()`、`close()` 或其它操作。
 - 精简容器运行项目门禁前必须核对子进程依赖：VitePress `lastUpdated` 构建使用 Node Alpine 时先安装 `git`；兼容矩阵需要 Docker CLI 与 buildx，updater/runtime Docker integration 需要 Docker CLI 与 Compose；挂载任务允许的 Docker Socket 后仍必须先通过相应 `docker version`、`docker buildx version`、`docker compose version` 探针。第三方 lint 镜像首次使用前先 inspect Entrypoint/Cmd，ShellCheck 命令必须显式调用 `shellcheck`。
+  FIFO/Unix 真实门禁还必须先证明 GNU `timeout` 支持 `--kill-after`，且完整 `setpriv` 支持生产使用的 `--reuid`、`--regid`、`--clear-groups`；不能仅凭 `command -v` 命中同名 BusyBox applet 就认为依赖满足。版本与实际参数能力探针均须保留，不能修改产品脚本绕过 GNU 门禁。
 - GitHub-hosted runner 上的发布工具先以精确 runner image 官方 software readme 和 `command -v`/版本探针为准；已预装的 Skopeo、Docker、gh、jq 等不得在正式提升里再次即时 `apt-get update/install`。确需安装新工具时必须有版本固定、完整性校验和有界网络等待，不能让静默软件源占满整个发布 timeout。
 - GitHub CLI 的 `gh release view --json` 不支持 `isLatest`，禁止在发布核验中使用该字段。读取当前 latest 固定使用 `gh api repos/{owner}/{repo}/releases/latest --jq .tag_name`，或不带 tag 的 `gh release view --json tagName`；其它 JSON 字段也必须先以对应子命令帮助列出的字段集为准。
 - VitePress/Vite 构建会在 `.vitepress` 配置目录创建 `config.ts.timestamp-*.mjs`；禁止再使用“完整源码只读 bind，仅给 `node_modules`/cache/dist 写卷”的门禁形态。使用任务副本，或允许配置目录临时可写并在构建后用 Git 状态确认只剩预期修改；产物、缓存和依赖仍用任务专属 volume 隔离。

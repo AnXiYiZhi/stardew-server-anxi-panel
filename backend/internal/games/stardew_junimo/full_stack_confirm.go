@@ -50,6 +50,22 @@ func sameFullStackOriginal(a, b junimo140GroupTransaction) bool {
 	return true
 }
 
+func validateFullStackConfirmationReady(status FullStackUpgradeStatus, now time.Time) error {
+	switch status.Phase {
+	case "preparing":
+		return &RuntimeUpdateValidationError{Code: "full_stack_preflight_incomplete", Message: "本次下载预检仍在执行，请等待预检完成后确认。"}
+	case "preflight_failed":
+		return &RuntimeUpdateValidationError{Code: "full_stack_preflight_failed", Message: "本次预检未通过，请查看任务详情并重新预检。"}
+	case "awaiting_confirmation":
+		if !now.Before(status.ExpiresAt) {
+			return &RuntimeUpdateValidationError{Code: "full_stack_confirmation_expired", Message: "本次预检已过期，请重新预检并确认当前目标和范围。"}
+		}
+		return nil
+	default:
+		return &RuntimeUpdateValidationError{Code: "full_stack_confirmation_unavailable", Message: "本次操作当前不接受确认，请刷新升级状态后继续。"}
+	}
+}
+
 func (d *Driver) validateFullStackGroup(ctx context.Context, op fullStackOperation, index int) error {
 	group := op.Groups[index]
 	lister, ok := d.store.(junimo140InstanceLister)
@@ -99,8 +115,8 @@ func (d *Driver) ConfirmFullStackUpgrade(ctx context.Context, actor int64, id, h
 	if op.Public.AuthorizedAt != nil {
 		return op.Public, nil
 	}
-	if op.Public.Phase != "awaiting_confirmation" || !time.Now().Before(op.Public.ExpiresAt) {
-		return op.Public, &RuntimeUpdateValidationError{Code: "full_stack_confirmation_expired", Message: "本次确认已过期或预检尚未完成。"}
+	if err := validateFullStackConfirmationReady(op.Public, time.Now()); err != nil {
+		return op.Public, err
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()

@@ -132,9 +132,9 @@ func (d *Driver) RunSMAPIUpdateDryRun(ctx context.Context, instance registry.Ins
 	add("manifest", "ok", "官方 Release URL、精确版本、SHA256 与大小上限已固定。")
 	components, err := d.InspectRuntimeComponents(ctx, instance)
 	if err != nil || components.Status != RuntimeComponentsStatusUpToDate {
-		return fail("incompatible_game", "Stardew 或 Steamworks SDK 不匹配推荐前置矩阵。")
+		return fail("incompatible_game", "Stardew build 不匹配推荐版本，或 Steamworks SDK Linux 安装不完整。")
 	}
-	add("game_sdk", "ok", "Stardew 与 Steamworks SDK buildid 精确匹配推荐矩阵。")
+	add("game_sdk", "ok", "Stardew build 匹配推荐版本，Steamworks SDK Linux depot 已完整安装。")
 	stack := d.inspectRuntimeStack(instance)
 	if stack.Status != sjconfig.RuntimeStackStatusUpToDate {
 		return fail("incompatible_junimo", "已启用的 Junimo 运行组件不匹配推荐前置矩阵。")

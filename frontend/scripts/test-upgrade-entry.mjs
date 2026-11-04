@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { createServer } from 'vite'
 import { fixturePort } from './fixture-port.mjs'
 import { fileURLToPath } from 'node:url'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const require = createRequire(import.meta.url)
@@ -22,6 +22,7 @@ const entry = [
   "const f=window.fixture,noop=()=>{},data={updateTheme:f.theme||'day',versionInfo:{version:'0.7.3',runtimeUpgrade:{requiresScopeConfirmation:f.game,serverVersion:f.game?'1.5.0-preview.140':'1.5.0-preview.125',authVersion:f.game?'1.5.0-preview.140-anxi.1':'1.5.0-anxi.2'}},updateDialogOpen:true,updateStatus:{currentVersion:'0.7.3',latestVersion:'v0.8.0',updateAvailable:true,checkStatus:'ok',releaseUrl:'https://example.test/release'},updateDryRun:{phase:'succeeded',targetVersion:'0.8.0',logs:[],capability:{supported:true,conversionRequired:false}},updateApply:null,players:{players:[]},fullStackUpgrade:null,fullStackBusy:false,closeUpdateDialog:noop,refreshUpdateStatus:noop,runUpdateDryRun:noop,prepareFullStack:()=>f.prepared++,applyUpdate:()=>f.applied++,continueReconnect:noop};",
   "if(f.knownTarget)Object.assign(data.versionInfo.runtimeUpgrade,{targetPanelVersion:f.knownTarget,serverVersion:'1.5.0-preview.140',authVersion:'1.5.0-preview.140-anxi.1'});if(f.nextVersion){data.updateStatus.latestVersion='v'+f.nextVersion;data.updateDryRun.targetVersion=f.nextVersion}",
   "data.updateStatus.content={schemaVersion:1,title:'升级准备与更新中心',summary:'先准备好升级，再放心更新游戏实例。',changes:['游戏库和世界列表新增更新入口','直接查看重要提示与升级影响','保留现有存档、Mod 和认证会话'],notices:[],blocked:!!f.blocked};if(f.notice){data.updateStatus.noticeDigest='fixture-notice';data.updateStatus.content.notices=[{level:'warning',title:'请预留维护时间',message:'运行中的世界会保存、备份并重新启动。',requiresConfirmation:true}]}if(f.history)data.updateApply={updateId:'previous',fromVersion:'0.7.2',toVersion:'0.7.3',phase:'succeeded',progress:100,result:'面板升级已完成',logs:[]};",
+  "if(f.releaseContent)data.updateStatus.content=f.releaseContent;if(f.loadedVersion){data.versionInfo.version=f.loadedVersion;Object.assign(data.versionInfo.runtimeUpgrade,{requiresScopeConfirmation:true,targetPanelVersion:f.loadedVersion});data.updateStatus.currentVersion=f.loadedVersion;data.updateStatus.latestVersion='v'+f.loadedVersion;data.updateStatus.updateAvailable=false;data.updateDryRun.targetVersion=f.loadedVersion}",
   "if(f.finishedGame){data.versionInfo.version='0.8.0';Object.assign(data.versionInfo.runtimeUpgrade,{requiresScopeConfirmation:true,targetPanelVersion:'0.8.0'});data.updateStatus.currentVersion='0.8.0';data.updateStatus.latestVersion=f.nextPatch?'v0.8.1':'v0.8.0';data.updateStatus.updateAvailable=!!f.nextPatch;data.updateDryRun.targetVersion=f.nextPatch?'0.8.1':'0.8.0';data.updateApply={updateId:'previous-game',fromVersion:'0.7.3',toVersion:'0.8.0',phase:'succeeded',progress:100,result:'全部世界升级已完成',logs:[]};data.fullStackUpgrade={operationId:'stack_complete',phase:'succeeded',authorizedAt:'2026-10-26T00:00:00Z',panel:{version:'0.8.0'},groups:[]}}",
   "if(f.authorized)data.fullStackUpgrade={operationId:'stack_fixture',phase:f.recovery?'manual_action':'waiting_panel',authorizedAt:'2026-10-25T00:00:00Z',panel:{version:'0.8.0'},groups:[]};data.recoverFullStack=()=>f.recovered++;const {fullStackUpgrade,...dashboardData}=data;",
   "if(f.scopePrepared){data.fullStackUpgrade={operationId:'stack_prepared',phase:'awaiting_confirmation',panel:{version:'0.8.0'},groups:[]};data.confirmFullStack=digest=>{f.confirmed++;f.confirmDigest=digest};data.cancelFullStack=()=>f.cancelled++}",
@@ -56,8 +57,16 @@ const server = await createServer({
 await server.listen()
 const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome', headless: true })
 const results = []
+const patchPolicy=JSON.parse(await readFile(new URL('../../deploy/updates/0.8.1.json',import.meta.url),'utf8'))
+const maintenanceTemplate=JSON.parse(await readFile(new URL('../../deploy/panel-update.json',import.meta.url),'utf8'))
+const patchScenarios=[
+  {name:'bridge latest patch 081',game:false,knownTarget:'0.8.0',nextVersion:'0.8.1',notice:true,releaseContent:patchPolicy},
+  {name:'bridge latest patch 082',game:false,knownTarget:'0.8.0',nextVersion:'0.8.2',notice:true,releaseContent:{...maintenanceTemplate,version:'0.8.2',title:'v0.8.2 · '+maintenanceTemplate.title}},
+  {name:'loaded 081 runtime continuation',game:true,loadedVersion:'0.8.1'},
+  {name:'loaded 082 runtime continuation',game:true,loadedVersion:'0.8.2'},
+]
 try {
-  for (const scenario of [{ name: 'ordinary Panel patch', game: false }, { name: 'junimo140', game: true }, { name: 'bridge before major', game: false, knownTarget: '0.8.0', nextVersion: '0.7.4' }, { name: 'bridge to declared major', game: false, knownTarget: '0.8.0', expectGame: true }, { name: 'unknown future release', game: true, knownTarget: '0.8.0', nextVersion: '0.8.1', expectGame: false }, { name: 'authorized reconnect', game: false, authorized: true }, { name: 'important notice', game: false, notice: true }, { name: 'blocked release', game: false, blocked: true }, { name: 'successful history', game: false, history: true }, { name: 'completed game history', game: false, finishedGame: true, notice: true }, { name: 'patch after game upgrade', game: false, finishedGame: true, nextPatch: true }, { name: 'blocked release retains authorized recovery', game: false, authorized: true, blocked: true, recovery: true }, { name: 'prepared scope requires notice confirmation', game: true, notice: true, scopePrepared: true }, { name: 'night important notice', game: false, notice: true, theme: 'night' }]) {
+  for (const scenario of [{ name: 'ordinary Panel patch', game: false }, { name: 'junimo140', game: true }, { name: 'bridge before major', game: false, knownTarget: '0.8.0', nextVersion: '0.7.4' }, { name: 'bridge to declared major', game: false, knownTarget: '0.8.0', expectGame: true }, { name: 'unknown future release', game: true, knownTarget: '0.8.0', nextVersion: '0.8.1', expectGame: false }, { name: 'authorized reconnect', game: false, authorized: true }, { name: 'important notice', game: false, notice: true }, { name: 'blocked release', game: false, blocked: true }, { name: 'successful history', game: false, history: true }, { name: 'completed game history', game: false, finishedGame: true, notice: true }, { name: 'patch after game upgrade', game: false, finishedGame: true, nextPatch: true }, { name: 'blocked release retains authorized recovery', game: false, authorized: true, blocked: true, recovery: true }, { name: 'prepared scope requires notice confirmation', game: true, notice: true, scopePrepared: true }, { name: 'night important notice', game: false, notice: true, theme: 'night' },...patchScenarios]) {
     const { game, authorized = false, expectGame = game } = scenario
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const page = await context.newPage()
@@ -76,13 +85,18 @@ try {
       assert.ok(textContrast(colors.foreground, colors.background) >= 4.5, 'Night release link remains readable')
     }
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true)
+    if(scenario.releaseContent){
+      const sequence=scenario.releaseContent.notices.find(notice=>notice.level==='info')
+      assert.equal(await page.getByText(sequence.message,{exact:true}).isVisible(),true,'the bridge client must see the Panel-then-runtime sequence from release notes')
+      assert.ok((await page.locator('.sd-update-version-path').textContent()).includes('v'+scenario.nextVersion),'the update center must show the discovered patch version')
+    }
     if (scenario.notice && !scenario.finishedGame) {
       assert.equal(await page.getByRole('button', { name: scenario.scopePrepared ? '确认范围并升级' : '立即升级', exact: true }).isDisabled(), true)
       await page.getByRole('checkbox', { name: '我已阅读并理解以上重要提示' }).check()
       assert.equal(await page.getByRole('button', { name: scenario.scopePrepared ? '确认范围并升级' : '立即升级', exact: true }).isEnabled(), true)
     }
     if (scenario.history) assert.equal(await page.locator('.sd-update-history').getAttribute('open'), null)
-    if (process.env.QA_ARTIFACT_DIR && ['important notice','blocked release','successful history','completed game history'].includes(scenario.name)) {
+    if (process.env.QA_ARTIFACT_DIR && ['important notice','blocked release','successful history','completed game history','bridge latest patch 081','bridge latest patch 082'].includes(scenario.name)) {
       assert.ok(path.isAbsolute(process.env.QA_ARTIFACT_DIR))
       await mkdir(process.env.QA_ARTIFACT_DIR, { recursive: true })
       const name = scenario.name.replaceAll(' ', '-')

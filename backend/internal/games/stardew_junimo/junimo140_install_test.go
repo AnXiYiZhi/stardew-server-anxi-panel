@@ -161,6 +161,7 @@ func TestJunimo140InstallationFailsClosedOnOwnershipAndMissingDownload(t *testin
 
 func TestJunimo140InstallationReusesVerifiedPatchedSMAPI(t *testing.T) {
 	fake := &fakeDocker{}
+	completeJunimo140GameEvidence(t, fake, installedSDKFixture("99999999", "7900000000000000001"))
 	runner := freshInstallRunner(t, fake)
 	if err := runner.prepareJunimo140InstallVolume(context.Background()); err != nil {
 		t.Fatal(err)
@@ -170,16 +171,44 @@ func TestJunimo140InstallationReusesVerifiedPatchedSMAPI(t *testing.T) {
 	}
 	volume, _ := GameDataVolumeName(runner.instance.DataDir)
 	plan, err := readInstallVolumePlan(runner.instance.DataDir, volume)
-	if err != nil || !plan.SMAPIVerified || fake.imageSMAPIReads != 1 || fake.smapiRuns != 0 {
+	if err != nil || !plan.SMAPIVerified || fake.imageSMAPIReads != 1 || fake.smapiRuns != 0 || len(fake.gameDownloadMarkers) != 1 || fake.gameDownloadMarkers[0][1].ManifestID != 7900000000000000001 {
 		t.Fatal("verified image-owned SMAPI was not retained without an official installer")
 	}
-	if err := runner.ensureJunimo140SMAPIInstalled(context.Background(), nil, gameInstallImage(runner.instance.DataDir)); err != nil || fake.installVolumeCreates != 1 || fake.smapiRuns != 0 {
+	if err := runner.ensureJunimo140SMAPIInstalled(context.Background(), nil, gameInstallImage(runner.instance.DataDir)); err != nil || fake.installVolumeCreates != 1 || fake.smapiRuns != 0 || len(fake.gameDownloadMarkers) != 2 {
 		t.Fatal("idempotent SMAPI verification recreated game data or invoked the official installer")
 	}
 	current := registry.Instance{ID: runner.instance.ID, DataDir: runner.instance.DataDir, State: storage.InstanceStateGameInstalled}
 	runner.driver.StartRequiredRuntimeUpdate(context.Background(), current)
 	if _, err := runner.driver.ReadRequiredRuntimeUpdateStatus(current); !os.IsNotExist(err) {
 		t.Fatal("an already current fresh .140 runtime was scheduled for migration during bootstrap")
+	}
+}
+
+func TestJunimo140CachedPatchedSMAPIRequiresDownloadedPayloadProof(t *testing.T) {
+	fake := &fakeDocker{}
+	runner := freshInstallRunner(t, fake)
+	if err := runner.prepareJunimo140InstallVolume(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.ensureJunimo140SMAPIInstalled(context.Background(), nil, gameInstallImage(runner.instance.DataDir)); err == nil || !strings.Contains(err.Error(), "game integrity evidence unavailable") {
+		t.Fatalf("cached SMAPI accepted an unverified download: %v", err)
+	}
+	volume, _ := GameDataVolumeName(runner.instance.DataDir)
+	plan, err := readInstallVolumePlan(runner.instance.DataDir, volume)
+	if err != nil || plan.SMAPIVerified || fake.smapiRuns != 0 || len(fake.gameDownloadMarkers) != 0 {
+		t.Fatalf("failed payload verification changed the installation receipt: %v", err)
+	}
+	completeJunimo140GameEvidence(t, fake, installedSDKFixture("99999999", "7900000000000000001"))
+	if err := runner.ensureJunimo140SMAPIInstalled(context.Background(), nil, gameInstallImage(runner.instance.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	fake.gameIntegrityEvidence = nil
+	if err := runner.ensureJunimo140SMAPIInstalled(context.Background(), nil, gameInstallImage(runner.instance.DataDir)); err == nil {
+		t.Fatal("old verification receipt hid a changed unverified download")
+	}
+	plan, err = readInstallVolumePlan(runner.instance.DataDir, volume)
+	if err != nil || plan.SMAPIVerified || len(fake.gameDownloadMarkers) != 1 || fake.smapiRuns != 0 {
+		t.Fatalf("stale payload verification receipt survived failed recheck: %v", err)
 	}
 }
 

@@ -89,6 +89,16 @@ type fakeDocker struct {
 	installVolumeOwnershipError error
 	imageSMAPIReads             int
 	imageSMAPICoreMismatch      bool
+	gameIntegrityEvidence       map[string][]byte
+	gameDownloadMarkers         [][2]paneldocker.RuntimeGameDownloadMarker
+}
+
+// Successful SteamCMD fixtures must include the payload subsequently checked by
+// the cached patched-SMAPI path. Other fakes keep evidence unavailable by default.
+func completeSteamCMDInstallFixture(t *testing.T, fake *fakeDocker) *fakeDocker {
+	t.Helper()
+	completeJunimo140GameEvidence(t, fake, installedSDKFixture("20939719", "6403079453713498174"))
+	return fake
 }
 
 func (f *fakeDocker) RuntimeImageInspect(_ context.Context, _ string, ref string) (paneldocker.RuntimeImageMetadata, error) {
@@ -146,15 +156,39 @@ func (f *fakeDocker) RuntimeCommitImageSMAPIStamp(context.Context, string, strin
 	return errors.New("unexpected image SMAPI stamp in cached-runtime fixture")
 }
 
-func (f *fakeDocker) RuntimeReadJunimo140GameEvidence(context.Context, string, string, string, string, string) ([]byte, error) {
+func (f *fakeDocker) RuntimeReadJunimo140GameEvidence(_ context.Context, _, _, _, _, kind string) ([]byte, error) {
+	if data := f.gameIntegrityEvidence[kind]; len(data) != 0 {
+		return append([]byte(nil), data...), nil
+	}
 	return nil, errors.New("test game integrity evidence unavailable")
 }
 
-func (f *fakeDocker) RuntimeVerifyJunimo140GameFiles(context.Context, string, string, string, string, string, map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+func (f *fakeDocker) RuntimeVerifyJunimo140GameFiles(_ context.Context, _, _, _, _, _ string, files map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+	if f.gameIntegrityEvidence != nil {
+		return paneldocker.RuntimeGameFileStats{GameFiles: int64(len(files)), GameBytes: int64(len(files))}, nil
+	}
 	return paneldocker.RuntimeGameFileStats{}, errors.New("test game integrity evidence unavailable")
 }
 
-func (f *fakeDocker) RuntimeCommitJunimo140GameMarkers(context.Context, string, string, string, string, paneldocker.RuntimeGameDownloadMarker, paneldocker.RuntimeGameDownloadMarker) error {
+func (f *fakeDocker) RuntimeInspectJunimo140SDK(context.Context, string, string, string, string) (paneldocker.RuntimeGameFileStats, error) {
+	if f.gameIntegrityEvidence != nil {
+		return paneldocker.RuntimeGameFileStats{SDKFiles: 2, SDKBytes: 123456}, nil
+	}
+	return paneldocker.RuntimeGameFileStats{}, errors.New("test SDK runtime evidence unavailable")
+}
+
+func (f *fakeDocker) RuntimeReadContentVersions(context.Context, string, string, string) (paneldocker.RuntimeContentRead, error) {
+	return paneldocker.RuntimeContentRead{
+		GameManifest: []byte(`"AppState" { "appid" "413150" "buildid" "16826371" "StateFlags" "4" "installdir" "Stardew Valley" "InstalledDepots" { "413153" { "manifest" "6005910083361727734" } } }`),
+		SDKManifest:  []byte(`"AppState" { "appid" "1007" "buildid" "20939719" "StateFlags" "4" "installdir" "Steamworks Shared" "InstalledDepots" { "1006" { "manifest" "6403079453713498174" } } }`),
+	}, nil
+}
+
+func (f *fakeDocker) RuntimeCommitJunimo140GameMarkers(_ context.Context, _, _, _, _ string, game, sdk paneldocker.RuntimeGameDownloadMarker) error {
+	if f.gameIntegrityEvidence != nil {
+		f.gameDownloadMarkers = append(f.gameDownloadMarkers, [2]paneldocker.RuntimeGameDownloadMarker{game, sdk})
+		return nil
+	}
 	return errors.New("unexpected game marker mutation in cached-runtime fixture")
 }
 
@@ -1449,7 +1483,7 @@ func TestDriverInstallUsesSteamCMDPrimaryWithoutSteamAuth(t *testing.T) {
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -2260,7 +2294,7 @@ func TestDriverInstallFailsWhenRequiredGameRuntimeFilesAreMissing(t *testing.T) 
 		},
 		verifyCode: installVerificationMissingExitCode,
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance: registry.Instance{ID: instance.ID}, SteamUsername: "steam-user", SteamPassword: "steam-pass", VNCPassword: "vnc-pass", AutoDownload: true,
 	})
@@ -2332,7 +2366,7 @@ func TestDriverInstallRetriesSteamCMDAfterSegfaultPreservesAuthorizationVolumes(
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -2412,7 +2446,7 @@ func TestDriverInstallTriesNextSteamCMDImageCandidateAfterPullFailure(t *testing
 			"Success! App '413150' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",
@@ -2619,7 +2653,7 @@ func TestDriverInstallResumesSteamCMDAndFallsBackWhenCachedAuthorizationIsMissin
 			},
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -2740,7 +2774,7 @@ func TestDriverInstallCancelsCachedSteamCMDGuardPromptAndImmediatelyFallsBackToF
 					},
 				},
 			}
-			driver := New(fake, slog.Default(), manager, store)
+			driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 			if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
 				t.Fatal(err)
 			}
@@ -2958,7 +2992,7 @@ func TestDriverInstallSkipsSteamAuthOnceCompletedFlagIsSet(t *testing.T) {
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -3025,7 +3059,7 @@ func TestDriverInstallRetryKeepsSteamCMDPrimary(t *testing.T) {
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	// reuseCredentials retry remains on the SteamCMD primary installation path.
 	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
 		t.Fatal(err)
@@ -3101,7 +3135,7 @@ func TestDriverInstallRepairUsesCachedLoginAndAnonymousSDK(t *testing.T) {
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -3189,7 +3223,7 @@ func TestDriverInstallRepairUsesMigratedSteamCMDAuthorizationImmediately(t *test
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	if err := writeFresh140InstallFixtureEnv(filepath.Join(instanceDir, ".env"), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -3264,7 +3298,7 @@ func TestDriverInstallUsesExistingLaterSteamCMDCandidateBeforePulling(t *testing
 			"Success! App '1007' fully installed.",
 		},
 	}
-	driver := New(fake, slog.Default(), manager, store)
+	driver := New(completeSteamCMDInstallFixture(t, fake), slog.Default(), manager, store)
 	job, err := driver.Install(context.Background(), registry.InstallRequest{
 		Instance:      registry.Instance{ID: instance.ID},
 		SteamUsername: "steam-user",

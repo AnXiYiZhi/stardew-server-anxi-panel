@@ -12,7 +12,11 @@ import (
 )
 
 func manifestFixture(appID, buildID, stateFlags, installDir string) []byte {
-	return []byte("\ufeff \n\t\"AppState\"\n{\n\"installdir\" \"" + installDir + "\"\n\"StateFlags\"\t\"" + stateFlags + "\"\n\"buildid\" \"" + buildID + "\"\n\"LastUpdated\" \"1734826775\"\n\"appid\" \"" + appID + "\"\n\"Nested\" { \"ignored\" \"escaped \\\"value\\\" and \\\\ path\" }\n}\n")
+	depots := ""
+	if appID == "1007" {
+		depots = `"InstalledDepots" { "1006" { "manifest" "6403079453713498174" } }` + "\n"
+	}
+	return []byte("\ufeff \n\t\"AppState\"\n{\n\"installdir\" \"" + installDir + "\"\n\"StateFlags\"\t\"" + stateFlags + "\"\n\"buildid\" \"" + buildID + "\"\n\"LastUpdated\" \"1734826775\"\n\"appid\" \"" + appID + "\"\n" + depots + "\"Nested\" { \"ignored\" \"escaped \\\"value\\\" and \\\\ path\" }\n}\n")
 }
 
 func TestParseSteamAppManifestHandlesOrderWhitespaceAndEscapes(t *testing.T) {
@@ -53,12 +57,14 @@ func TestRuntimeComponentMatrixStatuses(t *testing.T) {
 	}{
 		{"matching", game, sdk, RuntimeComponentsStatusUpToDate},
 		{"game old sdk matching", manifestFixture("413150", "111", "4", "Stardew Valley"), sdk, RuntimeComponentsStatusUpdateAvailable},
-		{"game matching sdk old", game, manifestFixture("1007", "222", "4", "Steamworks Shared"), RuntimeComponentsStatusUpdateAvailable},
+		{"game matching sdk independent build", game, manifestFixture("1007", "222", "4", "Steamworks Shared"), RuntimeComponentsStatusUpToDate},
+		{"game matching sdk newer build", game, manifestFixture("1007", "99999999", "4", "Steamworks Shared"), RuntimeComponentsStatusUpToDate},
 		{"both mismatch", manifestFixture("413150", "111", "4", "Stardew Valley"), manifestFixture("1007", "222", "4", "Steamworks Shared"), RuntimeComponentsStatusUpdateAvailable},
 		{"game missing", nil, sdk, RuntimeComponentsStatusGameMissing},
 		{"sdk missing", game, nil, RuntimeComponentsStatusSDKMissing},
 		{"invalid", manifestFixture("1007", "111", "4", "wrong"), sdk, RuntimeComponentsStatusManifestInvalid},
 		{"unknown state", manifestFixture("413150", matrix.Game.BuildID, "2", "Stardew Valley"), sdk, RuntimeComponentsStatusCustomUnknown},
+		{"sdk incomplete", game, manifestFixture("1007", "99999999", "6", "Steamworks Shared"), RuntimeComponentsStatusCustomUnknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -68,6 +74,9 @@ func TestRuntimeComponentMatrixStatuses(t *testing.T) {
 			}
 			if tt.want == RuntimeComponentsStatusUpdateAvailable && !got.Available {
 				t.Fatal("tested mismatch must be available")
+			}
+			if tt.want == RuntimeComponentsStatusUpToDate && (got.Available || got.Current.SDK.Status != RuntimeComponentsStatusUpToDate) {
+				t.Fatalf("complete independent SDK incorrectly requires an update: %#v", got)
 			}
 		})
 	}

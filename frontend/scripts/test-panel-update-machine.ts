@@ -26,8 +26,14 @@ assert.equal(hasGameUpgradeFlow(knownBridge), false)
 assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.7.4' }), false)
 assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.8.0' }), true)
 assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.8.1' }), false)
+assert.equal(hasGameUpgradeFlow(knownBridge, null, { ...update, latestVersion: 'v0.8.2' }), false)
 assert.equal(hasGameUpgradeFlow({ ...knownBridge, version: '0.8.0', runtimeUpgrade: { ...knownBridge.runtimeUpgrade, requiresScopeConfirmation: true } }, { authorizedAt: '2026-10-25T00:00:00Z', phase: 'succeeded' }, { ...update, latestVersion: 'v0.8.1' }), false)
 assert.equal(hasGameUpgradeFlow({ ...knownBridge, version: '0.8.1', runtimeUpgrade: { ...knownBridge.runtimeUpgrade, requiresScopeConfirmation: true } }), true)
+for (const version of ['0.8.1', '0.8.2']) {
+  const loadedRelease = { ...knownBridge, version, runtimeUpgrade: { ...knownBridge.runtimeUpgrade, targetPanelVersion: version, requiresScopeConfirmation: true } }
+  assert.equal(hasGameUpgradeFlow(loadedRelease), true, 'the loaded target release owns its runtime scope confirmation')
+  assert.equal(hasGameUpgradeFlow(loadedRelease, null, { ...update, latestVersion: 'v0.8.3' }), false, 'future Panel updates precede that release\'s own runtime confirmation')
+}
 assert.equal(hasGameUpgradeFlow(knownBridge, { authorizedAt: '2026-10-25T00:00:00Z' }, { ...update, latestVersion: 'v0.8.1' }), true)
 
 const apply = (phase: PanelUpdateApplyStatus['phase'], progress = 0): PanelUpdateApplyStatus => ({

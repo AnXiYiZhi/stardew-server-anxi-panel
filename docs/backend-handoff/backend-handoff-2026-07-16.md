@@ -1,3 +1,15 @@
+## 2026-11-04 0.8.1 修复接手
+
+改动：SDK 采用实际 ACF/depot 和有界 ELF 结构检查，marker 记录真实 manifest；游戏固定内容校验保持。普通检测、140 预检、安装及 cached-SMAPI 快路径共用该契约。运行中存档读取有界等待稳定，确认错误分阶段，过期观测只在 GET 投影。
+
+SMAPI 检测/工作流同时调整缺失分支的前置顺序：先核游戏、SDK、Junimo/Control，再允许安装。专用 fake 显式覆写版本读取，避免继承固定读数掩盖 game/SDK 场景；present/missing、合法 SDK253、旧预检后源漂移且零运行变更拒绝均有回归。
+
+影响：`junimo140_game_integrity.go`、`junimo140_sdk*.go`、`junimo140_install.go`、`runtime_components.go`、`runtime_update_dry_run_runner.go`、Docker SDK helper/恢复 allowlist、`junimo140_group_runtime.go`、`full_stack_confirm.go`/`full_stack_operation.go`、发行政策生成器及对应测试。SDK helper 仍限定固定镜像、unused owned 卷、只读挂载和断网；其清理归入原恢复链。
+
+验证：聚焦 Linux Go、真实 Chrome 过期/时钟与发行入口回归通过；独立 DinD 用实际 SDK253 执行生产 staging，实际 SDK/ACF 保持并生成真实 marker，固定游戏损坏及 96B 截断 SDK 均拒绝且无完成 marker。用户授权服务器的 080 运行栈已恢复至健康 140，原失败记录、SDK 与停服存档备份保留。
+
+下一步：按 docs09 的 081 候选矩阵完成全门禁、当前上一正式080和受影响最老073的真实 Web 验收；实际 SDK 结构检查之后仍需启动、原专属 Auth 会话及邀请码验收。073/080 旧客户端对未知未来发行先普通更新 Panel，新 Panel 再确认当前版本游戏范围；不能把新代码的版本投影能力当作旧二进制能力。
+
 ## 2026-10-29 0.8.0 正式后端接手
 
 当前正式版v0.8.0；唯一候选[40690368111](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40690368111)，tag指8b348b0完整commit，正式workflow[40784965514](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/40784965514)。

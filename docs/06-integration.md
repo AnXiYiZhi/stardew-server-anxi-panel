@@ -1,3 +1,11 @@
+## 2026-11-04 0.8.1 候选联调契约
+
+- SDK 完成标记从实际 App1007/Linux1006 manifest 和已核验库统计生成，SDK build 为诊断元数据；游戏固定清单保持。140 预检先读 ACF，staging 再验游戏与 SDK，失败不发布完成 marker。
+- `GET /api/system/update/full-stack` 新增兼容性可选字段 `confirmationExpired`；新服务端 GET 显式 true/false，持久 Public 不保存该观测，plan hash 不变。过期仅限未授权的 awaiting_confirmation。
+- confirm 区分 `full_stack_preflight_incomplete`、`full_stack_preflight_failed`、`full_stack_confirmation_unavailable` 和原 `full_stack_confirmation_expired`；actor、operation、plan、目标和范围检查保持。运行中存档只读捕获最多等90秒并服从取消。
+- 073 使用正式 Release 列表发现最高兼容版；实际073/080客户端对未知未来081先走普通 Panel check/dry-run/notice/apply，刷新后的081再检查当前游戏范围。旧二进制的080内置目标不变，新版本目标投影按自身发行版本。
+- 真实 SDK253 Docker staging 与坏游戏/截断SDK负例已通过；用户授权服务器的080→140运行栈恢复已 succeeded，独立备份和原记录保留。081候选的080/073代表链、同候选unhealthy回滚、升级后功能/数据/重启和实际Auth会话仍按 docs09 完成并绑定精确digest。
+
 ## 2026-10-29 0.8.0 联调验收完成
 
 - 老面板先到正式073，再经Web更新中心一次管理员确认，由同一事务完成Panel080与游戏组140迁移。

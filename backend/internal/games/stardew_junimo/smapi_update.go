@@ -128,16 +128,14 @@ func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 		result.Status, result.Code, result.Reason = SMAPIStatusCustomUnknown, "image_managed_smapi", "此 SMAPI 由固定 Junimo 镜像管理；独立原版安装器不可替换该构建，请通过运行栈更新。"
 		return result, nil
 	}
-	if !metadata.Present {
-		result.Supported, result.Available, result.Status, result.Code, result.Reason = true, true, SMAPIStatusMissing, "smapi_missing", "实际游戏目录中未找到 SMAPI 程序集。"
-		return result, nil
+	if metadata.Present {
+		match := smapiInformationalVersionPattern.FindStringSubmatch(metadata.Version)
+		if !metadata.RequiredFiles || len(match) != 2 {
+			result.Status, result.Code, result.Reason = SMAPIStatusInvalid, "smapi_install_invalid", "SMAPI 安装产物不完整或程序集版本元数据无效。"
+			return result, nil
+		}
+		result.Current.Version = match[1]
 	}
-	match := smapiInformationalVersionPattern.FindStringSubmatch(metadata.Version)
-	if !metadata.RequiredFiles || len(match) != 2 {
-		result.Status, result.Code, result.Reason = SMAPIStatusInvalid, "smapi_install_invalid", "SMAPI 安装产物不完整或程序集版本元数据无效。"
-		return result, nil
-	}
-	result.Current.Version = match[1]
 	var components RuntimeComponentsInspection
 	if knownComponents != nil {
 		components = *knownComponents
@@ -149,7 +147,7 @@ func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 		}
 	}
 	if components.Status != RuntimeComponentsStatusUpToDate {
-		result.Status, result.Code, result.Reason = SMAPIStatusIncompatibleGame, "incompatible_game_or_sdk", "当前 Stardew buildid 或 Steamworks SDK buildid 不匹配推荐前置矩阵。"
+		result.Status, result.Code, result.Reason = SMAPIStatusIncompatibleGame, "incompatible_game_or_sdk", "当前 Stardew build 不匹配推荐版本，或 Steamworks SDK 安装状态与 Linux depot 无法确认。"
 		return result, nil
 	}
 	if stack.Status != sjconfig.RuntimeStackStatusUpToDate {
@@ -158,6 +156,13 @@ func (d *Driver) inspectSMAPIUpdate(ctx context.Context, instance registry.Insta
 	}
 	if err := verifyEmbeddedControlManifest(manifest); err != nil {
 		result.Status, result.Code, result.Reason = SMAPIStatusCustomUnknown, "control_manifest_mismatch", "Panel 内置控制 Mod 与推荐矩阵不一致。"
+		return result, nil
+	}
+	// A missing SMAPI can be installed only on a compatible game and complete
+	// SDK. Apply reuses this inspection, so an old successful dry-run cannot
+	// bypass those prerequisites after the source installation changes.
+	if !metadata.Present {
+		result.Supported, result.Available, result.Status, result.Code, result.Reason = true, true, SMAPIStatusMissing, "smapi_missing", "实际游戏目录中未找到 SMAPI 程序集。"
 		return result, nil
 	}
 	cmp := compareDottedVersions(result.Current.Version, manifest.SMAPI.Version)

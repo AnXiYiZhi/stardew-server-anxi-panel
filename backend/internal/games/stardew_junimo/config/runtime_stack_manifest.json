@@ -90,7 +90,7 @@
     "buildId": "20939719",
     "manifestVersion": "steamworks-sdk-redist-public-2025-12-08",
     "notes": [
-      "Steamworks SDK Redistributables public branch build verified for the Panel runtime matrix."
+      "Reference Steamworks SDK Redistributables build used in release testing; SDK installs follow public and the installed build is diagnostic only."
     ],
     "estimatedDownloadBytes": 200000000
   },

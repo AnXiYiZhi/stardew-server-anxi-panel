@@ -6,19 +6,11 @@
     "depotId": "413153",
     "manifestId": "6005910083361727734"
   },
-  "sdk": {
-    "appId": "1007",
-    "buildId": "20939719",
-    "depotId": "1006",
-    "manifestId": "6403079453713498174"
-  },
   "content": {
     "manifestSHA256": "8143aa3110810e0039282ab8e9989417092388edb84c8c3b6c0b6f23840a4349",
     "entries": 3560
   },
   "coreFiles": {
-    ".steam-sdk/linux64/libsteamwebrtc.so": "d719d7e93116e53b9e318823e36dd50a4186ea3193485c7a54d8a759495bb759",
-    ".steam-sdk/linux64/steamclient.so": "d8fbc2925af26522c3316f8bad2ac307b4726391a6174c220ca760fc3a421591",
     "BmFont.deps.json": "64349cea2c7f2a9cdb70a487ac45ea21f28bfb2f744aa8bb3337db08fc212062",
     "BmFont.dll": "ded7589f252d6df0dd002f5e478e93bc83ab1459cc1c58544a395922087bd547",
     "CPExtBmFont.deps.json": "c50b4188f197711e5a4197dc0ecff72ae8ddb6184c43095b7e0c82daa1dde05f",

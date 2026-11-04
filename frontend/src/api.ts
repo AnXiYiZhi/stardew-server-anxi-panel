@@ -976,6 +976,7 @@ export type FullStackUpgradeStatus = {
   authDigest?: string
   createdAt: string
   expiresAt: string
+  confirmationExpired?: boolean
   authorizedAt?: string
   panelUpdateId?: string
   continuation: boolean

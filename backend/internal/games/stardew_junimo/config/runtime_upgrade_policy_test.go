@@ -68,6 +68,25 @@ func TestRuntimeUpgradePolicyBindsBridgeToKnownForwardRelease(t *testing.T) {
 	}
 }
 
+func TestActivatedRuntimeUpgradePolicyFollowsRunningPanelPatch(t *testing.T) {
+	for _, version := range []string{"0.8.1", "v0.8.2", "0.8.12"} {
+		t.Run(version, func(t *testing.T) {
+			original := RuntimeUpgradePolicy{RequiresScopeConfirmation: true, TargetPanelVersion: "0.8.0", ServerVersion: "1.5.0-preview.140"}
+			policy := original.ForPanelVersion(version)
+			if policy.TargetPanelVersion != strings.TrimPrefix(version, "v") || !policy.AppliesToPanelVersion(version, version) || policy.AppliesToPanelVersion(version, "0.8.0") {
+				t.Fatalf("active patch did not bind its own migration target: %+v", policy)
+			}
+			if original.TargetPanelVersion != "0.8.0" {
+				t.Fatal("projection modified the embedded activation boundary")
+			}
+		})
+	}
+	bridge := RuntimeUpgradePolicy{TargetPanelVersion: "0.8.0"}
+	if policy := bridge.ForPanelVersion("0.7.3"); policy != bridge || policy.AppliesToPanelVersion("0.7.3", "0.8.2") {
+		t.Fatal("bridge authorized a future runtime target it does not contain")
+	}
+}
+
 func TestExplicitRuntimeUpgradeRejectsIncompleteContent(t *testing.T) {
 	builtIn, err := BuiltInRuntimeStackManifest()
 	if err != nil {

@@ -166,7 +166,7 @@ func inspectRuntimeComponentData(manifest sjconfig.RuntimeStackManifest, gameDat
 		result.Code = "game_manifest_missing"
 		result.Reason = "Stardew Valley appmanifest 不存在。"
 		result.Current.Game = missingContentState("413150", "steamapps/appmanifest_413150.acf", RuntimeComponentsStatusGameMissing)
-		result.Current.SDK = inspectContentManifest(sdkData, "1007", ".steam-sdk/steamapps/appmanifest_1007.acf", manifest.SDK.BuildID)
+		result.Current.SDK = inspectSDKContentManifest(sdkData)
 		return result
 	}
 	if len(sdkData) == 0 {
@@ -178,7 +178,7 @@ func inspectRuntimeComponentData(manifest sjconfig.RuntimeStackManifest, gameDat
 		return result
 	}
 	result.Current.Game = inspectContentManifest(gameData, "413150", "steamapps/appmanifest_413150.acf", manifest.Game.BuildID)
-	result.Current.SDK = inspectContentManifest(sdkData, "1007", ".steam-sdk/steamapps/appmanifest_1007.acf", manifest.SDK.BuildID)
+	result.Current.SDK = inspectSDKContentManifest(sdkData)
 	if result.Current.Game.Status == RuntimeComponentsStatusManifestInvalid || result.Current.SDK.Status == RuntimeComponentsStatusManifestInvalid {
 		result.Status = RuntimeComponentsStatusManifestInvalid
 		result.Code = "manifest_invalid"
@@ -191,10 +191,10 @@ func inspectRuntimeComponentData(manifest sjconfig.RuntimeStackManifest, gameDat
 		result.Reason = "manifest 可读取，但安装状态或推荐矩阵无法确认。"
 		return result
 	}
-	if result.Current.Game.BuildID == manifest.Game.BuildID && result.Current.SDK.BuildID == manifest.SDK.BuildID {
+	if result.Current.Game.BuildID == manifest.Game.BuildID {
 		result.Status = RuntimeComponentsStatusUpToDate
 		result.Code = "up_to_date"
-		result.Reason = "游戏版本与联机运行库均匹配已测试的推荐矩阵。"
+		result.Reason = "游戏版本匹配推荐矩阵，SDK 已完整安装；SDK build 仅用于诊断。"
 		return result
 	}
 	result.Available = true
@@ -202,6 +202,19 @@ func inspectRuntimeComponentData(manifest sjconfig.RuntimeStackManifest, gameDat
 	result.Code = "update_available"
 	result.Reason = "当前游戏运行文件与已测试的推荐矩阵不一致。"
 	return result
+}
+
+func inspectSDKContentManifest(data []byte) RuntimeContentComponentState {
+	state := inspectContentManifest(data, "1007", ".steam-sdk/steamapps/appmanifest_1007.acf", "")
+	if state.Status == RuntimeComponentsStatusManifestInvalid {
+		return state
+	}
+	if _, err := parseCompleteSDKManifest(data); err != nil {
+		state.Status, state.Code, state.Reason = RuntimeComponentsStatusCustomUnknown, "sdk_installation_incomplete", "SDK 安装状态或 Linux depot 无法确认。"
+		return state
+	}
+	state.Status, state.Code, state.Reason = RuntimeComponentsStatusUpToDate, "installed", "SDK Linux depot 已完整安装，build 仅用于诊断。"
+	return state
 }
 
 func inspectContentManifest(data []byte, appID, path, recommendedBuildID string) RuntimeContentComponentState {
@@ -277,7 +290,7 @@ func (d *Driver) RunRuntimeComponentsPreflight(ctx context.Context, instance reg
 		add("recommended_matrix", "error", "内置推荐矩阵未经 tested 标记。")
 		return finishError("matrix_untested", "内置推荐矩阵未经验证。")
 	}
-	add("recommended_matrix", "ok", "目标 buildid 仅来自当前 Panel 内置的 tested 推荐矩阵。")
+	add("recommended_matrix", "ok", "游戏目标来自当前 Panel 内置的 tested 推荐矩阵；SDK 使用实际完整安装的 Linux depot。")
 	if inspection.Status == RuntimeComponentsStatusGameMissing || inspection.Status == RuntimeComponentsStatusSDKMissing || inspection.Status == RuntimeComponentsStatusManifestInvalid || inspection.Status == RuntimeComponentsStatusCustomUnknown {
 		add("current_manifests", "error", inspection.Reason)
 		return finishError(inspection.Code, inspection.Reason)
