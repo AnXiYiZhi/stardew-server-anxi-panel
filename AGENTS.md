@@ -151,6 +151,7 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 
   checksum、清单、归档及其它数据输入只允许原字节复制并核SHA，禁止对其做全文件namespace/port文本替换。代码适配须显式定位字段并断言替换计数；firstwrite前将数据清单逐项与sealed原inventory及archive交叉核验，不能只信派生文件自身SHA/count或以当前target生成expected。
 - 同一任务出现一次猜测源码路径导致的退出 2 后，下一条同类命令必须先独立运行 `rg --files` 取得目录清单；后续读取/检索的文件参数须来自该清单并先通过 `Test-Path -LiteralPath`，不得在有效命中后追加由模块名称推导的新文件路径。
+  库存中的文件路径须逐项精确匹配，测试文件存在不能推导同名实现文件存在；保留完整库存并核对成员关系后再读取，不能凭限量展示的印象拼路径。
 - Git tag/ref 发布审计中，`git for-each-ref --format` 禁止使用属于 `git log --format` 的 `%n` 换行占位符；结构化证据默认一字段一命令，只有经过独立探针确认时才使用该子命令支持的 `%0a`。tag type、object、peeled commit、tagger date 与 subject 分别核对，不能让退出 0 的字面量占位符冒充有效格式。
 - Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。`functions.exec` 中编排 `web__run` 对象数组时，只从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
