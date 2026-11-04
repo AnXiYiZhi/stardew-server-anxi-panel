@@ -20,6 +20,8 @@
 
 同次失败另见exec可读而Docker archive cp不可见的/tmp诊断路径；两wrapper改为任务专属显式RW bind、宿主预建0600 safe文件并直接复制。真实Docker29 DinD就绪后写入/宿主读取字节一致，任务容器/卷已精确清理，证据 `release081-diagbind-cf7d2ccb-v1/result.safe.json` SHA `4faead3261c7c8e8c26245d8805632bf9ae7d9df708a7c9924980628467a1e57`。Linux/PS均独立记录export状态并优先返回原非0升级码；原42+导出失败仍42，原0+导出失败为非0，负例已接CI。当前10项Shell功能序列、18份语法/ShellCheck0.11、fixture11项Python及PS四组合通过；072 c8ec1db143e451b458c158bc63c7c9f38fffc834 的apply严格单字段也已独立查证并纠正旧空体测试假设。无Go/npm独立门禁重跑，无正式tag/proof；新提交仍须完整新候选。
 
+候选 `41861232380` 已通过 code gates、新世界两次凭据错误/旧Auth保护/正式删除及Mod更新；旧事务修复的180秒观察结束时仍为同次 `rolling_back/90`，不是产品终态失败。其夹具声明140却只创建125的FIFO路径，且BusyBox setpriv不支持生产参数；独立native复现确认health假响应仍成功，但140 FIFO缺失、完整writer拒绝。修正仅在该fixture安装完整util-linux、创建 `/tmp/junimo/smapi-input` 并赋1000:1000，保留真实info日志回执；35分钟只读观察覆盖生产20分钟就绪及10分钟停服预算，持续绑定接受的apply/job ID，生产时限不变。新独占DinD以同后端源码的test-only binary一次POST repair 202，观察同ID至succeeded/attempt3，Junimo140物料、原停止态、恢复目录清理和Auth原容器均通过；证据 `release081-repair-cf7d2ccb-v1-api/evidence-api/result.safe.json` SHA `1fbc08299752460ed011720e86e72d98f07f30cbdc6472408e0ea2a8735463ac`。生产140 FIFO、UID权限及timeout/setpriv/dd实际info回执的native证据在同根 `evidence-protocol/result.safe.json`；任务daemon、两卷及镜像别名已清理，宿主与原RootSDK三集合精确保持，cleanup SHA `921c64e4d2d447f3f7147ccd151e01b6c7741319907035de359e5ebac920c902`。新增observer功能回归覆盖正确ID收敛及apply/job漂移拒绝，连同apply/holder-wait共3项聚焦Shell测试通过；19份Bash语法及ShellCheck0.11通过，未重复Go/npm或未变SaveImport链。本地结果不充当正式候选证明，新提交仍须新候选确认。
+
 | 专项/门禁 | 本版范围与通过条件 |
 | --- | --- |
 | 首次安装凭据重试 | 推荐140真实固定镜像；fresh source不存在；两次真实HTTP错误凭据均保留明确原因和stateMessage，复用同owned staging；固定source/imageID/digest/holder边界、错误Alpine输入拒绝及资源清理。 |

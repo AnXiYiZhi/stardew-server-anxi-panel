@@ -1304,6 +1304,8 @@ assert_upgraded_legacy_junimo_repair() {
   local auth_container_id=""
   local repair_code=""
   local repair_job_id=""
+  local repair_apply_id=""
+  local repair_curl_status=0
   local repair_phase=""
   local repair_source=""
   local repaired_version=""
@@ -1334,7 +1336,7 @@ EOF
   printf 'release-candidate-runtime-repair-dll\n' >"$fixture_image_dir/JunimoServer/JunimoServer.dll"
   cat >"$fixture_image_dir/Dockerfile" <<'EOF'
 FROM alpine:3.20
-RUN apk add --no-cache coreutils=9.5-r2
+RUN apk add --no-cache coreutils=9.5-r2 util-linux
 COPY bash /bin/bash
 COPY JunimoServer /data/Mods/JunimoServer
 EOF
@@ -1370,15 +1372,18 @@ services:
       - sh
       - -c
       - |
-        rm -f /tmp/smapi-input /tmp/server-output.log
-        mkfifo /tmp/smapi-input
+        mkdir -p /tmp/junimo
+        chown 1000:1000 /tmp/junimo
+        rm -f /tmp/junimo/smapi-input /tmp/server-output.log
+        mkfifo /tmp/junimo/smapi-input
+        chown 1000:1000 /tmp/junimo/smapi-input
         : > /tmp/server-output.log
         while true; do
           while IFS= read -r line; do
             if [ "$$line" = info ]; then
               printf '[INFO JunimoServer] --- Server Info ---\n[INFO JunimoServer] Version: __SERVER_VERSION__\n[INFO JunimoServer] Status: Ready\n' >> /tmp/server-output.log
             fi
-          done < /tmp/smapi-input
+          done < /tmp/junimo/smapi-input
         done &
         exec tail -f /dev/null
     volumes:
@@ -1436,16 +1441,28 @@ EOF
     exit 1
   fi
 
-  response_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"confirm":true}' "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update/repair")"
+  printf '%s\n' '{"action":"junimo-runtime-repair","confirm":true,"automaticReplay":false}' >"$root/runtime-repair-request-intent.private.json"
+  chmod 600 "$root/runtime-repair-request-intent.private.json"
+  response_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"confirm":true}' "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update/repair")" || repair_curl_status=$?
+  cp "$response_file" "$root/runtime-repair-accepted.private.json"
+  chmod 600 "$root/runtime-repair-accepted.private.json"
+  printf '%s\n' "$response_code" >"$root/runtime-repair-http-status.private.txt"
   repair_job_id="$(jq -r '.jobId // empty' "$response_file")"
-  if [[ "$response_code" != 202 || -z "$repair_job_id" || "$(jq -r '.repairAttempts // 0' "$response_file")" != 3 ]]; then
+  repair_apply_id="$(jq -r '.applyId // empty' "$response_file")"
+  if ((repair_curl_status != 0)) || [[ "$response_code" != 202 || -z "$repair_job_id" || -z "$repair_apply_id" || "$(jq -r '.repairAttempts // 0' "$response_file")" != 3 ]]; then
     echo "candidate upgrade E2E: legacy runtime repair was not accepted as the third bounded attempt" >&2
     cat "$response_file" >&2
     exit 1
   fi
 
-  for _ in $(seq 1 180); do
+  # Production rollback can verify server readiness for 20 minutes and restore
+  # stopped services for another 10. Observe that budget without changing it.
+  for _ in $(seq 1 2100); do
     if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update/apply" >"$response_file" 2>/dev/null; then
+      if [[ "$(jq -r '.applyId // empty' "$response_file")" != "$repair_apply_id" || "$(jq -r '.jobId // empty' "$response_file")" != "$repair_job_id" ]]; then
+        echo "candidate upgrade E2E: runtime repair observation changed operation identity" >&2
+        exit 1
+      fi
       repair_phase="$(jq -r '.phase // empty' "$response_file")"
       if [[ "$repair_phase" == succeeded || "$repair_phase" == failed_rolled_back || "$repair_phase" == rollback_failed ]]; then
         break
@@ -1453,6 +1470,8 @@ EOF
     fi
     sleep 1
   done
+  cp "$response_file" "$root/runtime-repair-final.private.json"
+  chmod 600 "$root/runtime-repair-final.private.json"
   repair_source="$(jq -r '.repairSourceApplyId // empty' "$response_file")"
   if [[ "$repair_phase" != succeeded || "$(jq -r '.repairAttempts // 0' "$response_file")" != 3 || "$repair_source" != "$apply_id" ]]; then
     echo "candidate upgrade E2E: legacy Junimo repair did not converge successfully" >&2

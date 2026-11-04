@@ -77,6 +77,7 @@ bash scripts/tests/test_release_matrix.sh
 bash scripts/tests/test_release_candidate_reuse.sh
 bash scripts/tests/test_release_candidate_holder_wait.sh
 bash scripts/tests/test_release_candidate_diagnostics.sh
+bash scripts/tests/test_release_candidate_runtime_repair.sh
 bash scripts/tests/test_release_workflow_download.sh
 
 release_shell_files=(
@@ -94,6 +95,7 @@ release_shell_files=(
   scripts/tests/test_release_candidate_upgrade.sh
   scripts/tests/test_release_candidate_apply.sh
   scripts/tests/test_release_candidate_diagnostics.sh
+  scripts/tests/test_release_candidate_runtime_repair.sh
   scripts/tests/test_release_matrix.sh
   scripts/tests/test_release_candidate_reuse.sh
   scripts/tests/test_release_candidate_holder_wait.sh
