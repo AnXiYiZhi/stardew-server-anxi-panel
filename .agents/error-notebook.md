@@ -1055,6 +1055,8 @@
 
 ## 2026-08-17：生产应用元数据检索误纳入打包静态资源导致输出截断
 
+- 最近复发/补充：2026-11-04，Windows PowerShell 7，只读协查远端安装失败时，子代理直接执行 `rg -n 'func |log|Log|phase|Phase|error|Error' backend/internal/games/stardew_junimo/installer.go`，退出 0，但 371 行、约 7210 token 超出 7000 token 工具预算。没有业务写入，缺失部分不视为已读；随后只读精确函数短段，结论未依赖被截断内容。根因是单文件宽关键词同样会耗尽输出预算；以后先完整捕获结果和退出码，再定位函数并精读。本次将单文件检索及真实路径预检补入 `AGENTS.md`，避免只对目录查询设限。
+
 - 环境：Windows PowerShell 7、Posh-SSH 3.2.7，经交互式 `sudo` 对飞牛 `trim.photos` 做只读诊断。
 - 错误模式：用 `find ... -maxdepth 4 -type f -path '*trim.photos*' -size -256k` 选取版本元数据候选，再对每个文件执行 `grep 'version|package|相册|照片'`；没有先排除 `static`/`static-share`，命中压缩前端 JS 后输出整份文件。
 - 症状 / 退出码：远端命令退出 0、没有写入，但返回约 1.6 MB 文本并被工具截断，后续同一调用中的 SQLite 表结构结果不可见，需要拆分重查。
@@ -1195,6 +1197,8 @@
 - 适用范围：PowerShell 7 下的 curl、ssh、docker、git 等原生命令探针及其结构化输出。
 
 ## 2026-08-16：组合检索后仍按记忆读取不存在的源码路径
+
+- 最近复发/补充：2026-11-04，Windows PowerShell 7，远端安装失败协查中为核对公开 setup 路由，直接检索未经本轮库存确认的 `backend/internal/api/router.go`，路径不存在，`rg` 退出 2；只有已确认 `AGENTS.md` 的检索结果有效，源码与服务器状态均未变化。根因是按常见布局猜测路由文件；停止该路径检索，本轮诊断只采用已确认的 `/health` 端点。后续若需路由源码，先独立执行 `rg --files` 并保存退出码，再复制真实路径读取；该预防要求同时明确补入 `AGENTS.md`。
 
 - 最近复发/补充：2026-08-18 修复任务日志尾页展示时，`rg` 已定位 `jobLogsResponse` 在 `backend/internal/web/jobs_handlers.go`，后续只读组合命令仍凭记忆追加不存在的 `backend/internal/web/types.go`，导致读取阶段退出 1；产品源码与运行状态未修改。随后用 `rg --files backend/internal/web` 确认真正测试文件和响应类型位置，余下读取只使用清单或命中的精确路径。
 - 最近复发/补充：2026-08-17 回答宿主 Mods 路径时，先后把未由文件清单确认的仓库根 `docker-compose.yml` 和 `scripts/run.sh` 与真实路径混入只读 `rg`；实际文件分别位于 `deploy/docker-compose.yml` 和 `deploy/run.sh`，两次均返回路径不存在，仓库与服务器状态未被修改。随后先用 `rg --files -g '*compose*'` 和已确认的 `deploy/run.sh` 继续；即使是文档问答，也必须先发现真实路径，不能按常见仓库布局猜根目录文件。
