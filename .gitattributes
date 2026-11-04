@@ -1,2 +1,4 @@
 *.sh text eol=lf
 *.ps1 text eol=crlf
+# Preserve exact catalog identity evidence, including its trailing CRLF.
+backend/internal/games/stardew_junimo/testdata/junimo140-content-hashes.json -text whitespace=cr-at-eol

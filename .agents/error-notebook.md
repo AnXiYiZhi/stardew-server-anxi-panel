@@ -28,6 +28,8 @@
 - 最近补充（2026-10-28，精确Git来源字节）：正式核验fixture把Windows CRLF工作树当Git blob，组件副本又用git archive导出后发现101组CRLF而原blob为LF，均在执行前SHA门禁拒绝。保留原失败；改git ls-tree -r -z与git cat-file --batch读取原始blob bytes，546文件逐blob/SHA/字节数绑定。版本化源码/Release资产/编译副本不得由checkout行尾或archive转换推断；不能靠去CR后相等冒称原字节相等，预防已固化到副本脚本。 同轮审阅CRLF文档时误用git -c core.autocrlf=false diff，导致只读diff膨胀26015行；恢复仓库正常diff后仅99行，并按缺失范围补读。语义审阅沿用仓库过滤设置，原blob字节验证另用cat-file，不能混用配置。
 
   最近复发/补充（2026-11-04，Windows Git/Python 回放）：把反向 `git diff -R` 的真实头部仍按正向 a→b 解释，实际 b→a 导致断言失败且零修改；须先核实际头部及已绑定的源/目标。随后 Git HEAD 的 LF 与 Windows CRLF 副本语义相同但 SHA 不同，原失败保留，仅用已独立证明字节/SHA 的 CRLF 副本回放才恢复。沿用 AGENTS 精确来源与换行规则；适用于源码封存/回放，语义相等不得替代原始字节证明，也不以当前目标反造 expected。
+
+  同日补充（2026-11-04，081 兼容门禁/Git EOL）：compat 41817360475 的 installer 报 unsupported catalog；junimo140-content-hashes.json 工作树原字节 243130B/SHA 8143aa…4349 含尾 CRLF，Git commit 因 autocrlf 归一化为 243129B/SHA 907e60…2064，严格 catalog 字节校验失败，本地文件副本通过不能代表 canonical Git 输入通过。为该 fixture 加 -text 后，普通 git add 仍复用 stat 未变的旧 LF blob，staged 字节断言失败；显式 git add --renormalize -- exactFixture 后 index 恢复原 243130B/SHA。须同时核属性、index blob 字节数/SHA，不能只看 w/crlf 或 -text。canonical INDEX git archive 在 Linux 核原 SHA 后，TestDriverInstall 得到 22 pass events/16 roots、0 fail/skip、exit 0（installer-canonical-index-v1.jsonl）；后续完整 CI 仍待新候选。修复保留既有 fixture 字节，生产固定游戏校验保持。最终 staged git diff --check 又将该原 CR 报作 trailing whitespace，诊断中的长行仅内存处理未回显；按 Git 官方 gitattributes/core.whitespace 契约，仅为该精确 fixture 设 -text whitespace=cr-at-eol，原字节/SHA 不变，staged diff-check 现 exit 0，只承认原 CR 为行终止，其它空白检查保留。
 - 最近补充（2026-10-28，当前输入与JSON契约）：原生组件把retry前envSHA当成retry后的当前快照，在0.26秒只读guard退出，未进入生产复制；旧before仅SHA，不能追造changed键。新namespace只钉当前真实raw SHA并保留前后不变守卫；每次已知写操作之后须重新采当前输入。其它准备断言曾误把licensed seed存在的sourceExisted当false、字符串workflowRunId当整数、job.errorMessage当job.error；先只投影真实字段/类型/存在性，再绑定，不改数据迎合测试。AST差异校验仅规范化已声明版本标签，不删除行为断言。
 
   最近补充（2026-10-29，descriptor与checksum ABI）：referenceCorrection初版把cfg.cacheDelivery指向的4774B descriptor JSON当成401078B checksum文件，在任何输出/写动作前assert拒绝。原脚本/失败保留；新派生按已固定probe-input checksum ref的path/bytes/SHA c2a00fa6891e3d72aa1154d92fff8a4febf57fcee5a6d58f32f3654616dadbd3定位，不以cache字段名或相邻文件角色猜内容。修接收器不能修改原checksum/descriptor来迎合错误schema。
@@ -64,12 +66,18 @@
   最近补充（2026-10-29，collector自身前置与显式role）：final file-only check会读取自己的prepared.safe.json，未封source manifest便检查导致FileNotFoundError；另有未执行helper缺AUTH_COMMIT定义。先按真实依赖封source-only prepared、核独立import和全部来源引用，再check-only；source prepared不声明runtime/acceptance成功。managed receipts实际在parent证据根，新fresh scope不能误拒这些原件或泛放行parent；按本次8个成功slot的精确path+SHA、script/action/run和ownership/终态逐一绑定，原failed observers继续留作context。所有原失败保留，只有完整实际输入检查通过后才允许wx唯一结果。
 - 最近复发/补充（2026-10-28，精确工具及只读投影）：NVM与bundled Node同时在PATH时，Get-Command node.exe -CommandType Application返回数组，.Source不能直接作可执行路径；改已确认单一绝对路径并版本探针后语法检查通过。旧fixture审计另复发宽New(检索截断与语句式for后接管道ParserError，均未业务执行；改精确构造器锚点/现成cmdlet和独立脚本。同轮 Get-Command wsl.exe 也命中 System32 与 WindowsApps 两项，精确可执行守卫在运行前拒绝；改已验证 System32 绝对路径。嵌套 foreach/if 审计载荷又因括号缺失而零执行，改独立 Python 脚本后17份输入SHA全通过，不重放原内联形态。继续执行AGENTS既有scalar路径、全局预算和循环不接管道规则。
 
+  最近复发/补充（2026-11-04，子代理只读 Node Compose 投影）：未先探测工具就猜测 C:/Program Files/Git/usr/bin/tar.exe，spawn ENOENT，零业务操作。改用已验证 Python 的 stdlib tarfile 读取归档，未继续猜 tar 路径；沿用既有精确可执行路径与版本探针规则，工具来源不能从 Git 安装目录命名推导。
+
   最近复发/补充（2026-10-29）：pwsh/node/python/git/wsl均可能多PATH候选，不能任取first/last或传数组；当前PowerShell固定PSHOME/pwsh.exe并核Major7，其它采用已验证绝对路径/版本。旧scope只读部分成功后仍保留，不重用输出目录。离线目录采用wx独占，已成功fixture不能为方便测试而删除重跑。
 
 - 最近补充（2026-10-28，ShellCheck源码配对）：首轮在容器默认工作目录用绝对路径lint run.sh与source它的测试，动态source按`./deploy/run.sh`解析不到已输入文件，继而误报SC1091/2034/2317。改为稳定`--workdir /repo`并使用与source一致的相对路径成对输入，完整通过；未增加disable或删断言。ShellCheck单文件/跨目录输入须先核对被source路径与当前目录，保持正式gate实际执行契约。
 
+  最近复发/补充（2026-11-04，081 候选脚本门禁）：CI 41817360865 在 test_release_candidate_upgrade.sh 的 cleanup_world_fixture 与 cleanup_fresh_patch 定义处报 SC2329，首轮候选失败且未生成证明。两函数实由各自子 shell 的 EXIT trap 间接调用，外层也有真实调用；仅在函数级既有 SC2317 注释增列 SC2329 并说明 trap。CI 原日志没有 ShellCheck 版本，不能推断新版引入；此前本地只覆盖四份用户发布脚本，未覆盖本次 candidate upgrade 脚本。本次固定官方 ShellCheck 0.11.0 先复现两告警，再对 CI 实际 16 文件全量 lint 通过，16 份 Bash 语法检查也通过。适用于门禁作用域核对，不能用部分脚本通过代替完整列表，也不以局部通过宣称候选成功。
+
 - 最近复发/补充（2026-10-28，080冷恢复与诊断）：release receipt成功只表示gate已释放，立即执行inner docker info因socket尚未就绪退出1；未重放release或任何start，先只读确认同一outer/daemon已完成初始化，再用新只读命名空间续取原未执行inspect，完整身份及5个原ID恢复通过。冷恢复也必须等待真实Docker API ready，不能把release命令成功当daemon ready。诊断曾把含完整sandbox ID的daemon警告输出到工具；后续只保存原日志到私有证据，公开按状态/布尔/计数投影，不输出原warn行。
 - 最近复发/补充（2026-10-28，目录检索预算）：`rg -m`限制每文件命中数，不是目录总数；审计目录仍聚合333行并截断，后端上下文恢复又复发两次。目录检索先完整捕获原退出码，再全局限量投影，或先`rg -l`取得真实文件库存后分文件短段读取；不得仅靠`-m`推断全局输出有界。已将本任务后续内容检索限定为已确认单文件、扩库存仅捕获rg--files后限量的强制规则提升到AGENTS，避免继续重复目录查询。
+
+  最近复发/补充（2026-11-04，073 来源与账户窗口审计）：子代理一次回显 258 条账户窗口库存路径而截断；后续仅消费已确认的 origin-account-window-v7/inputs.safe.json。073 只读审计的文档短段、checkpoint/归档文件名和 DB 表清单投影也数次超出总预算，本轮整理笔记时合并短段又截断；原 native 退出已保存为 0，未据截断结果执行写入，缺失文档段另行补读。该类已多次复发，任务 auditor 现先断言聚合记录不超过 12、完整输出不超过 2000 字符，258 条和超字符输入均在输出前拒绝；完整证据留 ignored tmp，再按精确对象投影。继续沿用 AGENTS 全局限量规则，不新增重复章节或规则。
 - 最近补充（2026-10-28，候选超时测试虚拟时钟）：candidate40635176841在holder-wait timeout用例ticks4失败，未构建或推送镜像；Bash特殊SECONDS随setup真实时间增长，使deadline从30变31。测试先unset SECONDS再作为普通变量由mock sleep唯一推进，保留严格ticks3/所有安全断言，并加入setup跨秒回归；Linux22项与ShellCheck通过，生产观察函数未改。
 - 最近复发/补充（2026-10-28，新恢复工具AST探针）：内联Python -c跨pwsh反斜杠引号导致零执行SyntaxError，改独立check-new-attempt.py后13份Python AST及PowerShell/行为审查通过。沿用复杂Python逻辑写任务脚本的既有规则，不继续拼多层引号。
 
@@ -148,6 +156,8 @@
   最近复发/补充（2026-11-04，DinD Alpine/FIFO Unix 门禁）：先因 BusyBox `timeout` 不支持 `--kill-after` 失败，补工具后又因 BusyBox `setpriv` 不支持 `--reuid` 失败；完整原因及首失败均保留。安装 coreutils 9.11 与 util-linux setpriv 2.42.3，并核实际 `--reuid/--regid/--clear-groups` 能力后，两项真实 FIFO 通过。该类多次复发，已在 AGENTS 精简容器依赖段补充参数能力守卫；适用于 Linux 门禁，不改生产脚本或把同名命令存在当能力证明。
 - 同轮回滚观察补充（2026-10-25）：Panel helper终态不代表自动组件job已结束，首次数据核验准确捕获仍有1个job；须等待该原job终态后只读复核。session卷中的settings.json不能算登录会话，按实际username+refreshToken字段识别。存档任务hash变化先与精确原始tar的save SHA核对，再逐字段定位，最终只有_questTitle显示缓存变化，其它任务进度完整；后续断言明确排除这一缓存，保留原严格失败和诊断。再次猜测不存在的apply_types.go被库存守卫零读取拒绝；独立rg --files定位真实types.go后续接。候选文件清单无命中退出1时包装器仍须显式exit 0，不能让最后原生命令的正常无命中泄漏成工具失败。长期文档密集长行必须同时限制字符，不能把80行当默认安全长度。
 - 同轮门禁/容量续记（2026-10-25）：镜像构建后C盘降至约8.5GiB，fresh守卫在创建前拒绝；停止新夹具，未重启Docker。82项已关闭诊断文件逐个独占读取、复制到E并核对SHA后才移除源；清理9388个可重建浏览器/图形/未使用Playwright缓存文件，跳过27项在用文件，保留cookies/password/history；Go模块23556文件逐个SHA核对迁到E并在原精确路径建立junction，C恢复约12.18GiB。OrderedDictionary数组用Measure-Object -Property bytes得到0，汇总须先ForEach-Object取键值再求和；原逐文件字节和hash证据有效，不重做移动。后续继续用C/E实际余量守卫，不能只看DinD tmpfs。2026-10-27日志投影又对[ordered]哈希用Select-Object -ExpandProperty Output而报属性缺失；先转[pscustomobject]后只读解析同一已结束JSONL，未重跑测试。PS对象投影前须核对实际类型，字典使用键索引或显式转换，不能让聚合器把字典适配器当普通属性对象。
+
+  最近复发/补充（2026-11-04，PowerShell Docker 元数据投影）：单对象 JSON 数组经 ConvertFrom-Json 默认枚举后变为 Hashtable，再用 [0] 得到 null，错误投影了工具镜像 Entrypoint/Cmd；尚未据此启动工具。改用 -NoEnumerate 保留根数组，先断言唯一元素与 Config 存在，再投影并读取真实 ShellCheck 入口/版本。适用于精确镜像 inspect，必须先核数组/字典类型，null 不能当作镜像真实配置。
 - 同轮工具前置故障（2026-10-25）：full-v4 vet首次在apk索引TLS失败、未开始Go时退出3；宿主调用还提前结束、原容器存在，先inspect终态并恢复完整tools日志，没有重复创建同名门禁。以本轮已通过unit的精确owned容器冻结GNU工具链镜像（源码/cache/evidence均为bind、不会进入commit），复用同base和已安装工具；仅重跑未执行的vet，以retry1日志保留首故障，随后通过。另一次猜instance_routes.go被rg拒绝，独立库存后定位lifecycle_handlers.go；余下检索仅允许已确认目录，读取走read-verified。apply_patch不接受同一载荷同时Delete/Add同一路径，零执行拒绝后保留旧脚本，使用独立新版checkpoint文件，不重放同一补丁。
 
   最近复发/补充（2026-11-04，apply_patch）：同一文件的 Delete+Add 组合再次被工具拒绝，零修改。保留原文件并改为单个 Update File 补丁；发送前核同一路径的操作唯一性和真实完整行，继续执行 AGENTS 已有补丁分段规则，适用于既有文件替换，不原样重放拒绝载荷。
@@ -283,6 +293,8 @@
   最近复发/补充（2026-11-04，主/子代理只读源码诊断）：按模块职责猜测不存在的源码路径，rg报退出2；主代理还把库存中的测试文件误认作同名实现文件，且组合命令后续成功掩盖原失败。改为完整捕获真实库存，只读取精确命中的路径。AGENTS补充库存精确成员检查，禁止去掉测试后缀推导实现路径；后续组合检索必须立即保存并检查各次原生退出码。未修改生产状态。
 
   同日补充（2026-11-04，SDK 代理）：再次猜测不存在的 `runtime_components_test.go`，库存守卫在读取前拒绝。仅用保留的真实清单继续定位，不由模块名或测试后缀推导文件；本次属于已提升到 AGENTS 的同类约束复发，无需新增平行规则，也不把拒绝当产品失败。
+
+  同日补充（2026-11-04，主/子代理源码定位）：根代理猜测不存在的 junimo140.go，子代理又猜 templates 根路径，rg 均退出 2；后者再序列化通用 ErrorRecord，导致诊断输出膨胀。改为完整捕获 rg --files 库存并保存退出码，从精确成员中选路径，预检存在后才读内容；异常仅投影类型、退出与计数。沿用 AGENTS 既有库存、退出码及脱敏规则，不让错误对象全文掩盖首个路径错误。
 
   同日补充（2026-11-04，Windows 编码/凭据只读审计）：对未跟踪新文件调用 `git ls-files --error-unmatch`，预期的未跟踪退出被包装器抛错，使审计中止，零写入。改为完整捕获 tracked 库存并保存原退出码，以 Set 精确成员关系分类；重新审计 55 个变更文件，UTF-8、BOM、新增 U+FFFD 与凭据均无问题，固定 game 226 hash 不变。沿用 AGENTS 库存与原生退出码规则；适用于同时包含 tracked/untracked 文件的审计，合法未跟踪状态不得当作查询执行失败。
 - WSL 恢复终态补充：`WslService` 长时间停在 `START_PENDING`，仅注册 docker-desktop 且 `hcsdiag list` 为空；重启空闲 vmcompute 后仍未就绪。已取消等待命令，不继续扩大到其它 Windows 服务。后续 Win32_Process 的 CIM 查询也挂起，取消后改用轻量服务状态读取，不反复调用已挂起的查询。原有三台容器尚未恢复；需要用户保存其它应用工作并重启 Windows，再从已保存的容器身份和恢复脚本续做。Docker 重启授权不能扩展为整机重启授权。
@@ -676,6 +688,8 @@
 - 正确做法：先在目标 clone 中枚举受控范围的 ref，再逐字使用返回的完整 ref；若没有对应 tag，改用运行栈记录的 source revision 或本机精确程序集证据，不自行拼接版本名。
 - 预防检查：任何 `git show`、`rev-parse`、`log <ref>` 的 ref 参数都必须来自本轮 Git 输出或受信任清单，不能从镜像版本、Release 名或记忆推导。
 - 适用范围：上游兼容审计、tag/source 对照、反编译基线与发布 ref 核验。
+
+  最近复发/补充（2026-11-04，本仓正式版源码审计）：直接 git show v0.8.0，但本地缺该 tag，Git 退出 128；未修改仓库或运行资源。改用已验证的完整 080 commit 读取，并先从真实 ref/受信任版本清单绑定来源；正式 Release 存在不能推出本地 tag 对象存在，沿用本节精确 ref 检查。
 
 ## 2026-08-27：现行文案负向扫描不能把历史接手记录当成产品残留
 
@@ -1209,6 +1223,8 @@
 ## 2026-08-16：工具编排对象的字符串引号未配对
 
 - 最近复发/补充：2026-09-04 调整游戏库方形卡时，连续两次把未完成的自然语言/占位文本混进 `functions.exec` 的 JavaScript 对象，编排层分别报 `Unexpected token` 与 `Unexpected identifier`；随后一次只读 PowerShell 行段读取又留下无效数组下标占位，报 `Array index expression is missing or not valid`。三次均在任何文件读取或写入前失败。之后从已验证的最小 `exec_command` 骨架重新输入，并把检索与行段读取拆开。编排层解析失败后禁止在原载荷上局部续写，必须回到最小骨架并逐字段复核。
+
+  最近复发/补充（2026-11-04，子代理只读投影）：在同步 map 回调中使用 await，编排层 SyntaxError，零执行。改为先完成 import，再用同步 endswith 分类投影；语法错误后回到已验证最小 JavaScript 骨架，不在未执行载荷上局部续写。沿用 AGENTS 编排层解析规则，适用于生成器和只读审计，不将零执行当成业务失败。
 - 最近复发/补充：2026-08-23 正式发布预检时，把一段 PowerShell 直接作为 `functions.exec` 的 FREEFORM 顶层输入，没有用 JavaScript 调用 `tools.exec_command(...)`，编排层同样在任何命令执行前返回 `SyntaxError: Invalid or unexpected token`；本地与远端状态零变化。确认零执行后改回本节已验证的 JavaScript 对象骨架并成功取得文档行数。后续即使待执行文本本身是合法 PowerShell，也必须先放进 `exec_command.cmd` 字符串，不能把 shell 语言写到 raw JavaScript 层。
 - 环境：Codex Desktop `functions.exec` JavaScript 编排层，准备执行只读 Docker ILSpy 探针。
 - 错误模式：`exec_command` 参数对象中的 `yield_time_ms` 与 `max_output_tokens` 键前误混入 JSON 双引号，导致 JavaScript 字符串未闭合。
@@ -1687,6 +1703,8 @@
 - 预防检查：混合工作树的 partial staging patch 必须先做零修改 `--check`；任何 `corrupt patch` 都先核对 hunk 计数与 EOF 上下文，不直接执行真实 `git apply` 或改用整文件暂存。
 - 适用范围：`git apply --cached`、手工摘取 hunk、共享脏工作树中的精确暂存。
 
+  最近复发/补充（2026-11-04，错题本补丁生成器）：把多个 apply_patch hunk 按问题分类排列，后一个 hunk 回到更早源位置，校验报找不到实际存在的上下文；核源 SHA 仍与原 proof 一致，零修改。生成器改为按原始锚点行号严格递增排序并断言唯一匹配，再生成补丁；适用于多段精确补丁，原上下文存在不能代替顺序契约校验，拒绝后先核原文件而不局部重放。
+
 ## 2026-08-13：等待 workflow 时 GitHub API TLS 握手超时
 
 - 环境：PowerShell 7、GitHub CLI，只读查询 `v0.4.14` Release workflow 状态。
@@ -1939,6 +1957,8 @@
 ## 2026-08-12：向 DinD 外层容器 `/tmp` 复制脚本只信任 `docker cp` 退出码
 
 - 最近复发/补充：2026-08-13 v0.4.15 候选导入再次对 62,721,024 B archive 执行 `docker cp ...:/tmp/...`，命令退出 0，但立即 `stat` 报不存在；加载未开始，宿主 archive 保留。该问题已有专门历史条目且 AGENTS 已要求镜像预加载优先唯一环回 TCP，后续本轮销毁已验收的无残留旧 DinD，重建带唯一 `127.0.0.1:<task-port>` 的 DinD，并由宿主 CLI 直接 `image load -i`，不再尝试容器 rootfs 中转。
+
+  最近复发/补充（2026-11-04，Docker Desktop/DinD 文件传输）：docker cp 到 /tmp 退出 0，但 runtime exec 视图不可见，随后 tar 失败；根因是 DinD 运行挂载命名空间遮蔽 root 层的 /tmp 复制目标。改传入显式 /work volume，先核精确目标可见再解包；复用原归档，仅续已知空目标，未重建生产者。适用于隔离夹具传输，原生命令成功不能代替消费进程实际读取验证。
 - 环境：PowerShell 7、Docker Desktop、任务专属 `docker:29-dind` privileged 外层容器。
 - 错误模式：把任务脚本复制到外层 DinD 的 `/tmp`，只在同一包装命令后续用 `test -f` 才发现目标不存在；`docker cp` 本身退出 0 且无报错。改用相同容器的 `/root/<task>.sh` 后文件可见。
 - 症状 / 退出码：两次 `/tmp` 目标都由后续 `sha256sum`/`test -f` 以文件不存在退出 1，E2E 尚未启动；复制到 `/root` 后立即核对字节数与 SHA-256 一致，脚本正常运行。
@@ -2129,6 +2149,8 @@
 ## 2026-08-09：GitHub HTTPS fetch/push 短暂 TLS 握手失败
 
 - 最近复发/补充：2026-08-09 GitHub device OAuth 恢复后，推送纯错题本文档提交时第一次 `git push origin main` 同样报 Schannel TLS 握手失败；本地 commit 已完成，远端是否接受未知，不能直接原样连推。正确续接是先以有界 `git ls-remote origin refs/heads/main` 核对远端 SHA：若已是本地 HEAD 则不再 push；若仍是已知父提交且分歧为纯 fast-forward，才对同一精确 push 最多重试四次，成功后 fetch 并断言 `origin/main == HEAD`。
+
+  最近复发/补充（2026-11-04，GitHub 官方 Git 写入故障与插件权限）：两次 HTTPS push 各在核对远端未变后仍因 commit_refs/InternalServerError 失败，对应官方 incident smtdswd1h2w4。改经 GitData REST create_tree/create_commit，完整保留本地 403d3059162124a8f586cb1080242792c6c0db26 的 tree 6b2887 与 parent 17bc 身份，逐阶段核远端对象精确 SHA；连接器 github_update_ref 再因 integration FORBIDDEN（Resource not accessible by integration）零写入，先只读确认远端仍 17bc，才用已授权 gh CLI REST PATCH force=false 普通快进成功。fetch 已确认 main/origin 同 403d305 且 clean，自动 CI 41817360865 已运行；没有新造提交、force 或重放未知写。适用于 provider 故障/插件权限回退，Git 对象写入与 ref 移动必须分阶段保存意图、响应和精确身份，不能把拒绝权限或监控失败当作发布成功。
 - 环境：Windows PowerShell 7、Git for Windows schannel，官网文档提交前同步 `origin/main`。
 - 错误模式：首次单次 `git fetch origin main` 遇到外部链路握手中断；该命令位于 commit/push 前，因此没有产生部分提交或远端写入。
 - 症状 / 退出码：Git 报 `schannel: failed to receive handshake, SSL/TLS connection failed` 并退出 1；几秒后同一精确 fetch 成功。

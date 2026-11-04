@@ -6,6 +6,10 @@
 
 受影响链路为游戏/SDK安装与迁移、共享组预检/确认、更新中心及发行政策生成。Junimo140/Auth140/Control0.3.9制品身份保持，SDK参考build仅作诊断；实际运行和Steam链按本候选验收。候选版本为0.8.1，当前上一正式版取Release列表最高稳定080，受影响最老代表为073；GitHub网页latest073保留旧客户端桥，073本身读取正式列表。
 
+首轮候选 CI `41817360865` 在脚本门禁因 `test_release_candidate_upgrade.sh` 两处 `SC2329` 失败，未生成候选证明。`cleanup_world_fixture`、`cleanup_fresh_patch` 均由各自子 shell 的 `EXIT` trap 间接调用，外层有实际调用；修复仅在对应函数级注释增列 SC2329 并解释 trap。原 CI 日志未记录 ShellCheck 版本，此前本地仅 lint 四份用户发布脚本；本次固定官方 ShellCheck `0.11.0` 先复现两告警，再对 CI 实际全部 16 文件 lint 通过，16 份 `bash -n` 也通过。原失败及前后日志保留在任务证据根 `candidate-41817360865-failed.log`、`shellcheck-v0.11.0-before.log`、`shellcheck-v0.11.0-after-16-files.log`。
+
+独立兼容 CI `41817360475` 的完整失败库存为 16 个 fail events/13 个 roots（11 个 DriverInstall、2 个 cached-SMAPI，含三项嵌套 guard），共同原因是 `junimo140-content-hashes.json` 的原 243130B/尾 CRLF 被 Git autocrlf 归一化成 243129B/尾 LF，触发严格 catalog 字节校验；本地工作树副本通过不能代替 canonical 输入。精确属性为 `backend/internal/games/stardew_junimo/testdata/junimo140-content-hashes.json -text whitespace=cr-at-eol`，显式 `git add --renormalize` 后 index 恢复原 SHA `8143aa…4349`；原 CR 只作为行终止，其它空白检查保留，staged diff-check exit 0，生产固定游戏内容校验保持。canonical INDEX tree `294530768e63916df10dc8e816eeae30abc14ecb` 的 `git archive` SHA `9b5d77abb9367c0e9cef20b15bfa08af4f5d2b00b9e42b714a16afef955c0995` 在 Linux 验真；`TestDriverInstall` 22 pass events/16 roots、0 fail/skip，另两项 cached-SMAPI roots 共 2 pass/0 fail，均 exit 0。对应 `compat-41817360475-failed.log`、`installer-canonical-index-v1.jsonl`、`cached-smapi-canonical-index-v1.jsonl` 保留。上述为失败链聚焦闭合，修复提交须由新候选完整 CI 再确认，尚不宣称正式候选成功。
+
 | 专项/门禁 | 本版范围与通过条件 |
 | --- | --- |
 | 代码门禁 | 后端test/vet/build；前端状态/浏览器/production build；脚本、ShellCheck、政策生成器、兼容矩阵、updater/Docker integration。条件矩阵由run-release-gates基于080→候选路径自动选择/跳过。 |

@@ -463,7 +463,7 @@ assert_upgraded_world_management() (
   local world_dir=""
   local created_ids=()
   cp "$template_env" "$env_backup"
-  # shellcheck disable=SC2317 # Invoked by this subshell's EXIT trap.
+  # shellcheck disable=SC2317,SC2329 # Invoked indirectly by this subshell's EXIT trap.
   cleanup_world_fixture() {
     local status=$?
     local id=""
@@ -571,7 +571,7 @@ assert_fresh_patch_features() {
   (
   set -Eeuo pipefail
   mkdir -p "$data_dir"
-  # shellcheck disable=SC2317 # Invoked by the subshell EXIT trap.
+  # shellcheck disable=SC2317,SC2329 # Invoked indirectly by the subshell EXIT trap.
   cleanup_fresh_patch() {
     local status=$?
     docker rm -f "$panel_container" >/dev/null || status=1
