@@ -14,6 +14,8 @@
 
 候选 `41837634365` 与兼容 `41837634341` 的 code gates、真实140密码错误两次重试均通过，随后080→081 unhealthy Web链在 check 200、同ID dry-run succeeded 后 apply 409；原CI未保存响应body，不能倒推其确切错误。以已封存正式080镜像（完整commit `8b348b0095f990f17bf6307c2346c8b73cc3586b`）和同081发行feed隔离复现：旧请求缺 noticeDigest 返回 `update_precondition_failed`/“请阅读并确认当前版本的重要提示”；同次check的三字段确认通过提示校验，到无Docker socket夹具的 `docker_unavailable` 守卫，0 accepted update、0重发。原证据及只读核验在任务根 `release081-notice080-cf7d2ccb-v2/readonly-recovery.safe.json`，SHA `8344e92675e03ac98825a551baff1e63eeba56a4554dfee4dd8e52dd949213f3`；两次probe的任务容器/网络均已精确清理。候选夹具现按073起已支持的严格schema首次携带 confirmFullStack、targetVersion和已阅读noticeDigest，更老版本预选空体协议，不按400/409重发。Linux/Windows均在清理前保存并导出独立safe HTTP诊断（阶段、状态、白名单error.code、ID hash和同ID/目标布尔），CI always artifact只上传此安全投影，原body仍为任务私有副本；失败诊断不充当候选证明。聚焦真实bash+jq契约、17份Bash语法/ShellCheck0.11、PS解析及现有4+9+20项Python测试通过；新提交仍须新的完整候选。
 
+后续候选 `41845489478` 在 code gates 的既有 holder-wait 功能测试失败：该测试单独source诊断函数，新增计数器全局未初始化触发 `update_http_result_sequence: unbound variable`，未产生镜像/候选证明。完整脚本库存确认调用者为生产升级脚本及apply、holder-wait两测试；函数现为缺省计数器、任务root下safe输出和可选目标版本提供默认值，holder-wait显式unset三新增global并校验默认safe投影/隐私。真实bash+jq+Docker CLI环境执行门禁原8项Shell功能序列及新增apply测试共9项，全通过；17份Bash语法和固定ShellCheck0.11通过，未重复Go/npm独立门禁。原失败 `candidate-41845489478-failed.log`、完整单项原生日志/receipt `release081-recorder-abi-cf7d2ccb-v1` 和 `recorder-abi-shellcheck-v1.log` 保留；仍需新候选确认。
+
 | 专项/门禁 | 本版范围与通过条件 |
 | --- | --- |
 | 首次安装凭据重试 | 推荐140真实固定镜像；fresh source不存在；两次真实HTTP错误凭据均保留明确原因和stateMessage，复用同owned staging；固定source/imageID/digest/holder边界、错误Alpine输入拒绝及资源清理。 |

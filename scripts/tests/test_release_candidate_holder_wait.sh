@@ -235,11 +235,14 @@ if legacy_steam_invite_persistence_ready true different-session; then exit 1; fi
 echo 'candidate holder wait: restart requires persisted scope and exact resource convergence'
 
 printf '{"updateId":"private-accepted-operation-id","phase":"succeeded","error":"never-print-private-fixture"}\n' >"$response_file"
+unset update_http_result_sequence safe_http_evidence version
 record_update_http_result apply 202 0 >"$root/public.log"
 jq -e '.httpStatus == "202" and .curlExit == 0 and .id == "private-accepted-operation-id"' "$root/update-http-evidence.private.jsonl" >/dev/null
 assert_public_log_private "$root/public.log" || exit 1
 record_update_http_result connection-closed 000 28 >"$root/public.log"
 jq -se '.[1].httpStatus == "000" and .[1].curlExit == 28 and .[1].id == ""' "$root/update-http-evidence.private.jsonl" >/dev/null
+jq -se 'length == 2 and .[0].targetMatches == null and (.[0].idSHA256 | test("^[a-f0-9]{64}$")) and .[1].idSHA256 == "absent"' "$root/update-http-evidence.safe.jsonl" >/dev/null
+assert_public_log_private "$root/update-http-evidence.safe.jsonl" || exit 1
 [[ ! -e "$root/forbidden-docker-writes" ]]
 echo 'candidate holder wait: HTTP identity stays private and observers never mutate Docker'
 

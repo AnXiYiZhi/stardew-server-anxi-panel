@@ -3159,6 +3159,8 @@
 
   最近复发/补充（2026-11-04，真实080 notice probe）：同正式080/081 feed首次缺notice请求409已保存；完整三字段请求通过notice校验后，因刻意无Docker socket实际409 docker_unavailable，probe仍期待202而assert失败。保留原状态/body及失败，仅只读校SHA封存下游guard事实，0accepted/0重发，不为得到202放开socket。候选旧脚本也漏noticeDigest且只记HTTP，修为按已核073起严格schema首次发送同check摘要/目标、按版本预选legacy，拒绝后不补发；HTTP原始私有副本先落，公共及always artifact仅固定safe字段/白名单error.code/ID hash/同ID目标布尔。原CI未保留body时只说明独立复现，不虚称已读原错误。
 
+  同日补充（2026-11-04，Shell sourced函数ABI）：候选41845489478既有holder-wait测试source新HTTP recorder时exit1，新增sequence/safe输出/目标版本隐含依赖完整生产脚本初始化；局部新测试通过未覆盖该已有调用者。先完整捕获scripts库存及退出码，再查全部三处函数使用成员；计数从未设值的0开始、safe输出回落任务root、无目标版本时保留null，只改新增可选依赖。holder-wait明确unset三global并校默认输出/隐私，实际完整门禁8项Shell功能测试加新apply共9项、17份语法/ShellCheck0.11通过。复用或修改sourceable函数时必须先查全部使用方，验证最小独立初始化与生产完整初始化两种环境；预防落实在该现有回归测试，不新增AGENTS重复规则。原失败/原生日志保留，无Go/npm重跑或业务写重放。
+
 ## 2026-08-01：容器级 `GIT_DIR/GIT_WORK_TREE` 污染子仓库
 
 - 最近复发/补充：2026-08-27 v0.6.0 Linux 后端全门禁制作任务专属源码卷时，只排除了 `.git`、`.codex-test` 与前端/网站缓存，遗漏仓库内本地 `data/` 等运行目录；复制 90 秒仍未结束。向前台 exec session 发送 Ctrl+C 只中断宿主 Docker CLI，精确命名的复制容器仍为 Running，随后直接 `docker rm` 因运行中而失败。共享源码和真实资源未变化；恢复必须先 inspect 容器完整配置与 owner label，再按精确名称 `docker stop`、`docker rm`，核对后重建唯一 source volume。以后复制源码前先从 `git ls-files`/明确任务清单决定输入，至少排除 `data/`、任务目录和运行缓存；前台 `docker run` 被中断后不得假定容器终止或 `--rm` 已执行。

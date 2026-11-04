@@ -1478,7 +1478,8 @@ game_hash_before="$(docker exec "$game_container" sha256sum /game/sentinel.txt |
 
 record_update_http_result() {
   local stage="$1" code="$2" curl_status="$3" id phase error_code="absent" id_hash="absent" body_file expected_id="" same_id=null target_matches=null
-  update_http_result_sequence=$((update_http_result_sequence + 1))
+  local safe_output="${safe_http_evidence:-$root/update-http-evidence.safe.jsonl}"
+  update_http_result_sequence=$((${update_http_result_sequence:-0} + 1))
   printf -v body_file '%s/http-%04d-%s.body.private.json' "$root" "$update_http_result_sequence" "$stage"
   cp "$response_file" "$body_file"
   chmod 600 "$body_file"
@@ -1511,11 +1512,11 @@ record_update_http_result() {
     same_id=false
     if [[ "$expected_id" == "$id" ]]; then same_id=true; fi
   fi
-  target_matches="$(jq -c --arg target "$version" '(.targetVersion // .toVersion // .latestVersion) as $actual | if ($actual | type) == "string" then ($actual | ltrimstr("v")) == $target else null end' "$response_file" 2>/dev/null || printf null)"
+  target_matches="$(jq -c --arg target "${version:-}" '(.targetVersion // .toVersion // .latestVersion) as $actual | if $target != "" and ($actual | type) == "string" then ($actual | ltrimstr("v")) == $target else null end' "$response_file" 2>/dev/null || printf null)"
   jq -nc --arg stage "$stage" --arg http "$code" --argjson curlExit "$curl_status" --arg idSHA256 "$id_hash" \
     --arg phase "$phase" --arg errorCode "$error_code" --argjson sameId "$same_id" --argjson targetMatches "$target_matches" \
-    '{stage:$stage,httpStatus:$http,curlExit:$curlExit,idSHA256:$idSHA256,phase:$phase,errorCode:$errorCode,sameId:$sameId,targetMatches:$targetMatches}' >>"$safe_http_evidence"
-  chmod 600 "$safe_http_evidence"
+    '{stage:$stage,httpStatus:$http,curlExit:$curlExit,idSHA256:$idSHA256,phase:$phase,errorCode:$errorCode,sameId:$sameId,targetMatches:$targetMatches}' >>"$safe_output"
+  chmod 600 "$safe_output"
   printf 'candidate upgrade E2E: HTTP evidence stage=%s status=%s curlExit=%s idSha256=%s phase=%s errorCode=%s\n' "$stage" "$code" "$curl_status" "$id_hash" "$phase" "$error_code"
 }
 
