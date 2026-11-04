@@ -124,6 +124,11 @@ if [[ -n "$metadata_output" ]]; then
   fi
 fi
 temp_root="$(mktemp -d -t "$owner-XXXXXX")"
+diagnostics_dir="$temp_root/safe-http"
+mkdir -m 700 "$diagnostics_dir"
+# Pre-create as the host user: the privileged DinD appends without changing
+# ownership, so the host can export the 0600 safe evidence directly.
+(umask 077; : >"$diagnostics_dir/http.safe.jsonl")
 candidate_tar="$temp_root/candidate.tar"
 fixtures_tar="$temp_root/fixtures.tar"
 previous_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$previous_version"
@@ -145,6 +150,26 @@ remove_owned_dind() {
     docker volume rm "$dind_volume" >/dev/null || return 1
     dind_volume_created=0
   fi
+}
+
+finish_candidate_upgrade() {
+  local upgrade_status="$1" source="$2" destination="$3" export_status=0 reason="absent"
+  if [[ -n "$destination" && -s "$source" ]]; then
+    reason="directory_failed"
+    mkdir -p "$(dirname "$destination")" || export_status=$?
+    if ((export_status == 0)); then
+      reason="copy_failed"
+      cp "$source" "$destination" || export_status=$?
+    fi
+    if ((export_status == 0)); then
+      reason="permissions_failed"
+      chmod 600 "$destination" || export_status=$?
+    fi
+    if ((export_status == 0)); then reason="exported"; fi
+  fi
+  printf 'release candidate: safe diagnostics upgradeExit=%s exportExit=%s reason=%s\n' "$upgrade_status" "$export_status" "$reason"
+  if ((upgrade_status != 0)); then return "$upgrade_status"; fi
+  return "$export_status"
 }
 
 cleanup() {
@@ -308,7 +333,7 @@ if [[ -n "$existing_dind_container" || -n "$existing_dind_volume" ]]; then
 fi
 docker volume create --label "com.anxi-panel.test-owner=$owner" "$dind_volume" >/dev/null
 dind_volume_created=1
-dind_container_id="$(docker run -d --privileged --name "$dind_container" --label "com.anxi-panel.test-owner=$owner" --env DOCKER_TLS_CERTDIR= --mount "type=volume,src=$dind_volume,dst=/var/lib/docker" --volume "$repo_root:/workspace:ro" --volume "$temp_root:/candidate:ro" docker:29-dind)"
+dind_container_id="$(docker run -d --privileged --name "$dind_container" --label "com.anxi-panel.test-owner=$owner" --env DOCKER_TLS_CERTDIR= --mount "type=volume,src=$dind_volume,dst=/var/lib/docker" --volume "$repo_root:/workspace:ro" --volume "$temp_root:/candidate:ro" --mount "type=bind,src=$diagnostics_dir,dst=/candidate-diagnostics" docker:29-dind)"
 
 dind_ready=0
 for _ in $(seq 1 90); do
@@ -344,13 +369,8 @@ if ((reuse_image == 1)); then
   upgrade_mode_args+=(--upgrade-only)
 fi
 upgrade_status=0
-docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 --env ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT=/tmp/candidate-http-evidence.safe.jsonl "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version" "${upgrade_mode_args[@]}" || upgrade_status=$?
-if [[ -n "$diagnostics_output" ]] && docker exec "$dind_container" test -f /tmp/candidate-http-evidence.safe.jsonl; then
-  mkdir -p "$(dirname "$diagnostics_output")"
-  docker cp "$dind_container:/tmp/candidate-http-evidence.safe.jsonl" "$diagnostics_output"
-  chmod 600 "$diagnostics_output"
-fi
-if ((upgrade_status != 0)); then exit "$upgrade_status"; fi
+docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 --env ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT=/candidate-diagnostics/http.safe.jsonl "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version" "${upgrade_mode_args[@]}" || upgrade_status=$?
+finish_candidate_upgrade "$upgrade_status" "$diagnostics_dir/http.safe.jsonl" "$diagnostics_output"
 remove_owned_dind
 
 mkdir -p "$(dirname "$metadata_output")"

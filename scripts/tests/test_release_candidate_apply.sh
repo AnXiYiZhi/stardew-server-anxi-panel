@@ -66,8 +66,15 @@ done
 previous_version=0.7.2
 : >"$root/requests.jsonl"
 start_apply >"$root/stdout"
-jq -e '.data == ""' "$root/requests.jsonl" >/dev/null
+jq -e '.data | fromjson | . == {confirmFullStack:true}' "$root/requests.jsonl" >/dev/null
 [[ "$(wc -l <"$root/requests.jsonl")" == 1 ]]
+
+# Older product support is unchanged; this fixture only exercises audited schemas.
+# shellcheck disable=SC2034 # Read by the sourced production start_apply function.
+previous_version=0.7.1
+: >"$root/requests.jsonl"
+if start_apply >"$root/stdout" 2>"$root/stderr"; then exit 1; fi
+[[ ! -s "$root/requests.jsonl" ]]
 
 # shellcheck disable=SC2034 # Read by the sourced production start_apply function.
 previous_version=0.8.0

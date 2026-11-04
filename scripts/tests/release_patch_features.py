@@ -19,6 +19,43 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def protected_source_snapshot(data_dir):
+    """Observe the already-accepted world without changing its Auth scope."""
+    source = Path(data_dir) / "instances" / "stardew"
+    result = {"files": {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+                        for name in (".env", "docker-compose.yml")}, "auth": []}
+    identities = docker("ps", "-aq", "--filter", "label=com.docker.compose.project=stardew",
+                        "--filter", "label=com.docker.compose.service=steam-auth").splitlines()
+    for identity in identities:
+        row = json.loads(docker("inspect", identity))[0]
+        volumes = {}
+        for mount in row.get("Mounts", []):
+            if mount.get("Type") != "volume":
+                continue
+            metadata = json.loads(docker("volume", "inspect", mount["Name"]))[0]
+            require(metadata["Mountpoint"] == mount["Source"], "Auth volume source changed")
+            root = Path(mount["Source"])
+            require(not root.is_symlink() and root.is_dir(), "Auth cache root is not an ordinary directory")
+            entries, total = {}, 0
+            for path in sorted(root.rglob("*")):
+                require(not path.is_symlink(), "Auth cache contains an unexpected symbolic link")
+                if not path.is_file():
+                    continue
+                before = path.stat()
+                total += before.st_size
+                require(total <= 16 * 1024 * 1024 and len(entries) < 1024, "Auth cache evidence exceeds bound")
+                raw = path.read_bytes()
+                after = path.stat()
+                require((before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_ino, after.st_size, after.st_mtime_ns),
+                        "Auth cache changed during the read-only snapshot")
+                entries[path.relative_to(root).as_posix()] = hashlib.sha256(raw).hexdigest()
+            volumes[mount["Name"]] = entries
+        result["auth"].append({"id": row["Id"], "image": row["Image"], "startedAt": row["State"]["StartedAt"],
+                               "running": row["State"]["Running"], "config": row["Config"], "hostConfig": row["HostConfig"],
+                               "mounts": row["Mounts"], "sessionFiles": volumes})
+    return result
+
+
 def docker(*args):
     return subprocess.check_output(["docker", *args], text=True, timeout=60).strip()
 
@@ -116,12 +153,16 @@ def main():
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--error-image", required=True)
     parser.add_argument("--owner", required=True)
+    parser.add_argument("--install-world-id", required=True)
+    parser.add_argument("--install-world-receipt", required=True)
+    parser.add_argument("--cache-namespace", required=True)
     args = parser.parse_args()
     require(os.environ.get("ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER") == "1",
             "patch fixture requires the candidate's isolated Docker daemon")
     jar = http.cookiejar.MozillaCookieJar(args.cookies)
     jar.load(ignore_discard=True, ignore_expires=True)
     client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    api_sequence = 0
 
     def request(path, body=None, headers=None, method=None, anonymous=False):
         headers = dict(headers or {})
@@ -137,7 +178,19 @@ def main():
             return response.status, response.headers, response.read()
 
     def api(path, body=None, expected=200):
+        nonlocal api_sequence
+        if body is not None and path.endswith("/install"):
+            record_install_evidence(Path(args.data_dir) / "patch-api-evidence", str(api_sequence + 1).zfill(4) + ".intent.private.json",
+                                    {"method": "POST", "path": path, "bodySHA256": hashlib.sha256(json.dumps(body).encode()).hexdigest(), "automaticReplay": False})
         status, _, raw = request(path, body)
+        api_sequence += 1
+        try:
+            decoded = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            decoded = None
+        record_install_evidence(Path(args.data_dir) / "patch-api-evidence", str(api_sequence).zfill(4) + ".private.json",
+                                {"path": path, "httpStatus": status, "rawSHA256": hashlib.sha256(raw).hexdigest(), "rawHex": raw.hex(),
+                                 "jobId": decoded.get("jobId") if isinstance(decoded, dict) else None})
         detail = raw.decode(errors="replace").replace("patch-fixture-secret", "[redacted]")
         require(status == expected, f"{path}: HTTP {status}, expected {expected}: {detail[:1000]}")
         return json.loads(raw)
@@ -186,13 +239,22 @@ def main():
 
     # Run an actual Docker SteamCMD process with deterministic output. No Steam
     # credentials or network are used; install behavior is exercised through HTTP.
-    instance = Path(args.data_dir) / "instances" / "stardew"
+    require(re.fullmatch(r"stardew-[1-9][0-9]*", args.install_world_id), "install fixture requires its own API-created world")
+    created_world = json.loads(Path(args.install_world_receipt).read_text(encoding="utf-8"))
+    require(created_world.get("instance", {}).get("id") == args.install_world_id
+            and created_world["instance"].get("isDefault") is False, "install world differs from the accepted create receipt")
+    install_endpoint = "/api/instances/" + args.install_world_id
+    instance = Path(args.data_dir) / "instances" / args.install_world_id
     env_path = instance / ".env"
     original = env_path.read_bytes()
+    initial_env = dict(line.split("=", 1) for line in original.decode("utf-8").splitlines() if "=" in line and not line.startswith("#"))
+    require(initial_env.get("STEAM_INVITE_ENABLED", "").strip().strip("\"'") == "false", "new install world inherited runtime Auth authorization")
+    require(not docker("ps", "-aq", "--filter", "label=com.docker.compose.project=" + args.install_world_id,
+                       "--filter", "label=com.docker.compose.service=steam-auth"), "new install world already has an Auth container")
     before_volumes = set(docker("volume", "ls", "--format", "{{.Name}}").splitlines())
     target_volume = args.owner + "-patch-install"
     require(target_volume not in before_volumes, "patch volume collision")
-    options = api("/api/instances/stardew/install-options")["imageTagOptions"]
+    options = api(install_endpoint + "/install-options")["imageTagOptions"]
     recommended = [option["tag"] for option in options if option.get("recommended")]
     require(len(recommended) == 1, "ambiguous recommended install version")
     image_tag = recommended[0]
@@ -204,7 +266,8 @@ def main():
                                        if manifest["server"]["digests"].get(image) == server_digest}
     server_image_id = verify_fixture_server(json.loads(docker("image", "inspect", server_image)), server_digest)
     previous_plans = install_plan_names(instance)
-    namespace = args.owner + "-patch-fresh"
+    namespace = args.cache_namespace
+    require(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", namespace), "explicit Panel cache namespace required")
     # A fresh .140 source must not exist: an existing source is cloned and fully
     # verified before SteamCMD. The production installer creates its owned target.
     planned_volumes = {namespace + "_steamcmd-login", namespace + "_steamcmd-home",
@@ -213,8 +276,10 @@ def main():
     created_approved = set()
     evidence_dir = Path(args.data_dir) / "patch-install-evidence"
     fixture_env_written = False
+    protected_before = protected_source_snapshot(args.data_dir)
     updates = {
         "SERVER_IMAGE": server_image, "SERVER_IMAGE_CANDIDATES": server_image,
+        "IMAGE_VERSION": image_tag,
         "STEAMCMD_IMAGE": args.error_image, "STEAMCMD_IMAGE_CANDIDATES": args.error_image,
         "GAME_DATA_VOLUME": target_volume, "STEAM_INVITE_ENABLED": "false",
     }
@@ -222,6 +287,10 @@ def main():
         record_install_evidence(evidence_dir, "planned-volumes.private.json", {"plannedVolumes": sorted(planned_volumes),
                                 "preservedExisting": sorted(planned_volumes & before_volumes), "selectedSourceVolume": target_volume,
                                 "sourceVolumeExisted": False, "admittedServerImages": sorted(admitted_images), "serverImageId": server_image_id, "serverDigest": server_digest})
+        record_install_evidence(evidence_dir, "protected-source-before.private.json", protected_before)
+        record_install_evidence(evidence_dir, "new-world-configuration.private.json", {"instanceId": args.install_world_id,
+                                "composeSHA256": hashlib.sha256((instance / "docker-compose.yml").read_bytes()).hexdigest(),
+                                "initialRuntimeAuthEnabled": False, "runtimeAuthContainerCount": 0, "cacheNamespace": namespace})
         for index, volume in enumerate(sorted(planned_volumes - before_volumes)):
             created = docker("volume", "create", "--label", "com.anxi-panel.test-owner=" + args.owner, volume)
             record_install_evidence(evidence_dir, "volume-create-" + str(index) + ".private.json",
@@ -238,7 +307,8 @@ def main():
         fixture_env_written = True
         jobs = []
         for _ in range(2):
-            job = api("/api/instances/stardew/install", {
+            require(api(install_endpoint)["id"] == args.install_world_id, "install target identity changed before retry")
+            job = api(install_endpoint + "/install", {
                 "steamUsername": "patch-fixture-user", "steamPassword": "patch-fixture-secret",
                 "vncPassword": "Patch7!", "imageTag": image_tag,
             }, expected=202)
@@ -267,8 +337,11 @@ def main():
             require("账号或密码错误" in result.get("errorMessage", ""),
                     "actionable install cause lost: " + result.get("errorMessage", ""))
             require("patch-fixture-secret" not in json.dumps(result), "job exposed fixture credential")
-            state = api("/api/instances/stardew")
+            state = api(install_endpoint)
             require(state.get("stateMessage") == result["errorMessage"], "instance lost durable failure cause")
+        protected_after = protected_source_snapshot(args.data_dir)
+        record_install_evidence(evidence_dir, "protected-source-after.private.json", protected_after)
+        require(protected_before == protected_after, "installation fixture changed the accepted source Auth/session/configuration")
         print("patch E2E: real Docker install failure, durable cause and retry passed", flush=True)
     finally:
         try:

@@ -3161,6 +3161,10 @@
 
   同日补充（2026-11-04，Shell sourced函数ABI）：候选41845489478既有holder-wait测试source新HTTP recorder时exit1，新增sequence/safe输出/目标版本隐含依赖完整生产脚本初始化；局部新测试通过未覆盖该已有调用者。先完整捕获scripts库存及退出码，再查全部三处函数使用成员；计数从未设值的0开始、safe输出回落任务root、无目标版本时保留null，只改新增可选依赖。holder-wait明确unset三global并校默认输出/隐私，实际完整门禁8项Shell功能测试加新apply共9项、17份语法/ShellCheck0.11通过。复用或修改sourceable函数时必须先查全部使用方，验证最小独立初始化与生产完整初始化两种环境；预防落实在该现有回归测试，不新增AGENTS重复规则。原失败/原生日志保留，无Go/npm重跑或业务写重放。
 
+  同日补充（2026-11-04，升级后安装夹具）：41847564501已过真实080升级/回滚，却把安装错误负例继续施加到已授权旧世界，强写Steam邀请false使自动Prepare进入旧Auth范围收敛；原500只封prepare_failed，内层cause不据猜测补全。改在既有临时模板上下文通过正式API另建独立world，校初始Auth=false/无Auth容器、使用canonical配置，同步IMAGE_VERSION及实际Panel cache namespace；安装前后原Env/Compose/Auth ID与session bytes hash必须相等，最后正式DELETE只删该create返回的新ID。实际201→两次202/不同任务错误凭据终态→204通过，typed intent仅1 staging，原SDK三资源集合精确恢复；POST intent和原status/body/jobId先落再assert，新增500与畸形202证据/单发回归。沿用AGENTS接口与精确资源规则，不拿已有scope或当前集合自授修改/删除。
+
+  同日补充（2026-11-04，DinD诊断与版本协议）：exec test成功不代表Docker archive视图能读/tmp，原cp404又掩盖先前业务失败。改显式RW诊断bind，宿主先建safe文件、容器只追加、宿主直接读取；真实DinD就绪探针通过。导出状态与原升级状态分开，Linux/PS四组合验证原42优先、仅原0时导出失败使门禁失败，safe artifact不含body/消息/完整ID。另前轮误把072设空体：独立git库存及c8ec1db...源码确认DisallowUnknownFields只接受confirmFullStack，已修072单字段、073起三字段，未核的更早测试协议先拒绝而非推断产品支持；不按失败码重发。上述已落实脚本/测试，10项Shell功能、18份语法/ShellCheck及11项fixture单测通过，原失败和所有原生receipt保留。
+
 ## 2026-08-01：容器级 `GIT_DIR/GIT_WORK_TREE` 污染子仓库
 
 - 最近复发/补充：2026-08-27 v0.6.0 Linux 后端全门禁制作任务专属源码卷时，只排除了 `.git`、`.codex-test` 与前端/网站缓存，遗漏仓库内本地 `data/` 等运行目录；复制 90 秒仍未结束。向前台 exec session 发送 Ctrl+C 只中断宿主 Docker CLI，精确命名的复制容器仍为 Running，随后直接 `docker rm` 因运行中而失败。共享源码和真实资源未变化；恢复必须先 inspect 容器完整配置与 owner label，再按精确名称 `docker stop`、`docker rm`，核对后重建唯一 source volume。以后复制源码前先从 `git ls-files`/明确任务清单决定输入，至少排除 `data/`、任务目录和运行缓存；前台 `docker run` 被中断后不得假定容器终止或 `--rm` 已执行。

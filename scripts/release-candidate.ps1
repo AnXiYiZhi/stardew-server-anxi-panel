@@ -24,6 +24,27 @@ function Assert-NativeSuccess {
     }
 }
 
+function Complete-CandidateUpgrade {
+    param([int]$UpgradeExit, [string]$DiagnosticsSource, [string]$DiagnosticsOutput)
+    $exportExit = 0
+    $reason = 'absent'
+    try {
+        if ((Test-Path -LiteralPath $DiagnosticsSource -PathType Leaf) -and (Get-Item -LiteralPath $DiagnosticsSource).Length -gt 0) {
+            $reason = 'directory_failed'
+            $directory = Split-Path -Parent $DiagnosticsOutput
+            if ($directory) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
+            $reason = 'copy_failed'
+            Copy-Item -LiteralPath $DiagnosticsSource -Destination $DiagnosticsOutput
+            $reason = 'exported'
+        }
+    } catch {
+        $exportExit = 1
+    }
+    Write-Host "release candidate: safe diagnostics upgradeExit=${UpgradeExit} exportExit=${exportExit} reason=${reason}"
+    if ($UpgradeExit -ne 0) { return $UpgradeExit }
+    return $exportExit
+}
+
 function ConvertTo-UtcIsoString {
     param([Parameter(Mandatory = $true)]$Value)
 
@@ -266,6 +287,11 @@ try {
         Assert-NativeSuccess 'isolated Docker data volume create'
         $dindVolumeCreated = $true
 
+        $diagnosticsDir = Join-Path $taskRoot 'safe-http'
+        New-Item -ItemType Directory -Path $diagnosticsDir | Out-Null
+        $diagnosticsSource = Join-Path $diagnosticsDir 'http.safe.jsonl'
+        [IO.File]::WriteAllBytes($diagnosticsSource, [byte[]]@())
+
         $dindArgs = @(
             'run', '-d', '--privileged',
             '--name', $dindContainer,
@@ -274,6 +300,7 @@ try {
             '--mount', "type=volume,src=${dindVolume},dst=/var/lib/docker",
             '--mount', "type=bind,src=$repoRoot,dst=/workspace,readonly",
             '--mount', "type=bind,src=$taskRoot,dst=/candidate,readonly",
+            '--mount', "type=bind,src=${diagnosticsDir},dst=/candidate-diagnostics",
             'docker:29-dind'
         )
         & docker @dindArgs | Out-Null
@@ -316,21 +343,10 @@ try {
         if (Test-Path -LiteralPath $diagnosticsOutput) {
             throw 'candidate diagnostic output already exists'
         }
-        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 --env ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT=/tmp/candidate-http-evidence.safe.jsonl $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion @upgradeModeArgs
+        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 --env ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT=/candidate-diagnostics/http.safe.jsonl $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion @upgradeModeArgs
         $upgradeExit = $LASTEXITCODE
-        & docker exec $dindContainer test -f /tmp/candidate-http-evidence.safe.jsonl
-        $diagnosticsExistExit = $LASTEXITCODE
-        if ($diagnosticsExistExit -eq 0) {
-            $diagnosticsDirectory = Split-Path -Parent $diagnosticsOutput
-            if ($diagnosticsDirectory) {
-                New-Item -ItemType Directory -Path $diagnosticsDirectory -Force | Out-Null
-            }
-            & docker cp "${dindContainer}:/tmp/candidate-http-evidence.safe.jsonl" $diagnosticsOutput
-            Assert-NativeSuccess 'candidate safe HTTP diagnostics export'
-        }
-        if ($upgradeExit -ne 0) {
-            throw "candidate Web-upgrade E2E failed with exit code ${upgradeExit}"
-        }
+        $finalUpgradeExit = Complete-CandidateUpgrade -UpgradeExit $upgradeExit -DiagnosticsSource $diagnosticsSource -DiagnosticsOutput $diagnosticsOutput
+        if ($finalUpgradeExit -ne 0) { exit $finalUpgradeExit }
         & docker rm -f $dindContainer | Out-Null
         Assert-NativeSuccess 'isolated Docker daemon cleanup'
 

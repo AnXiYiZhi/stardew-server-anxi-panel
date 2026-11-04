@@ -554,13 +554,46 @@ assert_upgraded_world_management() (
     [[ "$(sqlite3 "$data_dir/panel.db" "SELECT completed FROM instance_deletions WHERE instance_id='$world_id';")" == 1 ]]
   done
   [[ "$(docker run --rm --network none --volume "$template_volume:/game:ro" alpine:3.20 sha256sum /game/StardewValley)" == "$source_hash" ]]
+  # Reserve a separate canonical world while the existing temporary template
+  # has a VNC password. The old world's authorized Auth scope stays untouched by
+  # subsequent installation-error tests; production creation clears auth intent.
+  [[ ! -e "$root/patch-install-world-create.intent.safe.json" ]]
+  printf '%s\n' '{"method":"POST","path":"/api/instances","fixture":"isolated-install-world","automaticReplay":false}' >"$root/patch-install-world-create.intent.safe.json"
+  local create_curl_status=0
+  code="$(curl --silent --show-error --max-time 120 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"name":"Candidate installation probe","gameId":"stardew"}' "http://127.0.0.1:$panel_port/api/instances")" || create_curl_status=$?
+  cp "$response_file" "$root/patch-install-world-create.private.json"
+  printf '%s\n' "$code" >"$root/patch-install-world-create.status"
+  printf '%s\n' "$create_curl_status" >"$root/patch-install-world-create.curl-exit"
+  chmod 600 "$root/patch-install-world-create.private.json"
+  if ((create_curl_status != 0)) || [[ "$code" != 201 ]]; then
+    echo "candidate patch E2E: isolated install world creation failed with HTTP $code" >&2
+    return 1
+  fi
+  world_id="$(jq -r '.instance.id // empty' "$response_file")"
+  printf '%s\n' "$world_id" >"$root/patch-install-world.id"
+  chmod 600 "$root/patch-install-world.id"
+  [[ "$world_id" =~ ^stardew-[1-9][0-9]*$ ]]
+  jq -e '.instance.isDefault == false and .instance.state == "save_required"' "$response_file" >/dev/null
   echo "candidate world E2E: migrated creation, rename, routing, deletion, idempotency, ID monotonicity and template preservation passed"
 )
 
 assert_patch_features() {
+  local install_world_id code delete_curl_status=0
+  install_world_id="$(cat "$root/patch-install-world.id")"
+  [[ "$install_world_id" =~ ^stardew-[1-9][0-9]*$ ]]
   python3 /workspace/scripts/tests/release_patch_features.py \
     --url "http://127.0.0.1:$panel_port" --cookies "$cookie_file" \
-    --data-dir "$data_dir" --error-image "$project/patch-steamcmd:error" --owner "$project"
+    --data-dir "$data_dir" --error-image "$project/patch-steamcmd:error" --owner "$project" \
+    --install-world-id "$install_world_id" --install-world-receipt "$root/patch-install-world-create.private.json" \
+    --cache-namespace "${patch_cache_namespace:-$project}"
+  [[ ! -e "$root/patch-install-world-delete.intent.private.json" ]]
+  jq -nc --arg id "$install_world_id" '{method:"DELETE",worldId:$id,automaticReplay:false}' >"$root/patch-install-world-delete.intent.private.json"
+  chmod 600 "$root/patch-install-world-delete.intent.private.json"
+  code="$(curl --silent --show-error --max-time 120 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" -X DELETE "http://127.0.0.1:$panel_port/api/instances/$install_world_id")" || delete_curl_status=$?
+  cp "$response_file" "$root/patch-install-world-delete.private.json"
+  printf '%s\n' "$code" >"$root/patch-install-world-delete.status"
+  printf '%s\n' "$delete_curl_status" >"$root/patch-install-world-delete.curl-exit"
+  [[ "$delete_curl_status" == 0 && "$code" == 204 && ! -e "$data_dir/instances/$install_world_id" ]]
 }
 
 assert_fresh_patch_features() {
@@ -569,6 +602,7 @@ assert_fresh_patch_features() {
   local cookie_file="$root/admin.cookies"
   local response_file="$root/response.json"
   local panel_container="$project-patch-fresh"
+  local patch_cache_namespace="$project-patch-fresh"
   local panel_port=18081
   (
   set -Eeuo pipefail
@@ -1675,6 +1709,10 @@ start_apply() {
   local -a body_args=()
   previous_update_id=""
   accepted_update_id=""
+  if ! semver_at_least "$previous_version" 0.7.2; then
+    echo "candidate upgrade E2E: this fixture has no verified apply protocol before 0.7.2" >&2
+    return 1
+  fi
   if curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/apply" >"$response_file" 2>/dev/null; then
     previous_update_id="$(jq -r '.updateId // empty' "$response_file")"
   fi
@@ -1687,8 +1725,11 @@ start_apply() {
   # Choose the protocol before writing; HTTP rejection never grants a retry.
   if semver_at_least "$previous_version" 0.7.3; then
     payload="$(jq -nc --arg target "$version" --arg notice "$notice_digest" '{confirmFullStack:true,targetVersion:$target,noticeDigest:$notice}')"
-    body_args=(--header 'Content-Type: application/json' --data "$payload")
+  else
+    # Immutable 0.7.2 accepts this single field and rejects newer fields.
+    payload='{"confirmFullStack":true}'
   fi
+  body_args=(--header 'Content-Type: application/json' --data "$payload")
   set +e
   code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "${body_args[@]}" "http://127.0.0.1:$panel_port/api/system/update/apply")"
   local curl_status=$?

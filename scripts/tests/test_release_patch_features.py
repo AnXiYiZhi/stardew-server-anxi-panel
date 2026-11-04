@@ -1,9 +1,11 @@
 import importlib.util
+import ast
 import json
 from pathlib import Path
 import re
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +16,64 @@ MANIFEST = json.loads((ROOT / "backend/internal/games/stardew_junimo/config/runt
 
 
 class PatchFixtureTests(unittest.TestCase):
+    def test_install_response_is_preserved_before_status_or_json_assertion(self):
+        tree = ast.parse((ROOT / "scripts/tests/release_patch_features.py").read_text(encoding="utf-8"))
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+        api = next(node for node in main.body if isinstance(node, ast.FunctionDef) and node.name == "api")
+        factory = ast.parse("def make_api():\n api_sequence = 0\n return api\n").body[0]
+        factory.body.insert(1, api)
+        module = ast.fix_missing_locations(ast.Module(body=[factory], type_ignores=[]))
+        for status, raw in [(500, b'{"error":{"code":"prepare_failed","message":"patch-fixture-secret"}}'),
+                            (202, b'not-json')]:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                calls = []
+                def request(path, body):
+                    calls.append(path)
+                    return status, {}, raw
+                scope = dict(PATCH.__dict__)
+                scope.update({"args": SimpleNamespace(data_dir=directory), "request": request})
+                exec(compile(module, "<actual-api-recorder>", "exec"), scope)
+                invoke = scope["make_api"]()
+                with self.assertRaises((RuntimeError, json.JSONDecodeError)) as caught:
+                    invoke("/api/instances/stardew-3/install", {"steamPassword": "patch-fixture-secret"}, expected=202)
+                self.assertEqual(calls, ["/api/instances/stardew-3/install"])
+                evidence = Path(directory) / "patch-api-evidence"
+                receipt = json.loads((evidence / "0001.private.json").read_text(encoding="utf-8"))
+                self.assertEqual(receipt["httpStatus"], status)
+                self.assertEqual(bytes.fromhex(receipt["rawHex"]), raw)
+                self.assertTrue((evidence / "0001.intent.private.json").is_file())
+                self.assertNotIn("patch-fixture-secret", str(caught.exception))
+
+    def test_installation_fixture_only_reads_the_accepted_source_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "instances/stardew"
+            source.mkdir(parents=True)
+            (source / ".env").write_text("STEAM_INVITE_ENABLED=true\n", encoding="utf-8")
+            (source / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+            cache = Path(directory) / "session"
+            cache.mkdir()
+            (cache / "session.json").write_text("fixture-only", encoding="utf-8")
+            row = {"Id": "accepted-auth", "Image": "fixed-auth-image", "State": {"StartedAt": "original", "Running": True},
+                   "Config": {}, "HostConfig": {}, "Mounts": [{"Type": "volume", "Name": "accepted-cache", "Source": str(cache)}]}
+            calls = []
+            def docker(*args):
+                calls.append(args)
+                if args[0] == "ps": return "accepted-auth"
+                if args == ("inspect", "accepted-auth"): return json.dumps([row])
+                if args == ("volume", "inspect", "accepted-cache"): return json.dumps([{"Mountpoint": str(cache)}])
+                raise AssertionError("source preservation probe attempted a mutation")
+            original = PATCH.docker
+            PATCH.docker = docker
+            try:
+                before = PATCH.protected_source_snapshot(directory)
+                self.assertEqual(before, PATCH.protected_source_snapshot(directory))
+                (cache / "session.json").write_text("changed", encoding="utf-8")
+                self.assertNotEqual(before, PATCH.protected_source_snapshot(directory))
+                self.assertEqual((source / ".env").read_text(encoding="utf-8"), "STEAM_INVITE_ENABLED=true\n")
+                self.assertTrue(all(args[0] in {"ps", "inspect", "volume"} for args in calls))
+            finally:
+                PATCH.docker = original
+
     def test_both_candidate_runners_export_the_pinned_recommended_server(self):
         image, digest = PATCH.fixture_server_contract(MANIFEST, MANIFEST["server"]["tag"])
         shell = (ROOT / "scripts/release-candidate.sh").read_text(encoding="utf-8")
