@@ -1198,6 +1198,8 @@
 
 ## 2026-08-16：组合检索后仍按记忆读取不存在的源码路径
 
+- 最近复发/补充：2026-11-04 续查远端安装失败时，子代理在已确认 storage 目录后仍猜测 `backend/internal/storage/store.go`，`rg` 退出 2；只读、无业务影响。改为完整捕获 `rg --files backend/internal/storage` 与退出码后，复制真实 `db.go` 路径读取成功。现有 `AGENTS.md` 已明确本轮库存预检要求，续查不再扩展未经确认的路径。
+
 - 最近复发/补充：2026-11-04，Windows PowerShell 7，远端安装失败协查中为核对公开 setup 路由，直接检索未经本轮库存确认的 `backend/internal/api/router.go`，路径不存在，`rg` 退出 2；只有已确认 `AGENTS.md` 的检索结果有效，源码与服务器状态均未变化。根因是按常见布局猜测路由文件；停止该路径检索，本轮诊断只采用已确认的 `/health` 端点。后续若需路由源码，先独立执行 `rg --files` 并保存退出码，再复制真实路径读取；该预防要求同时明确补入 `AGENTS.md`。
 
 - 最近复发/补充：2026-08-18 修复任务日志尾页展示时，`rg` 已定位 `jobLogsResponse` 在 `backend/internal/web/jobs_handlers.go`，后续只读组合命令仍凭记忆追加不存在的 `backend/internal/web/types.go`，导致读取阶段退出 1；产品源码与运行状态未修改。随后用 `rg --files backend/internal/web` 确认真正测试文件和响应类型位置，余下读取只使用清单或命中的精确路径。
@@ -2237,6 +2239,8 @@
 - 适用范围：ShellCheck 容器门禁和基于仓库根动态定位的 Bash 测试 harness。
 
 ## 2026-08-08：生产 SSH 诊断的运行时依赖、对象发现与多层转义
+
+- 最近复发/补充：2026-11-04，Windows PowerShell 7 / Posh-SSH 3.2.7 / Node 子进程，Python 以 `json.dumps(..., ensure_ascii=False)` 返回在线数据库中文诊断，经 SSH/PowerShell/Node 输出链后出现替换字符；原库内容未损坏，也未重跑安装。根因是跨进程 Unicode 输出契约未完整固定；改为 Python 显式 `sys.stdout.reconfigure(encoding='utf-8')`，结构化 JSON 使用默认 ASCII 转义，在 Node 解析后显示中文；仅重读同一失败 job 得到正确原文。远端 `docker compose config --format json` 的服务挂载 `source=game-data` 是逻辑键，直接 `docker volume inspect game-data` 返回 1；改从顶层 `volumes[logical].name` 取得 resolved name，再只读 inspect、核对两份 ACF 成功。预防：诊断 JSON 统一 ASCII 转义传输；Compose 逻辑名不能直接当 daemon 资源名；所有读取仅投影必要字段，不输出完整 ACF 的账号标识。
 
 - 最近复发/补充：2026-08-15 核对玩家名册生产时间时，先以普通 `cz` 会话直接执行 `docker ps`，远端因无 Docker Socket 权限拒绝；随后又凭记忆给 Posh-SSH 3.2.7 的 `New-SSHShellStream` 传不存在的 `-TerminalWidth/-TerminalHeight`。两次都未修改远端状态。正确做法是先用 `Get-Command New-SSHShellStream -Syntax` 核对当前模块参数（本版为 `-Columns/-Rows`），需要 Docker 只读信息时按既有约定使用受控 sudo shell、密码只写入会话流且不回显；不能把本地 SSH 成功等同于 Docker 权限已具备。
 - 最近复发/补充：2026-08-11 在 `pwsh -Command` 的单引号脚本块内又嵌入了 Docker `--format '{{.Names}}|{{.Status}}|{{.Image}}'`，内层单引号提前结束外层参数，PowerShell 在建立 SSH 会话前报 `ParserError`；服务器没有收到命令。改用普通 `docker ps -a` 后虽成功确认唯一 Panel 容器健康，却又在同批尾部按旧假设探测 8080/80，忽略列表已经明确映射到 8090，导致只读批次最终退出 1。正确做法是先独立读取容器列表/inspect，再按权威端口单独请求健康接口；需要结构化投影时写任务专属脚本，禁止继续把 Go template、管道和多层引号塞进嵌套 `pwsh -Command`，也不得在发现端口前猜测 HTTP 入口。
@@ -3783,6 +3787,8 @@
 - 适用范围：Panel Web updater 的 Compose harness 与多服务隔离环境。
 
 ## 2026-08-06：在复合 if 中直接用数组子表达式统计 null 属性
+
+- 最近复发/补充：2026-11-04，PowerShell 7，子代理把 `$pins.coreFiles.PSObject.Properties` 直接赋给 `$core` 再读取 `$core.Count`，成员访问枚举输出 228 个 `1`，退出 0；该诊断投影未用于业务或最终数量证据。根因是未将属性集合显式物化为数组；改为 `$core = @($pins.coreFiles.PSObject.Properties)` 后读取标量 Count，正确得到 228。既有成员数量规则提升到 `AGENTS.md`，避免同类计数复发。
 
 - 最近复发/补充：2026-08-20 生产终态投影用 `@($gameResult.Output).Count` 统计 `grep -v` 后的非 Panel 容器；远端无命中时 Posh-SSH 仍给出空字符串元素，结果被误报为 1。该值没有用于生产修改，前后独立 `docker ps -a` 均只显示 Panel。随后先以 `Where-Object { -not [string]::IsNullOrWhiteSpace($_) }` 规范化输出，再得到总容器 1、非 Panel 0。任何命令文本行计数都必须先剔除 null/空白并结合退出码，不能直接包装 `Output`。
 - 最近复发/补充：2026-08-12 v0.4.11 升级夹具清理先用 `@($networkInspect.Containers.PSObject.Properties.Name).Count` 判断网络是否为空；空 `Containers` 经过属性链得到 `$null`，但 `@($null).Count` 为 1，安全 guard 两次错误拒绝删除实际空网络。随后又用 `@(docker volume inspect $_ 2>$null).Count` 验证已删卷，失败 inspect 的空输出同样被包装成 1，误报两卷仍存在；精确 `docker volume ls --filter name=...` 证明数量为 0。JSON 对象成员数量应使用 `@($object.Containers.PSObject.Properties).Count`；Docker 资源存在性使用权威 list 或紧邻的原生命令退出码，禁止用 `@(<可能为 null 的输出>).Count`。
