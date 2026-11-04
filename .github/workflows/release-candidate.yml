@@ -254,6 +254,17 @@ jobs:
           jq --arg candidateRef "$CANDIDATE_REF" --arg validationRef "$VALIDATION_REF" --arg digest "$digest" --arg workflowRunId "$GITHUB_RUN_ID" --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" --arg oldestTestedVersion "$OLDEST_VERSION" '. + {candidateRef:$candidateRef,validationRef:$validationRef,digest:$digest,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,oldestTestedVersion:$oldestTestedVersion}' "$RUNNER_TEMP/candidate-local.json" >"$RUNNER_TEMP/candidate.json"
           echo "digest=$digest" >>"$GITHUB_OUTPUT"
 
+      - name: Upload safe Web-upgrade diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-http-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-local.json.diagnostics.safe.jsonl
+            ${{ runner.temp }}/candidate-oldest.json.diagnostics.safe.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload immutable candidate proof
         uses: actions/upload-artifact@v4
         with:

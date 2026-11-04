@@ -312,8 +312,25 @@ try {
         if ($ReuseImage) {
             $upgradeModeArgs += '--upgrade-only'
         }
-        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion @upgradeModeArgs
-        Assert-NativeSuccess 'candidate Web-upgrade E2E'
+        $diagnosticsOutput = "${MetadataOutput}.diagnostics.safe.jsonl"
+        if (Test-Path -LiteralPath $diagnosticsOutput) {
+            throw 'candidate diagnostic output already exists'
+        }
+        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 --env ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT=/tmp/candidate-http-evidence.safe.jsonl $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion @upgradeModeArgs
+        $upgradeExit = $LASTEXITCODE
+        & docker exec $dindContainer test -f /tmp/candidate-http-evidence.safe.jsonl
+        $diagnosticsExistExit = $LASTEXITCODE
+        if ($diagnosticsExistExit -eq 0) {
+            $diagnosticsDirectory = Split-Path -Parent $diagnosticsOutput
+            if ($diagnosticsDirectory) {
+                New-Item -ItemType Directory -Path $diagnosticsDirectory -Force | Out-Null
+            }
+            & docker cp "${dindContainer}:/tmp/candidate-http-evidence.safe.jsonl" $diagnosticsOutput
+            Assert-NativeSuccess 'candidate safe HTTP diagnostics export'
+        }
+        if ($upgradeExit -ne 0) {
+            throw "candidate Web-upgrade E2E failed with exit code ${upgradeExit}"
+        }
         & docker rm -f $dindContainer | Out-Null
         Assert-NativeSuccess 'isolated Docker daemon cleanup'
 

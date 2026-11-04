@@ -169,6 +169,8 @@ authorized_auth_container_id=""
 panel_port=18080
 compose_ready=0
 notice_digest=""
+update_http_result_sequence=0
+safe_http_evidence="${ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT:-$root/update-http-evidence.safe.jsonl}"
 dry_run_id=""
 previous_update_id=""
 accepted_update_id=""
@@ -1475,23 +1477,46 @@ game_id_before="$(docker inspect "$game_container" | jq -r '.[0].Id')"
 game_hash_before="$(docker exec "$game_container" sha256sum /game/sentinel.txt | awk '{print $1}')"
 
 record_update_http_result() {
-  local stage="$1" code="$2" curl_status="$3" id phase id_hash="absent"
+  local stage="$1" code="$2" curl_status="$3" id phase error_code="absent" id_hash="absent" body_file expected_id="" same_id=null target_matches=null
+  update_http_result_sequence=$((update_http_result_sequence + 1))
+  printf -v body_file '%s/http-%04d-%s.body.private.json' "$root" "$update_http_result_sequence" "$stage"
+  cp "$response_file" "$body_file"
+  chmod 600 "$body_file"
   id=""
   if ((curl_status == 0)) && [[ "$code" =~ ^[1-5][0-9][0-9]$ ]]; then
     id="$(jq -r '(.id // .updateId // .operationId // .checkId // "") | if type == "string" then . else "" end' "$response_file" 2>/dev/null || true)"
   fi
   phase="$(jq -r '.phase // "absent"' "$response_file" 2>/dev/null || true)"
+  error_code="$(jq -r '.error.code // "absent" | if type == "string" then . else "other" end' "$response_file" 2>/dev/null || true)"
+  case "$error_code" in
+    absent|update_precondition_failed|update_not_available|invalid_body|full_stack_confirmation_required|docker_unavailable) ;;
+    *) error_code="other" ;;
+  esac
   case "$phase" in
     absent|checking|succeeded|failed|unsupported|preparing|awaiting_confirmation|panel_failed_rolled_back|failed_rolled_back|rollback_failed) ;;
     *) phase="other" ;;
   esac
-  jq -nc --arg stage "$stage" --arg http "$code" --argjson curlExit "$curl_status" --arg id "$id" --arg phase "$phase" \
-    '{stage:$stage,httpStatus:$http,curlExit:$curlExit,id:$id,phase:$phase}' >>"$root/update-http-evidence.private.jsonl"
+  jq -nc --arg stage "$stage" --arg http "$code" --argjson curlExit "$curl_status" --arg id "$id" --arg phase "$phase" --arg errorCode "$error_code" \
+    '{stage:$stage,httpStatus:$http,curlExit:$curlExit,id:$id,phase:$phase,errorCode:$errorCode}' >>"$root/update-http-evidence.private.jsonl"
   chmod 600 "$root/update-http-evidence.private.jsonl"
   if [[ -n "$id" ]]; then
     id_hash="$(printf '%s' "$id" | sha256sum | awk '{print $1}')"
   fi
-  printf 'candidate upgrade E2E: HTTP evidence stage=%s status=%s curlExit=%s idSha256=%s phase=%s\n' "$stage" "$code" "$curl_status" "$id_hash" "$phase"
+  case "$stage" in
+    dry-run-terminal) expected_id="${dry_run_id:-}" ;;
+    apply-terminal|apply-observation-timeout) expected_id="${accepted_update_id:-}" ;;
+    scope-confirm|scope-invalid-notice) expected_id="${scope_operation_id:-}" ;;
+  esac
+  if [[ -n "$expected_id" ]]; then
+    same_id=false
+    if [[ "$expected_id" == "$id" ]]; then same_id=true; fi
+  fi
+  target_matches="$(jq -c --arg target "$version" '(.targetVersion // .toVersion // .latestVersion) as $actual | if ($actual | type) == "string" then ($actual | ltrimstr("v")) == $target else null end' "$response_file" 2>/dev/null || printf null)"
+  jq -nc --arg stage "$stage" --arg http "$code" --argjson curlExit "$curl_status" --arg idSHA256 "$id_hash" \
+    --arg phase "$phase" --arg errorCode "$error_code" --argjson sameId "$same_id" --argjson targetMatches "$target_matches" \
+    '{stage:$stage,httpStatus:$http,curlExit:$curlExit,idSHA256:$idSHA256,phase:$phase,errorCode:$errorCode,sameId:$sameId,targetMatches:$targetMatches}' >>"$safe_http_evidence"
+  chmod 600 "$safe_http_evidence"
+  printf 'candidate upgrade E2E: HTTP evidence stage=%s status=%s curlExit=%s idSha256=%s phase=%s errorCode=%s\n' "$stage" "$code" "$curl_status" "$id_hash" "$phase" "$error_code"
 }
 
 post_update_check() {
@@ -1645,7 +1670,8 @@ wait_full_stack_phase() {
 }
 
 start_apply() {
-  local code
+  local code payload
+  local -a body_args=()
   previous_update_id=""
   accepted_update_id=""
   if curl --silent --show-error --fail --max-time 3 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/system/update/apply" >"$response_file" 2>/dev/null; then
@@ -1656,8 +1682,14 @@ start_apply() {
     return
   fi
   : >"$response_file"
+  # 0.7.3 and later share this strict schema, including the reviewed release notice.
+  # Choose the protocol before writing; HTTP rejection never grants a retry.
+  if semver_at_least "$previous_version" 0.7.3; then
+    payload="$(jq -nc --arg target "$version" --arg notice "$notice_digest" '{confirmFullStack:true,targetVersion:$target,noticeDigest:$notice}')"
+    body_args=(--header 'Content-Type: application/json' --data "$payload")
+  fi
   set +e
-  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"confirmFullStack":true}' "http://127.0.0.1:$panel_port/api/system/update/apply")"
+  code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "${body_args[@]}" "http://127.0.0.1:$panel_port/api/system/update/apply")"
   local curl_status=$?
   set -e
   record_update_http_result apply "$code" "$curl_status"
@@ -1665,19 +1697,6 @@ start_apply() {
     accepted_update_id="$(jq -r '.updateId // empty' "$response_file")"
     cp "$response_file" "$root/apply-accepted.json"
     return 0
-  fi
-  if ((curl_status == 0)) && [[ "$code" == 400 ]]; then
-    : >"$response_file"
-    set +e
-    code="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/system/update/apply")"
-    curl_status=$?
-    set -e
-    record_update_http_result apply-legacy-body "$code" "$curl_status"
-    if ((curl_status == 0)) && [[ "$code" == 202 ]]; then
-      accepted_update_id="$(jq -r '.updateId // empty' "$response_file")"
-      cp "$response_file" "$root/apply-accepted.json"
-      return 0
-    fi
   fi
   if ((curl_status != 0)) || [[ "$code" == 000 ]]; then
     echo "candidate upgrade E2E: apply connection closed during expected Panel replacement"

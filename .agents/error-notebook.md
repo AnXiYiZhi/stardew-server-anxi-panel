@@ -47,9 +47,13 @@
 - 最近补充（2026-10-28，Docker进程探针）：docker top -eo args缺PID列而exit1；真实默认列已支持，改bare docker top并仅在内存判断SteamCMD，不打印或落盘可能含密码的完整参数。另误将原世界server名用于fresh daemon，inspect返回不存在；先枚举该专属daemon真实容器并核归属，再以确切名称读取，不能跨夹具套名称。原两个Steam任务终态和新请求ID独立保留，不因诊断失败重发动作。
 - 最近补充（2026-10-28，证据路径与检索复发）：递归库存混入合成loader测试副本并截断、读取尚未生成的候选identity，以及猜测handler/目录/attempt名称，均停止在只读阶段。对rg --files结果先按精确父目录过滤并限总量，契约声明不代表文件存在；先Test-Path、读取当前runner的真实receipt路径。含源码引号的模式改纯函数/错误码标识符定位后短段读取，继续强制既有AGENTS库存/引号/退出码规则，不以有效前项遮盖后项错误。
 
+  最近复发/补充（2026-11-04，pwsh7/只读检索）：在frontend工作目录查询backend，以及 `rg --files scripts internal`、猜测不存在的 saves_handlers.go，均exit2且零业务写入。改完整捕获真实库存及退出码后在内存限量，已确认叶子先Test-Path；重复规则落实为忽略目录的 search-confirmed-file.ps1（workspace containment、唯一库存成员、现存叶子和单文件literal rg守卫），不再靠猜路径。080探测的只读投影又先索引可空Labels，随后把current.images keyed object与base无images误当同一数组，均在API前失败；先键/类型/存在性，再取current.images.panel.archive真实FileRef，并逐项核SHA。沿用既有库存、typed ABI与退出码规则，原失败保留。
+
   最近复发/补充（2026-10-29）：目录增长后 inventory 又混入同名 synthetic 后代并截断。精确 parent+leaf 过滤后再全局限量；未来产物先 Test-Path，稀疏覆盖包以入口真实 base/manifest 路径为准。JSON先键/类型再字段投影，不能把数组的 SyncRoot 等对象属性当条目；长文档和库存分开读，截断只补缺段。原生命令完整capture后立即保存exit，再投影内存；stdout/stderr ErrorRecord先ToString，不序列化无关对象树。
 
 - 最近补充（2026-10-28，默认矩阵与真实integration夹具）：795候选在纯health Auth integration失败，Driver已注入legacy125而辅助赋真实ID循环仍读Builtin140，导致旧Auth候选保留合成ID，生产强ID检查正确拒绝；回滚超时由测试刻意timeout模式触发。仅同_test.go统一legacy矩阵并删未用import，预算/断言/生产均不改。首轮本地复验又在Dockerfile APK冷下载超原2分钟而未进入Auth断言；先只读确认0资源/仅原alpine，再独立有界预热精确FROM/RUN层，校归属仅删owned预热tag留cache，新attempt实际15.85s全部通过。默认变更须同时审计带integration tag的辅助fixture；依赖准备与业务预算分开，不能把setup超时误判产品或直接重放未知测试。
+
+  最近复发/补充（2026-11-04，081发布/API夹具）：旧CI用Alpine冒充推荐140并预建空source，固定digest及existing-source克隆校验正确提前拒绝；现供应固定真实140、保持fresh source不存在，清理由精确cache create receipts/生产typed intent绑定。RootSDK缺Alpine时只导入已验host同imageID副本，0pull；backend-only binary无前端index时收窄本地repro为安装HTTP合同，生产前端断言保留；不支持的0.8.1-test-only版本同步500/无job，改受支持0.8.1并保留test-only文件名/label/receipt。Windows write_text生成fake SteamCMD引入CRLF导致127，改显式LF bytes，先直验exit5/InvalidPassword再发API；CI heredoc本为LF。080隔离probe的internal桥host端口45秒不通而容器healthy，保留原timeout/精确清理后改唯一同网Python helper访问真实HTTP，并在清理前保留logs。以上均为执行夹具纠正，不把产品CredentialsRequired缺陷或预期负向守卫记作执行失误。
 
 - 最近补充（2026-10-28，提交输入扫描基线）：首轮对整个修改文件做凭据字面量比对，误命中HEAD中已有且新增行未出现的测试用户名；保留失败与仅字段/布尔诊断，不输出值、不改原测试。第二版只对该已证实的原文件原用户名给出严格“基线存在且新增行无匹配”例外，其它文件、密码及新增内容仍全部扫描；UTF8/换行/64输入和目标配对检查通过。提交扫描须区分原始基线与本次新增，不能用无差别命中删改历史fixture或放宽新内容检查。
 
@@ -174,6 +178,8 @@
 - 最近补充（2026-10-16，本地v3构建/诊断）：Docker build未命中旧依赖层，proxy.golang.org对go-winio的连接拒绝；宿主HEAD探针同源超时、goproxy.cn返回200。保留首轮完整失败日志，仅为本地工程镜像使用任务专属Dockerfile，将一行下载改为带镜像代理的go mod download并追加go mod verify；包装器断言除此行外与冻结Dockerfile完全一致，并将实际Dockerfile SHA写入镜像label和证明。没有修改仓库Dockerfile、go.mod或go.sum；不得把这种工程构建替代正式候选门禁。诊断Junimo API曾猜用3000端口，curl退出7；后续通过项目既有readJunimoAPI/配置契约查询，不再猜端口。Playwright错误自动携带临时fixture cookie头，已给后续错误加脱敏并对精确首轮日志生成脱敏证明，不在读日志时回显请求凭据。2026-10-27本机API定点回归再次遇到proxy.golang.org下载x/crypto v0.53.0与modernc/libc v1.74.1的EOF，未编译/执行测试；保留同一任务缓存和首轮JSONL，先探测精确版本goproxy.cn，补齐依赖并取得all modules verified后才执行测试。仅本机任务缓存切源，正式CI、Dockerfile和go.mod/go.sum未改；后续fixture失败另按实际测试终态处理，不把依赖失败混为产品失败。
 
   最近复发/补充（2026-11-04，Linux Go/DinD 专属缓存）：首次 `go mod verify` 因缓存元数据未齐和 DinD 默认 GOPATH 不匹配而失败，测试尚未开始。保留原缓存/日志，先在同一归属缓存完成有界预热，再显式 `GOPATH=/go` 核对并 verify 后续测。沿用 AGENTS 独立 download/verify 前置；适用于新 module cache 与容器运行环境，不能以包载荷存在代替元数据、有效路径和验证成功。
+
+  同日再次复发（2026-11-04，RootSDK API-only build）：Go exec默认/root/go/pkg/mod而挂载在/go/pkg/mod，GOPROXY=off下编译失败。沿原归属workdir续编译，不重archive/create或下载；build wrapper固定同时GOPATH=/go、GOMODCACHE=/go/pkg/mod，每次先以go env核精确路径，并新增两项错误cache纯guard拒绝测试。此为重复问题的实际脚本前置，不能只再记笔记。
 
 - 最近复发/补充（2026-10-16，Junimo P2/全栈本地修复，PowerShell 7）：嵌套 pwsh 外层单引号内又生成单引号 rg 模式，批次只读查询出现 parser/command error；改为已验证最小骨架、内层双引号。一次 functions.exec 补丁载荷引号未闭合产生 JS SyntaxError，零执行后重新构造完整载荷。apply_patch 一次按记忆插入空行导致 hunk 拒绝，检查实际文本后按精确完整行生成补丁。沿用 AGENTS 的零执行、最小骨架和精确上下文规则，不原样重放。2026-10-25 补充：嵌套单引号同样会吃掉 label 属性名引号，使 `.Labels.'anxi.task'` 变为错误属性链并触发归属守卫；守卫失败后没有删除或停止操作。复杂操作改用任务专属 `.ps1`，内联只用明确的双引号属性名。第二次误猜 `steamcmd.go` 后，所有源码读取固定通过 `read-verified.ps1` 的文件清单及存在性检查；不得继续靠模块职责推导路径。长测试先写完整日志，工具输出不足时只补读日志和进程状态，不重放终态未知的测试。 2026-10-27T11:46Z资源观察补充：functions.exec误写new Promise Promise(...)导致JS SyntaxError，执行前零操作；停止原载荷续写，以已验证最小exec_command完整骨架恢复只读投影，不重放Docker操作。
 - 同次 Docker 宿主容量故障：准备并发 v2 DinD 时 C 盘仅剩30257152 B（约29 MiB），E盘仍有约818 GiB；宿主 Docker 对任务容器 restart 返回 `/var/lib/docker/.../hosts: read-only file system`。此前只核对 docker info/VM虚拟容量，漏查宿主物理空闲，是前置检查遗漏。停止启动后续验收，未重启承载其他容器的 Desktop、未全局 prune/清理用户文件；保留任务资源待恢复。AGENTS 和本任务 build/prepare 脚本已提升为 C 盘至少10 GiB、按并发卷与备份追加预算的硬守卫。随后只读复查 C 盘恢复约38 GiB、daemon可访问；代理没有重启 Desktop，只按精确归属逐个恢复任务容器。fresh v2 已用现绑定通过并清理。DinD 留下 `/run/docker/containerd/containerd.pid`，首次续接因 stale PID 等待超时；先快照完整任务内进程、确认该 PID 非存活 containerd，再只移除该 pid 文件，未停止任何进程，恢复同卷 daemon并保留原 unhealthy 成功证据。不能因 read-only 把镜像判为产品失败。
@@ -3150,6 +3156,8 @@
 - 正确做法：先读取对应 handler/接口测试，或保存首个响应的状态与 body 后建立精确断言；本项目 setup 成功为 `200`。
 - 预防检查：E2E 的状态码、包裹层和字段路径全部来自代码/测试或首个只读响应，不从 HTTP 惯例猜测。
 - 适用范围：setup、登录、上传、异步 job 和更新接口。
+
+  最近复发/补充（2026-11-04，真实080 notice probe）：同正式080/081 feed首次缺notice请求409已保存；完整三字段请求通过notice校验后，因刻意无Docker socket实际409 docker_unavailable，probe仍期待202而assert失败。保留原状态/body及失败，仅只读校SHA封存下游guard事实，0accepted/0重发，不为得到202放开socket。候选旧脚本也漏noticeDigest且只记HTTP，修为按已核073起严格schema首次发送同check摘要/目标、按版本预选legacy，拒绝后不补发；HTTP原始私有副本先落，公共及always artifact仅固定safe字段/白名单error.code/ID hash/同ID目标布尔。原CI未保留body时只说明独立复现，不虚称已读原错误。
 
 ## 2026-08-01：容器级 `GIT_DIR/GIT_WORK_TREE` 污染子仓库
 

@@ -91,6 +91,7 @@ release_shell_files=(
   scripts/tests/test_migrate_fnos.sh
   scripts/tests/test_repair_junimo_upgrade.sh
   scripts/tests/test_release_candidate_upgrade.sh
+  scripts/tests/test_release_candidate_apply.sh
   scripts/tests/test_release_matrix.sh
   scripts/tests/test_release_candidate_reuse.sh
   scripts/tests/test_release_candidate_holder_wait.sh
@@ -100,6 +101,7 @@ for shell_file in "${release_shell_files[@]}"; do
   bash -n "$shell_file"
 done
 shellcheck "${release_shell_files[@]}"
+bash scripts/tests/test_release_candidate_apply.sh
 
 echo "release gates: backend"
 (

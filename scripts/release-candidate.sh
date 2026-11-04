@@ -115,6 +115,14 @@ dind_container="$owner-dind"
 dind_volume="$owner-dind-data"
 dind_container_id=""
 dind_volume_created=0
+diagnostics_output=""
+if [[ -n "$metadata_output" ]]; then
+  diagnostics_output="$metadata_output.diagnostics.safe.jsonl"
+  if [[ -e "$diagnostics_output" ]]; then
+    echo "release candidate: diagnostic output already exists" >&2
+    exit 1
+  fi
+fi
 temp_root="$(mktemp -d -t "$owner-XXXXXX")"
 candidate_tar="$temp_root/candidate.tar"
 fixtures_tar="$temp_root/fixtures.tar"
@@ -335,7 +343,14 @@ upgrade_mode_args=()
 if ((reuse_image == 1)); then
   upgrade_mode_args+=(--upgrade-only)
 fi
-docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version" "${upgrade_mode_args[@]}"
+upgrade_status=0
+docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 --env ANXI_RELEASE_CANDIDATE_SAFE_HTTP_OUTPUT=/tmp/candidate-http-evidence.safe.jsonl "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version" "${upgrade_mode_args[@]}" || upgrade_status=$?
+if [[ -n "$diagnostics_output" ]] && docker exec "$dind_container" test -f /tmp/candidate-http-evidence.safe.jsonl; then
+  mkdir -p "$(dirname "$diagnostics_output")"
+  docker cp "$dind_container:/tmp/candidate-http-evidence.safe.jsonl" "$diagnostics_output"
+  chmod 600 "$diagnostics_output"
+fi
+if ((upgrade_status != 0)); then exit "$upgrade_status"; fi
 remove_owned_dind
 
 mkdir -p "$(dirname "$metadata_output")"
