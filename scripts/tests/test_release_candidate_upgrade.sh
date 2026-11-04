@@ -132,6 +132,7 @@ target_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$version"
 previous_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$previous_version"
 previous_fixture_ref="$project/previous-fixture:$previous_version"
 steam_session_volume="stardew_steam-session"
+save_import_game_volume="$project-save-import-game"
 candidate_runtime_manifest="/workspace/backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json"
 full_stack_update=0
 if semver_at_least "$version" 0.8.0; then
@@ -190,6 +191,16 @@ remove_owned_session_volume() {
   docker volume rm "$steam_session_volume" >/dev/null
 }
 
+remove_owned_save_import_game_volume() {
+  local volume="$save_import_game_volume"
+  if ! docker volume inspect "$volume" >/dev/null 2>&1; then return 0; fi
+  docker volume inspect "$volume" | jq -e --arg owner "$owner" \
+    '.[0].Labels == {"com.anxi-panel.test-owner":$owner,"com.anxi-panel.fixture-role":"save-import-presence"}' >/dev/null || return 1
+  [[ -f "$root/save-import-game-created.private.txt" && "$(cat "$root/save-import-game-created.private.txt")" == "$volume" ]] || return 1
+  [[ -z "$(docker ps --all --quiet --filter "volume=$volume")" ]] || return 1
+  docker volume rm "$volume" >/dev/null
+}
+
 cleanup() {
   local cleanup_status=$?
   local cleanup_failed=0
@@ -203,6 +214,7 @@ cleanup() {
   fi
   docker rm -f "$unknown_session_holder_container" "$session_seed_container" "$release_container" "$registry_container" >/dev/null 2>&1
   remove_owned_session_volume >/dev/null 2>&1 || cleanup_failed=1
+  remove_owned_save_import_game_volume >/dev/null 2>&1 || cleanup_failed=1
   docker network rm "$network" >/dev/null 2>&1
   if [[ "$root" == /tmp/anxi-release-candidate-* && -d "$root" ]]; then
     rm -rf -- "$root" || cleanup_failed=1
@@ -715,10 +727,53 @@ compose_project_is_strictly_stopped() {
   return 0
 }
 
+ensure_save_import_game_fixture() {
+  local volume="$save_import_game_volume"
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
+    [[ -f "$root/save-import-game-created.private.txt" && "$(cat "$root/save-import-game-created.private.txt")" == "$volume" ]] || return 1
+  else
+    [[ ! -e "$root/save-import-game-create.intent.private.json" ]] || return 1
+    jq -nc --arg name "$volume" --arg owner "$owner" '{action:"create_fixture_volume",name:$name,owner:$owner,automaticReplay:false}' >"$root/save-import-game-create.intent.private.json" || return 1
+    docker volume create --label "com.anxi-panel.test-owner=$owner" --label 'com.anxi-panel.fixture-role=save-import-presence' "$volume" >"$root/save-import-game-created.private.txt" || return 1
+    [[ "$(cat "$root/save-import-game-created.private.txt")" == "$volume" ]] || return 1
+  fi
+  docker volume inspect "$volume" | jq -e --arg owner "$owner" \
+    '.[0].Labels == {"com.anxi-panel.test-owner":$owner,"com.anxi-panel.fixture-role":"save-import-presence"}' >/dev/null || return 1
+  [[ -z "$(docker ps --all --quiet --filter "volume=$volume")" ]] || return 1
+  # Only the production read-side presence contract is exercised here. These
+  # synthetic bytes do not prove game/SDK integrity, installation, or ABI.
+  docker run --rm --name "$project-save-import-game-seed" --label "com.anxi-panel.test-owner=$owner" \
+    --network none --pull never --read-only --cap-drop ALL --security-opt no-new-privileges --user 0:0 \
+    --mount "type=volume,src=$volume,dst=/data/game" --entrypoint /bin/sh sdvd/server:1.5.0-preview.140 -ec '
+      mkdir -p /data/game/steamapps /data/game/Mods/ConsoleCommands /data/game/Mods/SaveBackup /data/game/.steam-sdk/steamapps /data/game/.steam-sdk/linux64
+      printf "#!/bin/sh\nexit 0\n" > /data/game/StardewValley
+      cp /data/game/StardewValley /data/game/StardewModdingAPI
+      chmod 755 /data/game/StardewValley /data/game/StardewModdingAPI
+      for file in "Stardew Valley.dll" StardewModdingAPI.dll steamapps/appmanifest_413150.acf Mods/ConsoleCommands/manifest.json Mods/SaveBackup/manifest.json .steam-sdk/steamapps/appmanifest_1007.acf .steam-sdk/linux64/steamclient.so; do
+        printf "synthetic presence fixture only\n" > "/data/game/$file"
+      done
+    ' >/dev/null || return 1
+}
+
 record_panel_stop_fixture_result() {
   local stage="$1" http_code="$2" curl_status="$3" expected_job="$4" same_server="$5" error_code="$6" job_file="$7"
   local id phase id_hash=absent same_id=false target_matches=false error_message error_hash reason=absent
   local safe_output="${safe_http_evidence:-$root/update-http-evidence.safe.jsonl}"
+  local instance_state=absent driver_phase=absent server_state=absent
+  if [[ -f "$root/panel-stop-instance-latest.private.json" ]]; then
+    cp "$root/panel-stop-instance-latest.private.json" "$root/$stage.instance.private.json" || return 1
+    chmod 600 "$root/$stage.instance.private.json" || return 1
+    instance_state="$(jq -r '.state // "absent"' "$root/$stage.instance.private.json" 2>/dev/null || true)"
+    driver_phase="$(jq -r '.driverPhase // "absent"' "$root/$stage.instance.private.json" 2>/dev/null || true)"
+  fi
+  if [[ -f "$root/panel-stop-server-latest.private.json" ]]; then
+    cp "$root/panel-stop-server-latest.private.json" "$root/$stage.server.private.json" || return 1
+    chmod 600 "$root/$stage.server.private.json" || return 1
+    server_state="$(jq -r '.[0].State.Status // "absent"' "$root/$stage.server.private.json" 2>/dev/null || true)"
+  fi
+  case "$instance_state" in uninitialized|admin_created|steam_auth_done|game_installed|save_required|ready_to_start|starting|running|stopped|error|absent) ;; *) instance_state=other ;; esac
+  case "$driver_phase" in stopped|stopping|container_stopped|running|starting|install_verification_failed|steamcmd_failed|game_files_restored|absent) ;; *) driver_phase=other ;; esac
+  case "$server_state" in created|running|paused|restarting|removing|exited|dead|absent) ;; *) server_state=other ;; esac
   cp "$job_file" "$root/$stage.body.private.json" || return 1
   chmod 600 "$root/$stage.body.private.json" || return 1
   id="$(jq -r '.job.id // empty' "$job_file" 2>/dev/null || true)"
@@ -743,7 +798,8 @@ record_panel_stop_fixture_result() {
   jq -nc --arg stage "$stage" --arg httpStatus "$http_code" --argjson curlExit "$curl_status" --arg idSHA256 "$id_hash" \
     --arg phase "$phase" --arg errorCode "$error_code" --arg errorMessageSHA256 "$error_hash" --arg reason "$reason" \
     --argjson sameId "$same_id" --argjson targetMatches "$target_matches" \
-    '{stage:$stage,httpStatus:$httpStatus,curlExit:$curlExit,idSHA256:$idSHA256,phase:$phase,errorCode:$errorCode,errorMessageSHA256:$errorMessageSHA256,reason:$reason,sameId:$sameId,targetMatches:$targetMatches}' >>"$safe_output" || return 1
+    --arg instanceState "$instance_state" --arg driverPhase "$driver_phase" --arg serverState "$server_state" \
+    '{stage:$stage,httpStatus:$httpStatus,curlExit:$curlExit,idSHA256:$idSHA256,phase:$phase,errorCode:$errorCode,errorMessageSHA256:$errorMessageSHA256,reason:$reason,sameId:$sameId,targetMatches:$targetMatches,instanceState:$instanceState,driverPhase:$driverPhase,serverState:$serverState}' >>"$safe_output" || return 1
   chmod 600 "$safe_output" || return 1
 }
 
@@ -843,7 +899,8 @@ assert_upgraded_stopped_compose_save_import_submission() {
   mkdir -p "$instance_dir/.local-container/mods/JunimoServer"
   mkdir -p "$instance_dir/.local-container/saves/Saves/Existing_1"
   mkdir -p "$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server"
-  printf 'IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\n' >"$instance_dir/.env"
+  ensure_save_import_game_fixture
+  printf 'IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\nGAME_DATA_VOLUME=%s\n' "$save_import_game_volume" >"$instance_dir/.env"
   printf '%s\n' '{"Name":"JunimoServer","Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}' >"$instance_dir/.local-container/mods/JunimoServer/manifest.json"
   printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
   printf '%s\n' '<SaveGame><player><name>Existing</name></player></SaveGame>' >"$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1"
@@ -851,7 +908,7 @@ assert_upgraded_stopped_compose_save_import_submission() {
   existing_save_sha="$(sha256sum "$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1" | awk '{print $1}')"
   existing_info_sha="$(sha256sum "$instance_dir/.local-container/saves/Saves/Existing_1/SaveGameInfo" | awk '{print $1}')"
   printf '%s\n' '{"SaveNameToLoad":"Existing_1"}' >"$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server/junimohost.gameloader.json"
-  printf 'name: %s\nservices:\n  server:\n    image: alpine:3.20\n    command: ["sh", "-c", "sleep 3600"]\n' "$import_project" >"$instance_compose"
+  printf 'name: %s\nservices:\n  server:\n    image: alpine:3.20\n    command: ["sh", "-c", "sleep 3600"]\n    volumes:\n      - game-data:/data/game:ro\nvolumes:\n  game-data:\n    external: true\n    name: %s\n' "$import_project" "$save_import_game_volume" >"$instance_compose"
 
   docker compose --project-directory "$instance_dir" -f "$instance_compose" up -d >/dev/null
   if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "UPDATE instances SET state='running', state_message='release candidate running fixture', driver_phase='running', driver_payload='{}' WHERE id='stardew'; SELECT changes();")" != 1 ]]; then
@@ -912,11 +969,16 @@ services:
     image: alpine:3.20
     command: ["sh", "-c", "sleep 3600"]
     volumes:
+      - game-data:/data/game:ro
       - type: bind
         source: $root/missing-maintenance-bind
         target: /fixture
         bind:
           create_host_path: false
+volumes:
+  game-data:
+    external: true
+    name: $save_import_game_volume
 EOF
   mkdir -p "$fixture_root/Imported_123"
   printf '%s\n' '<SaveGame><player><name>Imported</name></player></SaveGame>' >"$fixture_root/Imported_123/Imported_123"
@@ -1099,7 +1161,8 @@ EOF
   mkdir -p "$instance_dir/.local-container/control"
   mkdir -p "$(dirname "$active_pointer")"
   mkdir -p "$(dirname "$existing_main")"
-  printf 'IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\n' >"$instance_dir/.env"
+  ensure_save_import_game_fixture
+  printf 'IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\nGAME_DATA_VOLUME=%s\n' "$save_import_game_volume" >"$instance_dir/.env"
   printf '%s\n' '{"Name":"JunimoServer","Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}' >"$instance_dir/.local-container/mods/JunimoServer/manifest.json"
   printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
   cp "$control_source/manifest.json" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/manifest.json"
@@ -1176,6 +1239,7 @@ services:
     image: $phase_a_image
     entrypoint: ["sh", "/fixture/fake-junimo.sh"]
     volumes:
+      - game-data:/data/game:ro
       - type: bind
         source: $runtime_fixture
         target: /fixture
@@ -1188,6 +1252,10 @@ services:
         source: $saves_source
         target: /data/Saves
         read_only: true
+volumes:
+  game-data:
+    external: true
+    name: $save_import_game_volume
 EOF
   }
 

@@ -57,6 +57,10 @@
 
   最近复发/补充（2026-11-05，081 Stop/PhaseA模型）：本地先用Docker29/Compose5.5通过，不能解释原CI26.1.5/2.27.0；改正式080 runtime底座、仅覆test-only binary，先核实际两版本。诊断在夹具SQL清jobs后GET旧Stop返回404并错误索引job；保留失败，不补造已删终态，改清表前实时封同job/raw，并补150秒同job/原server观察，原CI原因仍未定。正式模型首次PhaseA缺buildx退回legacy builder，networknone的apk步骤exit1且尚无PhaseA API；按已验插件路径补只读挂载，实际Docker/buildx/Compose探针后仅续未发case，同cookie、不重发Stop，最终通过；以执行脚本硬前置落实既有AGENTS依赖规则。末尾host全集guard另因并行agent两cache拒绝，own outer/两卷已删；只读按独立create/cleanup receipts解释，保留guard失败且不删差集，后续串行host创建并互绑refs，V2全集恢复。
 
+  同条补充（2026-11-05，081第8候选/真实140存在性）：41886901069已封同Stop succeeded，但原safe漏实例/容器枚举；不继续增加观察时间。V2未导入默认140，读取实例时跳过游戏文件核验，不能代表CI已缓存140的上下文。V3以真实140归档复现同job成功、同server exited，而GET把空游戏卷标为error/install_verification_failed；两份Env及三份Compose现显式共用新owned presence卷，固定140/数字0:0 helper只种presence夹具，不冒充游戏/SDK完整性或ABI。原150秒worker真实exit1后，仅修夹具输入并重启同test Panel清10分钟missing cache，同cookie GET自然恢复stopped/game_files_restored，未重Stop或写预期DBstate，再仅续未发import尾段通过。safe新增三项白名单枚举，volume清理依原accepted receipt、精确labels及0holder；适用于有缓存/缺缓存两种本地复现上下文。
+
+  同次执行补充（pwsh7/嵌套exec/短合同）：带引号regex及两次残留单引号的只读检索载荷在源读取前失败，改独立rg -F/精确库存文件，不续拼原载荷。V3首次只读observer遗漏外层exec -i，内层curl未收到config，原native非0/hash保留且无业务重发；新readonly-2固定两层-i并在输入调用前断言，显式retain_raw保存原响应。新夹具合同又对整脚本数GAME_DATA_VOLUME而纳入无关world fixture，8项Stop及3项presence边界通过后计数失败；改分别抽取两目标函数再计数，旧失败和helper清理保留，新attempt通过。沿用现有库存/转义/双层stdin规则，并在本次observer和合同脚本落实守卫，不新增重复AGENTS规则。
+
 - 最近补充（2026-10-28，提交输入扫描基线）：首轮对整个修改文件做凭据字面量比对，误命中HEAD中已有且新增行未出现的测试用户名；保留失败与仅字段/布尔诊断，不输出值、不改原测试。第二版只对该已证实的原文件原用户名给出严格“基线存在且新增行无匹配”例外，其它文件、密码及新增内容仍全部扫描；UTF8/换行/64输入和目标配对检查通过。提交扫描须区分原始基线与本次新增，不能用无差别命中删改历史fixture或放宽新内容检查。
 
 - 最近复发/补充（2026-10-28，文档补丁锚点）：组合四份发布记录时猜测docs06标题而apply_patch原子拒绝，已逐份只读确认三份前段也未改，再读docs06真实标题后应用短hunk。沿用先读当前精确锚点的规则，不能根据相邻文档推标题，也不能把前段看似有效当成部分已提交。最近复发（2026-11-05，081收尾）：手抄Notebook整行漏掉中间既有短句，多文件补丁原子拒绝；只读status和精确内容确认四份均未改，取当前完整行后应用短补丁。沿用既有唯一边界/真实锚点规则，不把前项看似有效当部分成功。

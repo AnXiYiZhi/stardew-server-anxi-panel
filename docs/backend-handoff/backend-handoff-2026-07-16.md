@@ -12,6 +12,8 @@ SMAPI 检测/工作流同时调整缺失分支的前置顺序：先核游戏、S
 
 发布夹具补充：41872921271原Stop原因未封任务详情，保持未定。`test_release_candidate_upgrade.sh`按202 `{ok:true}`从前后jobs锁本次Stop，150秒观察同job/原server，私有原包先存并导出safe错误hash/reason。真实Docker26.1.5/Compose2.27.0模型已通过stopped Compose/jobs-cleared恢复和PhaseA两边界；4项Shell、081政策及10+4+11 Python、19份语法/ShellCheck0.11通过。仅发布fixture/测试变化，生产Stop预算保持；证据和精确清理见docs09。
 
+第八候选补充：Stop实际成功；有真实140缓存时，导入夹具缺省游戏卷的只读文件校验会把 stopped 变为 error/install_verification_failed。固定140模型已复现；仅补独立presence卷及两段Env/三份Compose绑定，合成文件不代替SDK/ABI验收。修输入并重启测试Panel后原cookie自然恢复stopped，原Stop不重发、未发导入尾段完整通过；安全投影增加实例/driver/容器枚举。聚焦合同和19份语法/ShellCheck通过，原失败与恢复证据见docs09；生产校验保持。
+
 下一步：按 docs09 的 081 候选矩阵完成全门禁、当前上一正式080和受影响最老073的真实 Web 验收；实际 SDK 结构检查之后仍需启动、原专属 Auth 会话及邀请码验收。073/080 旧客户端对未知未来发行先普通更新 Panel，新 Panel 再确认当前版本游戏范围；不能把新代码的版本投影能力当作旧二进制能力。
 
 ## 2026-10-29 0.8.0 正式后端接手
