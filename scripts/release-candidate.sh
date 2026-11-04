@@ -287,7 +287,11 @@ pull_fixture_image() {
 for fixture_image in "$previous_ref" registry:2 nginx:alpine alpine:3.20; do
   pull_fixture_image "$fixture_image"
 done
-docker save -o "$fixtures_tar" "$previous_ref" registry:2 nginx:alpine alpine:3.20
+junimo_fixture_image="sdvd/server:1.5.0-preview.140"
+junimo_fixture_digest="sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db"
+pull_fixture_image "$junimo_fixture_image@$junimo_fixture_digest"
+docker tag "$junimo_fixture_image@$junimo_fixture_digest" "$junimo_fixture_image"
+docker save -o "$fixtures_tar" "$previous_ref" registry:2 nginx:alpine alpine:3.20 "$junimo_fixture_image"
 existing_dind_container="$(docker ps -aq --filter "name=^/$dind_container$")"
 existing_dind_volume="$(docker volume ls -q --filter "name=^$dind_volume$")"
 if [[ -n "$existing_dind_container" || -n "$existing_dind_volume" ]]; then

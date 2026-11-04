@@ -3,6 +3,7 @@
 - SDK 与固定游戏清单分离：游戏保留原 build/depot/manifest、226 个核心 SHA 和 3560 项 Content 校验；SDK 按实际 App1007/Linux1006 安装清单与有界 ELF 程序头、segment、DYNAMIC 结构核验，完成 marker 写实际 manifest。参考 SDK build 仅用于诊断，检测状态不再据此要求更新。
 - `junimo140_game_integrity.go`、`junimo140_sdk.go` 与 Docker `runtime_junimo140_sdk.go` 共用迁移/新装验证；140 dry-run 在停服前检查游戏/SDK ACF。cached patched-SMAPI 路径仍跳过重复安装，但先重新核验 payload、刷新实际 marker，失败清除旧 verified 回执。
 - SMAPI 缺失状态也先核验游戏、SDK、Junimo 与 Control 前置；旧 dry-run 成功后源内容变坏时，apply 重新核验并在运行变更前拒绝，合法新 SDK 仍可安装/更新。
+- 首次 140 安装凭据错误后的 `credentials_required` 也可恢复原安装卷 journal，重新提交凭据沿用同一个 owned staging，不再克隆未完成下载的卷；source、imageID/digest 与 unused-holder 验证继续生效。状态回归先在旧源码失败、修复后通过，真实 API 两次密码错误均保留可操作原因并复用同卷。
 - 运行中世界捕获活动存档时复用最多 90 秒的稳定读取，服从任务/请求取消；停止世界继续严格校验。确认阶段分别返回预检未完成、预检失败、当前不可确认和真正过期。
 - `GET /api/system/update/full-stack` 对待确认且未授权的操作派生 `confirmationExpired`，新服务端显式返回 true/false；持久记录及 plan hash 不含此观测，已授权执行继续按原 ID 恢复。
 - 已激活 Panel 的运行栈范围目标按当前发行版本投影；旧 073 发现后续正式版本时先更新 Panel，再由新版本确认其实际游戏范围。通用发行政策按目标版本实例化，最低更新器保持 073，真实生成器覆盖未来 082。

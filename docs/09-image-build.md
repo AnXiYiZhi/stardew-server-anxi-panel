@@ -10,8 +10,11 @@
 
 独立兼容 CI `41817360475` 的完整失败库存为 16 个 fail events/13 个 roots（11 个 DriverInstall、2 个 cached-SMAPI，含三项嵌套 guard），共同原因是 `junimo140-content-hashes.json` 的原 243130B/尾 CRLF 被 Git autocrlf 归一化成 243129B/尾 LF，触发严格 catalog 字节校验；本地工作树副本通过不能代替 canonical 输入。精确属性为 `backend/internal/games/stardew_junimo/testdata/junimo140-content-hashes.json -text whitespace=cr-at-eol`，显式 `git add --renormalize` 后 index 恢复原 SHA `8143aa…4349`；原 CR 只作为行终止，其它空白检查保留，staged diff-check exit 0，生产固定游戏内容校验保持。canonical INDEX tree `294530768e63916df10dc8e816eeae30abc14ecb` 的 `git archive` SHA `9b5d77abb9367c0e9cef20b15bfa08af4f5d2b00b9e42b714a16afef955c0995` 在 Linux 验真；`TestDriverInstall` 22 pass events/16 roots、0 fail/skip，另两项 cached-SMAPI roots 共 2 pass/0 fail，均 exit 0。对应 `compat-41817360475-failed.log`、`installer-canonical-index-v1.jsonl`、`cached-smapi-canonical-index-v1.jsonl` 保留。上述为失败链聚焦闭合，修复提交须由新候选完整 CI 再确认，尚不宣称正式候选成功。
 
+后续候选 `41819597858` 的全量 code gates 与兼容 `41819597960` 通过，freshFeature E2E 在密码错误断言失败；原 run 无 artifact，旧 fixture 将 Alpine 冒充推荐140且预建空 source，生产固定镜像/克隆完整性会在 SteamCMD 前拒绝。Linux 与 Windows 候选现均有界预取固定140 digest并导入任务 DinD，fixture 验证真实镜像身份、保持 fresh source 不存在，按明确 cache 名及本次 typed install intent 清理，原密码原因/重试断言不变。真实 API 进一步复现凭据错误进入 `credentials_required` 后，140恢复条件漏该状态，第二次请求错误克隆部分下载；修复仅补此状态。聚焦 Go 状态回归先 red 后 green（4 roots/6 pass events）；以 canonical base `99fc2552b6035ef5bdb608b0ac5b439206b831b6` 加明确源码 SHA override 的 test-only binary 完成两次真实 POST→错误凭据终态、同 owned staging、stateMessage一致及错误Alpine/空源拒绝，0真实Steam登录。原202/ID/终态/完整私有日志保留于任务证据 `patch-api-run-v7`，源码证明在 `patch-api-fixed-build-v1`；任务Panel/network/alias已精确清理，source080未触及。该本地验证不是候选证明，新提交仍须新候选全量确认。
+
 | 专项/门禁 | 本版范围与通过条件 |
 | --- | --- |
+| 首次安装凭据重试 | 推荐140真实固定镜像；fresh source不存在；两次真实HTTP错误凭据均保留明确原因和stateMessage，复用同owned staging；固定source/imageID/digest/holder边界、错误Alpine输入拒绝及资源清理。 |
 | 代码门禁 | 后端test/vet/build；前端状态/浏览器/production build；脚本、ShellCheck、政策生成器、兼容矩阵、updater/Docker integration。条件矩阵由run-release-gates基于080→候选路径自动选择/跳过。 |
 | 新装冒烟 | 同一不可变候选的空Panel、health/version、未初始化状态及Panel重启。 |
 | SDK正常路径 | 旧SDK与实际SDK253均接受；实际ACF/库和源卷保持，SDK marker使用真实manifest；cached-SMAPI不重复安装但重验payload/刷新marker。 |

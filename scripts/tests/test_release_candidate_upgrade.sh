@@ -226,7 +226,7 @@ echo "candidate upgrade E2E: loading exact candidate and pre-fetched fixtures"
 docker load -i "$candidate_tar" >/dev/null
 docker load -i "$fixtures_tar" >/dev/null
 docker image inspect "$candidate_image" >/dev/null
-docker image inspect "$previous_ref" registry:2 nginx:alpine alpine:3.20 >/dev/null
+docker image inspect "$previous_ref" registry:2 nginx:alpine alpine:3.20 sdvd/server:1.5.0-preview.140 >/dev/null
 docker tag "$previous_ref" "$previous_fixture_ref"
 
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 -sha256 -subj "/CN=Anxi Release Candidate Test CA" -keyout "$tls_dir/ca.key" -out "$tls_dir/ca.crt" >/dev/null 2>&1
@@ -578,9 +578,12 @@ assert_fresh_patch_features() {
     exit "$status"
   }
   trap cleanup_fresh_patch EXIT
+  # The recommended .140 installer admits the fixed server digest before SteamCMD.
+  docker tag sdvd/server:1.5.0-preview.140 "$project/patch-server:1.5.0-preview.140"
   docker run -d --name "$panel_container" --label "com.anxi-panel.test-owner=$owner" \
     -p "127.0.0.1:$panel_port:8090" --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
     --mount "type=bind,src=$data_dir,dst=/data" --env "PANEL_HOST_DATA_DIR=$data_dir" \
+    --env "PANEL_COMPOSE_PROJECT=$project-patch-fresh" \
     "$candidate_image" >/dev/null
   wait_version "$version" 120
   curl --silent --show-error --fail --cookie-jar "$cookie_file" --header 'Content-Type: application/json' \

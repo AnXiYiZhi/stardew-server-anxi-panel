@@ -162,7 +162,7 @@ func (r *installRunner) prepareJunimo140InstallVolume(ctx context.Context) error
 	var plan junimo140InstallVolume
 	// A failed installation resumes its exact bound journal. A new explicit
 	// reinstall of completed content gets a fresh destination and preserves it.
-	resume := r.instance.State == storage.InstanceStateError || r.instance.State == storage.InstanceStateUninitialized || r.instance.State == storage.InstanceStateAdminCreated
+	resume := r.instance.State == storage.InstanceStateError || r.instance.State == storage.InstanceStateCredentialsRequired || r.instance.State == storage.InstanceStateUninitialized || r.instance.State == storage.InstanceStateAdminCreated
 	if resume && junimo140InstallVolumePattern.MatchString(volume) {
 		plan, err = readInstallVolumePlan(r.instance.DataDir, volume)
 		if err != nil {

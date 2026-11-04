@@ -249,7 +249,12 @@ try {
         @($previousRef, 'registry:2', 'nginx:alpine', 'alpine:3.20') | ForEach-Object {
             Invoke-DockerPullWithTimeout -ImageRef $_
         }
-        & docker save -o $fixturesTar $previousRef registry:2 nginx:alpine alpine:3.20
+        $junimoFixtureImage = 'sdvd/server:1.5.0-preview.140'
+        $junimoFixtureDigest = 'sha256:f23fdc3a3e999032be363fa43291c2d72626555913ef2b3dcf71b0aec53c49db'
+        Invoke-DockerPullWithTimeout -ImageRef "${junimoFixtureImage}@${junimoFixtureDigest}"
+        & docker tag "${junimoFixtureImage}@${junimoFixtureDigest}" $junimoFixtureImage
+        Assert-NativeSuccess 'fixed Junimo fixture tag'
+        & docker save -o $fixturesTar $previousRef registry:2 nginx:alpine alpine:3.20 $junimoFixtureImage
         Assert-NativeSuccess 'candidate fixture export'
 
         $existingDindVolume = @(& docker volume ls --filter "name=^${dindVolume}$" --format '{{.Name}}')

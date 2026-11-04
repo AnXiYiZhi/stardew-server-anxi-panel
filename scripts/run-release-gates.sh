@@ -57,6 +57,7 @@ echo "release gates: compatibility contracts"
 "$python_bin" scripts/panel_release_policy.py validate --version "$version"
 "$python_bin" -m unittest discover -s scripts/tests -p 'test_panel_release_policy.py'
 "$python_bin" -m unittest discover -s scripts/tests -p 'test_release_candidate_feed.py'
+"$python_bin" -m unittest discover -s scripts/tests -p 'test_release_patch_features.py'
 "$python_bin" -m unittest discover -s scripts/tests -p 'test_candidate_acceptance.py'
 "$python_bin" -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
 

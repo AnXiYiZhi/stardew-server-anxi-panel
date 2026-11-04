@@ -4,6 +4,8 @@
 
 SMAPI 检测/工作流同时调整缺失分支的前置顺序：先核游戏、SDK、Junimo/Control，再允许安装。专用 fake 显式覆写版本读取，避免继承固定读数掩盖 game/SDK 场景；present/missing、合法 SDK253、旧预检后源漂移且零运行变更拒绝均有回归。
 
+首次 140 安装账号/密码错误会保留 `credentials_required`；`junimo140_install.go` 已将该状态纳入原 owned staging 的恢复条件，保留 source/imageID/digest/unused-holder 硬校验。`junimo140_install_test.go` 覆盖普通失败及凭据失败两种重试，真实 API 两次错误凭据返回明确原因、stateMessage 一致且同卷继续。候选 fixture 同时供应固定140真实镜像、保持初始 source 卷不存在，并按本次 intent/明确缓存卷清理；原202/终态及脱敏日志先落 receipt，原密码错误断言保留。下一候选仍须完成完整门禁。
+
 影响：`junimo140_game_integrity.go`、`junimo140_sdk*.go`、`junimo140_install.go`、`runtime_components.go`、`runtime_update_dry_run_runner.go`、Docker SDK helper/恢复 allowlist、`junimo140_group_runtime.go`、`full_stack_confirm.go`/`full_stack_operation.go`、发行政策生成器及对应测试。SDK helper 仍限定固定镜像、unused owned 卷、只读挂载和断网；其清理归入原恢复链。
 
 验证：聚焦 Linux Go、真实 Chrome 过期/时钟与发行入口回归通过；独立 DinD 用实际 SDK253 执行生产 staging，实际 SDK/ACF 保持并生成真实 marker，固定游戏损坏及 96B 截断 SDK 均拒绝且无完成 marker。用户授权服务器的 080 运行栈已恢复至健康 140，原失败记录、SDK 与停服存档备份保留。

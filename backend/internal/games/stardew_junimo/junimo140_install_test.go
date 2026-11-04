@@ -107,17 +107,19 @@ func TestJunimo140InstallationVolumeResumesWithoutLosingDownload(t *testing.T) {
 			}
 			// The failure/retry boundary must not clone over a partially completed
 			// SteamCMD download, or allocate a second game-data volume.
-			runner.instance.State = storage.InstanceStateError
-			if err := runner.prepareJunimo140InstallVolume(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			after, _ := GameDataVolumeName(runner.instance.DataDir)
 			clones := 0
 			if sourceExists {
 				clones = 1
 			}
-			if after != volume || fake.installVolumeCreates != 1 || fake.installVolumeClones != clones {
-				t.Fatal("retry replaced the destination or repeated source cloning")
+			for _, retryState := range []string{storage.InstanceStateError, storage.InstanceStateCredentialsRequired} {
+				runner.instance.State = retryState
+				if err := runner.prepareJunimo140InstallVolume(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				after, _ := GameDataVolumeName(runner.instance.DataDir)
+				if after != volume || fake.installVolumeCreates != 1 || fake.installVolumeClones != clones {
+					t.Fatalf("retry in %s replaced the destination or repeated source cloning", retryState)
+				}
 			}
 		})
 	}
