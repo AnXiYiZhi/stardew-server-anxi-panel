@@ -66,3 +66,75 @@ for case_name in wrong-apply wrong-job; do
   grep -q 'changed operation identity' "$root/$case_name.stderr"
 done
 printf 'candidate runtime repair observer tests passed\n'
+
+for function_name in record_panel_stop_fixture_result wait_for_panel_stop_fixture; do
+  # shellcheck disable=SC1090 # Load the actual production observer without Docker setup.
+  source <(sed -n "/^$function_name() {/,/^}/p" "$source_file")
+done
+for stop_mode in succeeded failed wrong-job wrong-server timeout; do (
+  root="$root/stop-$stop_mode"
+  mkdir "$root"
+  unset safe_http_evidence
+  expected_job="job_$(printf 'a%.0s' {1..32})"
+  expected_server="$(printf 'b%.0s' {1..64})"
+  # shellcheck disable=SC2329 # Called by the sourced production observer.
+  curl() {
+    local output="" argument url="" id="$expected_job" status=succeeded
+    while (($#)); do
+      argument="$1"; shift
+      case "$argument" in
+        --output) output="$1"; shift ;;
+        --write-out|--cookie) shift ;;
+        --silent|--show-error|--fail) ;;
+        http://*) url="$argument" ;;
+        *) return 1 ;;
+      esac
+    done
+    if [[ "$url" == */api/jobs/* ]]; then
+      case "$stop_mode" in
+        failed) status=failed ;;
+        wrong-job) id=another-job ;;
+        timeout) status=running ;;
+      esac
+      jq -nc --arg id "$id" --arg status "$status" '{job:{id:$id,status:$status,targetId:"stardew",type:"stardew_lifecycle",operation:"stop",errorMessage:"fixture-secret"}}' >"$output"
+      printf 200
+    else
+      printf '{"state":"stopped"}'
+    fi
+  }
+  # shellcheck disable=SC2329 # Called by the sourced production observer.
+  docker() {
+    if [[ "$1" == ps ]]; then
+      if [[ "$stop_mode" == wrong-server ]]; then printf 'another-server\n'; else printf '%s\n' "$expected_server"; fi
+    elif [[ "$1" == inspect ]]; then
+      printf '[{"State":{"Status":"exited"}}]\n'
+    else
+      return 1
+    fi
+  }
+  result=0
+  wait_for_panel_stop_fixture "$expected_job" "$expected_server" stardew || result=$?
+  [[ "$(cat "$root/budget.txt")" == '1 150' ]]
+  safe="$root/update-http-evidence.safe.jsonl"
+  [[ -s "$safe" ]]
+  jq -e '.errorMessageSHA256 | test("^[a-f0-9]{64}$")' "$safe" >/dev/null
+  jq -e '.reason == "other"' "$safe" >/dev/null
+  if [[ "$stop_mode" == succeeded ]]; then
+    [[ "$result" == 0 ]]
+    jq -e '.phase == "succeeded" and .sameId and .targetMatches and .errorCode == "absent"' "$safe" >/dev/null
+  else
+    [[ "$result" != 0 ]]
+    case "$stop_mode" in
+      failed) expected_error=panel_stop_job_failed ;;
+      wrong-job) expected_error=panel_stop_identity_changed ;;
+      wrong-server) expected_error=panel_stop_target_changed ;;
+      timeout) expected_error=panel_stop_observation_timeout ;;
+    esac
+    jq -e --arg code "$expected_error" '.errorCode == $code' "$safe" >/dev/null
+  fi
+  if grep -F -e fixture-secret -e "$expected_job" -e "$expected_server" "$safe" >/dev/null; then
+    echo "Panel Stop diagnostic retained a raw identifier or message" >&2
+    exit 1
+  fi
+) done
+printf 'candidate Panel Stop observer tests passed\n'

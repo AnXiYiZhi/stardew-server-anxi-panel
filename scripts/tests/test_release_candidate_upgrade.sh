@@ -715,6 +715,82 @@ compose_project_is_strictly_stopped() {
   return 0
 }
 
+record_panel_stop_fixture_result() {
+  local stage="$1" http_code="$2" curl_status="$3" expected_job="$4" same_server="$5" error_code="$6" job_file="$7"
+  local id phase id_hash=absent same_id=false target_matches=false error_message error_hash reason=absent
+  local safe_output="${safe_http_evidence:-$root/update-http-evidence.safe.jsonl}"
+  cp "$job_file" "$root/$stage.body.private.json" || return 1
+  chmod 600 "$root/$stage.body.private.json" || return 1
+  id="$(jq -r '.job.id // empty' "$job_file" 2>/dev/null || true)"
+  phase="$(jq -r '.job.status // "absent"' "$job_file" 2>/dev/null || true)"
+  case "$phase" in queued|running|succeeded|failed|canceled|cancelled|absent) ;; *) phase=other ;; esac
+  case "$error_code" in absent|panel_stop_request_failed|panel_stop_job_failed|panel_stop_observation_timeout|panel_stop_target_changed|panel_stop_identity_changed) ;; *) error_code=other ;; esac
+  error_message="$(jq -r '.job.errorMessage // .error.message // ""' "$job_file" 2>/dev/null || true)"
+  error_hash="$(printf '%s' "$error_message" | sha256sum | awk '{print $1}')"
+  case "${error_message,,}" in
+    *deadline*) reason=deadline ;;
+    *timeout*|*timed\ out*) reason=timeout ;;
+    *no\ such\ service*) reason=no_such_service ;;
+    *cannot\ connect*docker*|*docker*daemon*not\ running*|*connection\ refused*) reason=docker_unavailable ;;
+    '') reason=absent ;;
+    *) reason=other ;;
+  esac
+  if [[ -n "$id" ]]; then id_hash="$(printf '%s' "$id" | sha256sum | awk '{print $1}')"; fi
+  if [[ -n "$expected_job" && "$id" == "$expected_job" ]]; then same_id=true; fi
+  if [[ "$same_server" == true ]] && jq -e '.job.targetId == "stardew" and .job.type == "stardew_lifecycle" and .job.operation == "stop"' "$job_file" >/dev/null 2>&1; then
+    target_matches=true
+  fi
+  jq -nc --arg stage "$stage" --arg httpStatus "$http_code" --argjson curlExit "$curl_status" --arg idSHA256 "$id_hash" \
+    --arg phase "$phase" --arg errorCode "$error_code" --arg errorMessageSHA256 "$error_hash" --arg reason "$reason" \
+    --argjson sameId "$same_id" --argjson targetMatches "$target_matches" \
+    '{stage:$stage,httpStatus:$httpStatus,curlExit:$curlExit,idSHA256:$idSHA256,phase:$phase,errorCode:$errorCode,errorMessageSHA256:$errorMessageSHA256,reason:$reason,sameId:$sameId,targetMatches:$targetMatches}' >>"$safe_output" || return 1
+  chmod 600 "$safe_output" || return 1
+}
+
+wait_for_panel_stop_fixture() {
+  local stop_job_id="$1" expected_server="$2" import_project="$3"
+  local job_file="$root/panel-stop-job-latest.private.json" instance_file="$root/panel-stop-instance-latest.private.json"
+  local http_code=000 curl_status=0 status="" same_server=false actual_servers="" server_state="" state=""
+  : >"$job_file"
+  chmod 600 "$job_file"
+  # The native Compose Down budget is 120s; include state propagation margin.
+  for _ in $(seq 1 150); do
+    curl_status=0
+    http_code="$(curl --silent --show-error --output "$job_file" --write-out '%{http_code}' --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/jobs/$stop_job_id")" || curl_status=$?
+    if ((curl_status == 0)) && [[ "$http_code" == 200 ]]; then
+      if ! jq -e --arg id "$stop_job_id" '.job.id == $id and .job.targetId == "stardew" and .job.type == "stardew_lifecycle" and .job.operation == "stop"' "$job_file" >/dev/null; then
+        record_panel_stop_fixture_result save-import-stop-identity "$http_code" "$curl_status" "$stop_job_id" false panel_stop_identity_changed "$job_file"
+        return 1
+      fi
+      status="$(jq -r '.job.status' "$job_file")"
+      if [[ "$status" == failed || "$status" == canceled || "$status" == cancelled ]]; then
+        record_panel_stop_fixture_result save-import-stop-terminal "$http_code" "$curl_status" "$stop_job_id" false panel_stop_job_failed "$job_file"
+        return 1
+      fi
+      if [[ "$status" == succeeded ]]; then
+        actual_servers="$(docker ps -a --quiet --no-trunc --filter "label=com.docker.compose.project=$import_project" --filter 'label=com.docker.compose.service=server')" || return 1
+        if [[ "$actual_servers" != "$expected_server" ]]; then
+          record_panel_stop_fixture_result save-import-stop-target "$http_code" "$curl_status" "$stop_job_id" false panel_stop_target_changed "$job_file"
+          return 1
+        fi
+        same_server=true
+        docker inspect "$expected_server" >"$root/panel-stop-server-latest.private.json" || return 1
+        server_state="$(jq -r '.[0].State.Status' "$root/panel-stop-server-latest.private.json")"
+        if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" >"$instance_file"; then
+          state="$(jq -r '.state // empty' "$instance_file")"
+          if [[ "$state" == stopped && ("$server_state" == exited || "$server_state" == dead) ]]; then
+            record_panel_stop_fixture_result save-import-stop-terminal "$http_code" "$curl_status" "$stop_job_id" true absent "$job_file" || return 1
+            return 0
+          fi
+        fi
+      fi
+    fi
+    sleep 1
+  done
+  record_panel_stop_fixture_result save-import-stop-timeout "$http_code" "$curl_status" "$stop_job_id" "$same_server" panel_stop_observation_timeout "$job_file"
+  return 1
+}
+
 assert_upgraded_stopped_compose_save_import_submission() {
   local instance_dir="$data_dir/instances/stardew"
   local instance_compose="$instance_dir/docker-compose.yml"
@@ -726,10 +802,13 @@ assert_upgraded_stopped_compose_save_import_submission() {
   local save_zip="$root/Imported_123.zip"
   local commit_body="$root/save-import-commit.json"
   local stop_code=""
+  local stop_curl_status=0
+  local stop_job_id=""
+  local stop_server_id=""
+  local stop_before_jobs="$root/panel-stop-before-jobs.private.json"
+  local stop_after_jobs="$root/panel-stop-after-jobs.private.json"
   local instance_state=""
   local compose_ps_output=""
-  local server_container_count=""
-  local running_server_count=""
   local compose_server_count=""
   local compose_server_state=""
   local preview_code=""
@@ -780,26 +859,35 @@ assert_upgraded_stopped_compose_save_import_submission() {
     exit 1
   fi
 
-  stop_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/instances/stardew/stop")"
-  if [[ "$stop_code" != 202 ]]; then
-    echo "candidate upgrade E2E: Panel Stop failed with HTTP $stop_code" >&2
-    cat "$response_file" >&2
+  stop_server_id="$(docker ps --quiet --no-trunc --filter "label=com.docker.compose.project=$import_project" --filter 'label=com.docker.compose.service=server')"
+  if [[ ! "$stop_server_id" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "candidate upgrade E2E: expected exactly one created running server before Panel Stop" >&2
     exit 1
   fi
-  for _ in $(seq 1 60); do
-    if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" >"$response_file" 2>/dev/null; then
-      instance_state="$(jq -r '.state // empty' "$response_file")"
-      server_container_count="$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --filter 'label=com.docker.compose.service=server' --format '{{.ID}}' | wc -l | tr -d '[:space:]')"
-      running_server_count="$(docker ps --filter "label=com.docker.compose.project=$import_project" --filter 'label=com.docker.compose.service=server' --format '{{.ID}}' | wc -l | tr -d '[:space:]')"
-      if [[ "$instance_state" == stopped ]] &&
-        [[ "$server_container_count" == 1 && "$running_server_count" == 0 ]]; then
-        break
-      fi
-    fi
-    sleep 1
-  done
-  if [[ "$instance_state" != stopped ]] ||
-    [[ "$server_container_count" != 1 || "$running_server_count" != 0 ]]; then
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/jobs" >"$stop_before_jobs"
+  jq -nc --arg expectedServerId "$stop_server_id" '{action:"panel_stop",targetId:"stardew",expectedServerId:$expectedServerId,automaticReplay:false}' >"$root/panel-stop-request-intent.private.json"
+  stop_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/instances/stardew/stop")" || stop_curl_status=$?
+  cp "$response_file" "$root/panel-stop-accepted.private.json"
+  jq -nc --arg code "$stop_code" --argjson curlExit "$stop_curl_status" '{httpStatus:$code,curlExit:$curlExit}' >"$root/panel-stop-http-result.private.json"
+  chmod 600 "$root"/panel-stop-*.private.json
+  if ((stop_curl_status != 0)) || [[ "$stop_code" != 202 ]]; then
+    record_panel_stop_fixture_result save-import-stop-request "$stop_code" "$stop_curl_status" "" false panel_stop_request_failed "$root/panel-stop-accepted.private.json"
+    echo "candidate upgrade E2E: Panel Stop failed with HTTP $stop_code" >&2
+    exit 1
+  fi
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/jobs" >"$stop_after_jobs"
+  chmod 600 "$stop_after_jobs"
+  stop_job_id="$(jq -r --slurpfile before "$stop_before_jobs" '
+    [$before[0].jobs[].id] as $old |
+    [.jobs[] | select(.type == "stardew_lifecycle" and .operation == "stop" and .targetId == "stardew" and (.id as $id | $old | index($id) | not))] |
+    if length == 1 then .[0].id else "" end' "$stop_after_jobs")"
+  if [[ ! "$stop_job_id" =~ ^job_[0-9a-f]{32}$ ]]; then
+    echo "candidate upgrade E2E: accepted Panel Stop did not expose one new lifecycle job; original response retained" >&2
+    exit 1
+  fi
+  printf '%s\n' "$stop_job_id" >"$root/panel-stop-job-id.private.txt"
+  chmod 600 "$root/panel-stop-job-id.private.txt"
+  if ! wait_for_panel_stop_fixture "$stop_job_id" "$stop_server_id" "$import_project"; then
     echo "candidate upgrade E2E: Panel Stop did not leave exactly one exited server container" >&2
     exit 1
   fi

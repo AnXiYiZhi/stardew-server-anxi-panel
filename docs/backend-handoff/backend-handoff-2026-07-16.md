@@ -10,6 +10,8 @@ SMAPI 检测/工作流同时调整缺失分支的前置顺序：先核游戏、S
 
 验证：聚焦 Linux Go、真实 Chrome 过期/时钟与发行入口回归通过；独立 DinD 用实际 SDK253 执行生产 staging，实际 SDK/ACF 保持并生成真实 marker，固定游戏损坏及 96B 截断 SDK 均拒绝且无完成 marker。用户授权服务器的 080 运行栈已恢复至健康 140，原失败记录、SDK 与停服存档备份保留。
 
+发布夹具补充：41872921271原Stop原因未封任务详情，保持未定。`test_release_candidate_upgrade.sh`按202 `{ok:true}`从前后jobs锁本次Stop，150秒观察同job/原server，私有原包先存并导出safe错误hash/reason。真实Docker26.1.5/Compose2.27.0模型已通过stopped Compose/jobs-cleared恢复和PhaseA两边界；4项Shell、081政策及10+4+11 Python、19份语法/ShellCheck0.11通过。仅发布fixture/测试变化，生产Stop预算保持；证据和精确清理见docs09。
+
 下一步：按 docs09 的 081 候选矩阵完成全门禁、当前上一正式080和受影响最老073的真实 Web 验收；实际 SDK 结构检查之后仍需启动、原专属 Auth 会话及邀请码验收。073/080 旧客户端对未知未来发行先普通更新 Panel，新 Panel 再确认当前版本游戏范围；不能把新代码的版本投影能力当作旧二进制能力。
 
 ## 2026-10-29 0.8.0 正式后端接手

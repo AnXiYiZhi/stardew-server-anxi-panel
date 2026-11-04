@@ -55,9 +55,11 @@
 
   最近复发/补充（2026-11-04，081发布/API夹具）：旧CI用Alpine冒充推荐140并预建空source，固定digest及existing-source克隆校验正确提前拒绝；现供应固定真实140、保持fresh source不存在，清理由精确cache create receipts/生产typed intent绑定。RootSDK缺Alpine时只导入已验host同imageID副本，0pull；backend-only binary无前端index时收窄本地repro为安装HTTP合同，生产前端断言保留；不支持的0.8.1-test-only版本同步500/无job，改受支持0.8.1并保留test-only文件名/label/receipt。Windows write_text生成fake SteamCMD引入CRLF导致127，改显式LF bytes，先直验exit5/InvalidPassword再发API；CI heredoc本为LF。080隔离probe的internal桥host端口45秒不通而容器healthy，保留原timeout/精确清理后改唯一同网Python helper访问真实HTTP，并在清理前保留logs。41861232380的旧事务修复fixture仍声明140却供应125 FIFO且无完整setpriv，180秒只读观察误早于生产20分钟就绪/10分钟停服预算；原状态rolling_back不作终态失败。先独占native证伪，再补140 FIFO/UID权限及util-linux，以真实writer回执和单次public repair同ID终态证明；observer新增身份漂移拒绝回归并覆盖完整预算，不缩生产时限。以上均为执行夹具纠正，不把产品CredentialsRequired缺陷或预期负向守卫记作执行失误。
 
+  最近复发/补充（2026-11-05，081 Stop/PhaseA模型）：本地先用Docker29/Compose5.5通过，不能解释原CI26.1.5/2.27.0；改正式080 runtime底座、仅覆test-only binary，先核实际两版本。诊断在夹具SQL清jobs后GET旧Stop返回404并错误索引job；保留失败，不补造已删终态，改清表前实时封同job/raw，并补150秒同job/原server观察，原CI原因仍未定。正式模型首次PhaseA缺buildx退回legacy builder，networknone的apk步骤exit1且尚无PhaseA API；按已验插件路径补只读挂载，实际Docker/buildx/Compose探针后仅续未发case，同cookie、不重发Stop，最终通过；以执行脚本硬前置落实既有AGENTS依赖规则。末尾host全集guard另因并行agent两cache拒绝，own outer/两卷已删；只读按独立create/cleanup receipts解释，保留guard失败且不删差集，后续串行host创建并互绑refs，V2全集恢复。
+
 - 最近补充（2026-10-28，提交输入扫描基线）：首轮对整个修改文件做凭据字面量比对，误命中HEAD中已有且新增行未出现的测试用户名；保留失败与仅字段/布尔诊断，不输出值、不改原测试。第二版只对该已证实的原文件原用户名给出严格“基线存在且新增行无匹配”例外，其它文件、密码及新增内容仍全部扫描；UTF8/换行/64输入和目标配对检查通过。提交扫描须区分原始基线与本次新增，不能用无差别命中删改历史fixture或放宽新内容检查。
 
-- 最近复发/补充（2026-10-28，文档补丁锚点）：组合四份发布记录时猜测docs06标题而apply_patch原子拒绝，已逐份只读确认三份前段也未改，再读docs06真实标题后应用短hunk。沿用先读当前精确锚点的规则，不能根据相邻文档推标题，也不能把前段看似有效当成部分已提交。
+- 最近复发/补充（2026-10-28，文档补丁锚点）：组合四份发布记录时猜测docs06标题而apply_patch原子拒绝，已逐份只读确认三份前段也未改，再读docs06真实标题后应用短hunk。沿用先读当前精确锚点的规则，不能根据相邻文档推标题，也不能把前段看似有效当成部分已提交。最近复发（2026-11-05，081收尾）：手抄Notebook整行漏掉中间既有短句，多文件补丁原子拒绝；只读status和精确内容确认四份均未改，取当前完整行后应用短补丁。沿用既有唯一边界/真实锚点规则，不把前项看似有效当部分成功。
 
 - 最近补充（2026-10-28，Go fixture批量适配）：AST工具预设7个fixture同用UpdateEnvFile，真实为5个os.WriteFile与2个未写env，写前计数断言panic/exit1、零文件修改；改先只读库存节点，再在7个真实Install调用前补明确模板。另文本替换误改限定的sjconfig.InspectRuntimeStack、恢复后测试import未用，均在编译前/编译门禁纠正；限定selector与裸ident用AST区分，适配后gofmt并定向编译，312项回归通过。不能按业务语义猜初始化形态或把文本替换当类型安全变换。
 - 最近复发/补充（2026-10-28，精确路径与引号）：后端恢复追加未库存client.go、fresh准备追加未库存install.go，分别被Test-Path/rg退出拒绝；均未业务执行。先取得真实文件清单再Test-Path，后者不是猜文件的许可。fresh探针还把含引号Go switch模式按反斜杠嵌PowerShell而ParserError，改简单逐项rg-F/精确行段，复杂模式用外部脚本；沿用既有禁止混用转义规则。
