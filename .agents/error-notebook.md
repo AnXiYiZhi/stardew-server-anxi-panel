@@ -12,6 +12,8 @@
   最近复发/补充（2026-11-04，Python/tar 导出）：先启动 tar 子进程，随后因输出文件父目录缺失而打开目标失败，归档未完成。按精确进程身份停止并确认退出后，改为先验证批准的父目录、独占打开输出，再启动生产者。预防同时执行现有输入前置与 AGENTS 的 PID/归属/有界退出规则；适用于流式导出，不能遗留无人接收输出的子进程或重做已完成业务。
 
   最近复发/补充（2026-11-05，081临时工具身份与ACL）：复用v1目录保护器时，新V4/V5/bridge阶段前缀在任何目标动作前被旧正则拒绝；纯模块测试不能证明真实stage可用。新补件只允许已批准的精确根及声明阶段前缀，逐祖先拒绝越界/链接，并以实际空目录验证protected ACL及错误根/嵌套/非空目录拒绝；原helper和失败保留。调用新验证器前先读parser/help并携带其要求的manifest与SHA；无参调用曾由argparse拒绝，不能当验证成功。适用于任务临时工具，不扩大目标动作授权。克隆函数首次真实callback又因argparse不在复制namespace内NameError；须从原函数__globals__建立独立字典并重接peer，不能只复制导出module；真实填充Ref还需核gate.old常量接口。9项pure、5项真实callback及填充输入验证通过后才续接，原publish不重发。
+
+  最近补充（2026-11-05，真实依赖入口）：只读CLI少sys或label诊断少Path import均在main前失败；独立脚本先compile并实际--help/入口检查后只重读原输入。startup proof所引用runtime/recovery事实与单独获准reader源不是同一引用集合；按精确成员核事实、另钉reader SHA，不强塞原proof或改其refs。外部seal也必须在消费entries前显式核spec/manifest的SHA，补件不修改已执行原代码或重extract。
 - 最近补充（2026-10-28，资源探针投影）：VM df按overlay路径匹配，输出了判断空间无需的存储标识，随后又发现同一文件系统在多个namespace视图重复。原raw保持私有；改只选已确认挂载点并输出容量数字，多行要求容量tuple一致，不假定只有一行。任何资源探针都应在输出前完成必要字段白名单投影。
 
   最近补充（2026-10-29，resource preflight原始事实）：aggregate guard在保存各条件前throw generic failure，丢失首轮individual容量/端口值，未运行bootstrap或其它夹具变更。保留首失败；新facts-only scope先持久每条件观测与原native终态，再做聚合准入。后续独立观测的MemAvailable确实低于固定cap+reserve，但不能倒推首轮未保存的数值。事实采集与行动准入分段，禁止用swap信用、降低reserve或重跑写动作补事实。
@@ -20,6 +22,8 @@
   最近补充（2026-10-29，checksum输入来源与全文件替换）：fresh原seed helper die1、原full readonly verify 3838pass/1fail，3839文件清单同序精确且0links；Root single-file-01独立native0闭合5688B fixedGameContent原字节。生成器prepare-fresh-allhelpers-draft-v1.py把cache-expected.sha256与代码放入同一循环，对整文本执行端口19432→19452替换，误将该SHA256中的…19432…改成…19452…。LANv3原checksum受draft.sourceOrigins绑定；按真实AST替换链重算整401078B，精确等c2a00f…目标清单，仅1条hash/1hex变更，且原correct值与checkpoint.seal/inventory、新archive及实际target一致。wholefile-transformation-proof-v2.safe.json SHA77556bd86a5d4adc60d7f8221b5945009bacd24a557051766cc7b086ed57310d为纯文件证明。原checksum/cfg/archive/SDK及失败保持；纠正须用新wx referenceCorrection和显式verification seal。预防：数据清单只按原字节copy+SHA，禁止namespace/port全局替换；代码只显式定位字段并断言替换计数。清单不能仅核自身SHA/count，firstwrite前须与sealed原inventory+archive逐path/算法/摘要交叉核验，不adopt当前target作expected。本条不代表fresh world/start/restart整体通过。
 - 最近补充（2026-10-28，Junimo OCI 标签与新装状态）：新装夹具把固定 .140 镜像的 OCI version 错当完整版本（实际为通道 `preview`），又把 scaffolded 模板的安装诊断 `unknown` 错当缓存不完整，分别在 seed 写入与 CreateWorld POST 前退出。保留原失败，版本由精确 digest/platform 与真实 Mod manifest 绑定；由生产 Provision 的模板、复制和目标 verifier 验真，保持原 GET unknown，不补写模板 ready/DB/job。不能按标签语义或只读诊断推导未执行的安装检查。
 - 最近补充（2026-10-28，清理清单来源）：新装 inspect 将“当前所有卷”直接作为可删集合，可能把未知卷纳入随后清理。尚未执行该清理；改为 seed 原始卷、世界 Compose 解析名及已核容器 mount 的明确允许集合，并要求实际集合相等、未知项拒绝。最终 inventory 是核对对象，不能自行授予删除权限。宽目录库存仍须先过滤精确文件名并限制数量，不能把截断输出视为已完整审阅。
+
+  最近补充（2026-11-05，清理索引）：原RootSDK progress实际列四卷，首生成器按预期六卷assert而未写索引；不能为补齐预期从当前mounted或差集自授另外两卷。v2分别记录原四卷/额外两项pendingAuthority、DockerRoot/work归档，以及Go/可能frontend optional cache保留决策；无创建authority的资源不删，也不机械阻塞独立已授权资源的归档清理。所有actual cleanup仍待原create receipts、fresh exact holder及终态absence，索引不宣称resourcesCleaned。
 
   最近复发/补充（2026-10-29）：只允许已批准 seed/Compose resolved name 和明确目标来源；不能将所有 mounted 或当前卷快照自动授权删除。固定镜像声明的 /config 自动卷须逐一闭合 exact image/config、已记录目标容器与 mount、唯一holder/0foreignholder、实际创建时间与原操作窗口；历史事件缺失如实记录，须明确窄授权。两个固定历史Stopped DinD按完整身份指纹与自身无PublishedPorts/无sandbox核验，不能用复用端口的全局无监听误拒。optional宿主镜像缓存删除集可固定空；本轮保留全部宿主image缓存。已知前三个应用Stop/原tar成功后，续接仅执行尚无intent的outer stop/rm；失败快照校验不得重发已接受Stop或重新snapshot。
 - 最近补充（2026-10-28，helper 修复覆盖）：第一次数值 root 修复只覆盖支持 Mod 同步，真实新世界随后在 JunimoServer 提取的另一个 `User: root` helper 返回125；另发现 legacy SMAPI 安装和 SteamCMD 缓存迁移 helper 仍依赖符号用户名；.140 专用安装分支不走 legacy helper，已有 stamp 的用例也不能代替冷路径验证。保留 b060 原202与失败终态，撤销该候选的发布资格，统一审计 Junimo 全部 helper；新增固定镜像冷路径验证及数字身份回归，预防规则已提升到 AGENTS.md。该产品失败不伪改为任务成功，不重测用户已确认的手机部分。
@@ -31,8 +35,12 @@
 
   最近复发/补充（2026-11-04，Windows Git/Python 回放）：把反向 `git diff -R` 的真实头部仍按正向 a→b 解释，实际 b→a 导致断言失败且零修改；须先核实际头部及已绑定的源/目标。随后 Git HEAD 的 LF 与 Windows CRLF 副本语义相同但 SHA 不同，原失败保留，仅用已独立证明字节/SHA 的 CRLF 副本回放才恢复。沿用 AGENTS 精确来源与换行规则；适用于源码封存/回放，语义相等不得替代原始字节证明，也不以当前目标反造 expected。
 
+  最近补充（2026-11-05，正式引用与checkout）：本地缺v0.8.0 tag时git show退出128，改核本地引用后使用已验完整正式commit；不能把缺本地tag当远端版本不存在。另三份CRLF checkout与最终Git LF对象的逐字节比较拒绝，保留双SHA并供应精确Git对象字节；仅对明确文本证明CRLF/LF对应，不修改工作文件或泛化到SDK、存档、私有配置。
+
   同日补充（2026-11-04，081 兼容门禁/Git EOL）：compat 41817360475 的 installer 报 unsupported catalog；junimo140-content-hashes.json 工作树原字节 243130B/SHA 8143aa…4349 含尾 CRLF，Git commit 因 autocrlf 归一化为 243129B/SHA 907e60…2064，严格 catalog 字节校验失败，本地文件副本通过不能代表 canonical Git 输入通过。为该 fixture 加 -text 后，普通 git add 仍复用 stat 未变的旧 LF blob，staged 字节断言失败；显式 git add --renormalize -- exactFixture 后 index 恢复原 243130B/SHA。须同时核属性、index blob 字节数/SHA，不能只看 w/crlf 或 -text。canonical INDEX git archive 在 Linux 核原 SHA 后，TestDriverInstall 得到 22 pass events/16 roots、0 fail/skip、exit 0（installer-canonical-index-v1.jsonl）；后续完整 CI 仍待新候选。修复保留既有 fixture 字节，生产固定游戏校验保持。最终 staged git diff --check 又将该原 CR 报作 trailing whitespace，诊断中的长行仅内存处理未回显；按 Git 官方 gitattributes/core.whitespace 契约，仅为该精确 fixture 设 -text whitespace=cr-at-eol，原字节/SHA 不变，staged diff-check 现 exit 0，只承认原 CR 为行终止，其它空白检查保留。
 - 最近补充（2026-10-28，当前输入与JSON契约）：原生组件把retry前envSHA当成retry后的当前快照，在0.26秒只读guard退出，未进入生产复制；旧before仅SHA，不能追造changed键。新namespace只钉当前真实raw SHA并保留前后不变守卫；每次已知写操作之后须重新采当前输入。其它准备断言曾误把licensed seed存在的sourceExisted当false、字符串workflowRunId当整数、job.errorMessage当job.error；先只投影真实字段/类型/存在性，再绑定，不改数据迎合测试。AST差异校验仅规范化已声明版本标签，不删除行为断言。
+
+  最近补充（2026-11-05，同参数不同终态）：清理plan把同一volume-inspect argvSHA误当仅一intent，原journal实际同时有create前不存在exit1和create后成功exit0，生成在任何输出/目标动作前拒绝。新选择器须同时核exact argvSHA、原exit0、stdoutSHA及唯一parsed owned对象，保原absence/failed log；不能因参数相同抹掉原观察或重发inspect/创建。
 
   最近补充（2026-10-29，descriptor与checksum ABI）：referenceCorrection初版把cfg.cacheDelivery指向的4774B descriptor JSON当成401078B checksum文件，在任何输出/写动作前assert拒绝。原脚本/失败保留；新派生按已固定probe-input checksum ref的path/bytes/SHA c2a00fa6891e3d72aa1154d92fff8a4febf57fcee5a6d58f32f3654616dadbd3定位，不以cache字段名或相邻文件角色猜内容。修接收器不能修改原checksum/descriptor来迎合错误schema。
 
@@ -40,16 +48,32 @@
 
   最近复发/补充（2026-10-29）：prepared.sources 有 keyed object 与 array 两种真实版本；可空 inputs/Labels/Tmpfs、字符串 imageID、原 stdout.safe 与追加 observedAtUtc 的宿主 receipt 也被误当相邻包结构。先列键、类型与条目数，再按已确认 ABI 读取；缺省 Labels 用存在性检查处理，不能在 StrictMode 下先访问缺失属性。生产 operation ID 必须取源码 canonical stack_ 前缀与32位小写hex契约，并与原 prepared op/plan 精确相等、校验路径 containment。bool、整数、字符串、内联 Linux 文件与外部路径分别校验；AST负向检查只分析实际执行源，不扫描测试断言自身或把 pruneUsed:false 当命令。原失败和原证据字节保持。 本轮Origin guard纠正：先在同一输入运行实际失败guard并保存字段差异，不能仅发现optional Labels就判其为唯一根因。实际首先失败是RepoDigests基线取自system/df摘要（3项各1），而原已批准完整image inspect与实际恢复为2/4/2且全部13身份精确；新receiver只从immutable原full inspect取完整expected集合，不adopt当前快照。摘要可供容量判断，不能代替完整身份基线。
 
+  C12前补充（2026-11-05，进度JSON）：sdkFixtureInDind实际位于localResources，根级值为null，直接GetType产生非终止错误；改根键→嵌套键/类型和显式null检查，ErrorActionPreference=Stop。失败没有Docker/目标动作，不把后续成功探针掩盖原投影错误。
+
+  同轮复盘草稿的结构自检又先假定Root新增主题仅在列表尾，实际在首项；再误猜parent类型主题索引13而实际20，两次均在新输出前assert。旧草稿/快照保留；只读键与diff-path投影后，显式证明Root原六整项以原序保留在新尾，并要求parent精确两个追加路径，不对任意数组重排或放宽。此为草稿合并器错误，零tracked与目标写。
+
+  同轮草稿自检补充（2026-11-05）：复盘增量器把根25主题数组当append-only列表，遇第24项内部追加时assert，尚未打开新快照。保首次失败源SHA与原输入，改根数量/前24项逐typed精确后只递归最后主题，其内列表仍严格prefix后允许尾增；新safe delta验证只一字段变化。草稿文件与目标业务分离，不借修复复盘重跑任何业务。
+
+  最近补充（2026-11-05，可选字段与真实内容类型）：notice.status.content实际为已解析对象，先.encode导致AttributeError；未授权scope的nil authorizedAt被omitempty省略，直接下标又KeyError。先投影键/类型，逐typed核真实policy/notes，使用已核合同的get判断nil。JSON null不可GetType；空VolumeOptions对象也不能从格式化显示推成null。异构旧复盘条目未必有failedPatterns，合并器须保全部原字段、先核类型再建自身列表，不能边猜schema边覆盖原件。以上失败均未重放check/prepare或写目标。
+
   最近复发/补充（2026-11-05，081真实ABI）：IPAM.Config实际可为null，旧服务创建器按list遍历在首个写动作前失败；新接续仅将该精确字段的null解释为无声明子网，其它非list拒绝，原失败保留后只续未发资源。正式080 check的latestVersion实际带v前缀，HTTP200已成功，不能因旧无v断言失败重发check；新只读接收器绑定原body/状态及同一持久结果，dry/apply的targetVersion仍按原无v契约。相同文件的E:/与E:\写法须各自校SHA、resolve及samefile，不能只因字典path字符串不同误拒，也不能接受另一处同字节副本。原workerSourceRef若指向后来变化的工作区，只能从已绑定原执行载荷恢复精确原SHA归档，不能改baseline或用当前worker冒充原读数。
+
+  最近补充（2026-11-05，运行版本与HTTP状态）：同一invite接口在legacy125为ready，固定140为connection_ready且connectionStatusCode=ready；080就绪observer套旧条件曾误拒，独立v2按真实driver字段及邀请码格式验收。正式073 latestVersion保留v前缀；HTTP200既成事实不得因旧无v断言重发。未创建full-stack时GET合法404，handoff只复用原raw并续未发state尾。请求包装在getresponse后须先保存状态/headers，再读有界body；202后的超长/断线不能使accepted身份丢失或自动重POST。
 
   最近复发/补充（2026-11-05，restore重建与有序配置）：真实restore202同job已成功后，Compose会force-recreate目标pair；自动Hostname、精确replace标签、原声明environment_file标签省略及唯一Env键值不变但原序改变，使旧“Config全不变”夹具误拒。独立谱系必须绑定同job/旧目标与创建窗口，明确记录仅获准的两目标差异、原/新完整Config与ordered Env指纹，并锁住实际新Config/HC/Mount原序；回投只证明差异完备，不声称原数组未变。其它目标、镜像、挂载和所有非目标仍严格，原失败与raw保持；后续只读接收，不重发restore。
 
+  最近补充（2026-11-05，有序Bind与creator差异）：已接受目标recreate后用sorted Binds冒充相等违反数组规则。新谱系逐项把实际新Bind索引映射至唯一完整旧声明及本次rendered索引，保原/新有序指纹、rawExact=false和BindsSnapshotEquivalenceClaimed=false，后续只锁新原序。不能把073源的Compose5.5推给独立080夹具；后者真实cold/current均2.27，先前推断已撤回。此为明确目标的声明派生，非目标及其它数组继续原序严格。
+
   最近复发/补充（2026-11-05，存档路径与运行日志）：真实reader以配置根为基准返回Saves/<save>/<member>，旧恢复checker少Saves/而把五个完全相同的备份hash误报missing。须从原plan/active SaveXML定位严格完整路径，逐member唯一并精确核hash/角色；不能任意suffix搜索。Panel重启快照还把ErrorLogs/SMAPI-latest.txt当不可变游戏数据；只读证明原前缀SHA完整保留、权限/归属与同game运行身份不变，新增固定INFO行仅报告类型/hash；所有存档、Mod、session、metadata与其它文件仍精确。此为一份具体运行日志的追加证明，不豁免整个目录或任意日志。
+
+  最近补充（2026-11-05，内容reader合同）：将metadata默认读取上限套主SaveGame XML会在任何live读取前拒绝；主存档使用既有stable reader的显式128MiB界限，manifest仍保原小上限，只取精确active主文件。两份官方Mod manifest使用UniqueId而非UniqueID，原五项raw hash全相同却误分类；按Go encoding/json的属性大小写语义派生metadata索引，保原receipt/执行worker归档，不改Mod或当前文件作expected。
 
   最近补充（2026-10-29，fresh inspector真实输入）：固定Auth已按精确root digest加载，配置镜像mirror alias却未在本地命名；原readonly inspector对该alias返回NoSuchImage。配置引用须按runtime allowlist验证，已加载内容另按固定digest/platform/正式OCI验证，不能为满足夹具而补tag/pull。生产新世界env没有COMPOSE_PROJECT_NAME，依据原201世界ID、生产目录/project label、service及registered GAME_DATA_VOLUME闭合身份，不补env键或把构造的容器名当authority。Panel可无compose.service；取可选label先核存在并在断言前保存最小事实。原World/Start和失败inspector保留，新显式readonly接收器通过后只续未发阶段。
 
   最近补充（2026-10-29，脱敏后的typed ABI）：shared.safe按password/token键名替换值，连VNC的长度/布尔元数据也变成字面字符串[redacted]；另一预检把live provision-token与已脱敏记录全比，在任何删除前误拒。先核真实持久类型和原serializer，再以相同明确投影比较。仅原201/env绑定的唯一GAME卷、固定key、saved字面[redacted]及live32位lowerhex允许该表示处理，其它记录字段严格；current值仅存标明算法的SHA，originalTokenRawBaselineUnavailable=true/tokenRawEqualityClaimed=false。VNC原typed元数据无法从masked值还原，须保留原字符串并以封存源数据流、原managed0、唯一changedKey和intent/readback env hashes验证，不伪补原bool。预检失败仅输出field/type/hash，避免deepEqual异常dump原秘密；原失败、输入、env不改，不重做VNC/World/Start。
 - 最近补充（2026-10-28，OCI层级与平台形态）：只读checker误将合法direct platform root当index，另把加载后的Docker image ID与build config ID硬等，均执行前拒绝且无helper。先核原root/platform/config descriptor bytes；direct/index按真实media type分支，允许ID只取已证明的三层唯一集合，容器身份与完整OCI另核。不得扩大到任意当前ID或用版本tag代替内容身份；复用已验证的candidate identity工具，禁止在新探针重写层级假设。
+
+  最近补充（2026-11-05，OCI图与执行客户端）：归档可能有多份metadata相同blob，不能要求全归档仅一个config；只由已固定root的可达descriptor图逐SHA/size验真。actual Config.Image可为可信alias，须由真实Panel的Docker26.1.5/API1.45 inspect(alias)及inspect(Container.Image)闭合同固定root/RepoDigest；outer29 --platform所得不同ID另记，不能据此放宽生产default-ID强门禁。原只读拒绝保留，不补tag/pull或改原OCI。
 
   最近复发/补充（2026-11-05，Docker29/Windows表示）：Auth的config.digest不是该daemon实际image.Id；按原OCI root/platform/config关联及实际native inspect分别记录，不混称Engine ID。按@digest拉取也不保证配置tag已命名，先核实际引用及已加载固定内容；曾补拉080 tag后才确认原configure本已本地tag，此次额外拉取只作无内容变化的历史事实，不宣称修复必要步骤。negative夹具根DB选择须限定原/data根，不能因归档内updater backup同basename误拒；原非空WAL/SHM整组保留。已accepted create后如Mount.Source以原Windows路径返回，需由原request、samefile和完整组SHA闭合同源；Docker合并显式Env覆盖的顺序不可凭镜像默认顺序猜测，锁实际新Config/Env原序后只续同ID未发start/rm，不能重create或放宽现有容器数组比较。
 
@@ -59,7 +83,11 @@
 
 - 最近补充（2026-11-05，离线生产合同输入）：SDK clone夹具用了32hex staging名，实际生产及已编译原source只接受24hex，首次clone在volume/helper前拒绝；保留原空owned卷/请求，以新24hex计划仅续独立新目标，真实clone/5文件注入/inspect通过，不冒充boot或ABI。原game绑定还实际采用HC.Mounts而非Binds，Compose5.5与2.27创建label/有序配置不同；首次bind前读数拒绝未写，后续已接受recreate只能只读派生新目标，不重bind。离线Inspector的cap-drop ALL helper不能因UID0就假定能读所有0600，原整data指纹在Go前拒绝后已清理；后续限定真实所需4文件及一致DB/pending证明，不造文件或放开cap。适用于临时验收工具，生产严格校验不放宽。
 
+  最近补充（2026-11-05，Nginx只读helper）：数字0:0/cap-drop ALL不保证默认worker101的chown/initgroups可用；实际feed create已接受后退出EPERM。任务探针须证明真实前台HTTP/TLS而非nginx -t；master_process off也不等于daemon off。后续原feed又因默认client_temp位于只读根失败，独立配置仅把五temp_path放入已声明/tmp并固定daemon off，真实严格TLS200后才续已诊断目标；原create/退出/失败保留，不重建资源或降低TLS。
+
   同日补充（current只读reader原生测试）：新增native夹具把Client工作目录传空，在production reader create前被既有守卫拒绝；v3原205 pass及该失败保留，改为Linux t.TempDir后只续current10项，真实固定140的owner1000/0600无cap拒绝、最小DAC_READ_SEARCH读取成功、取消时精确helper/自动卷清理和原权限/内容保持全部通过。Unix权限不能由Windows或fake证明，目录契约直接由native测试在边界构造。只读closure误猜docker top的GNU ps参数又退出非0且stderr缺失，原因未定；改默认top在内存两次证明0writer，不重Go。后续原生观察须保存stderr并先核实际子进程工具能力。
+
+  最近补充（2026-11-05，Linux测试与exec挂载）：Windows误选/proc FD、os.O_ACCMODE或listxattr测试，均只得环境错误，不能改Linux worker迎合Windows；改显式Linux/POSIX dispatch和隔离合成文件系统。首合成helper另缺已声明父目录，保失败/精确清理后仅修setup，xattr/metadata/五SDK文件注入及负例通过。离线Go helper的/tmp未显式exec，编译成功但测试二进制permission denied；新scope先核实际mountinfo无noexec，再以相同只读源/fixture运行，保原全Go日志，不把未执行Inspector当通过。
 
   最近补充（2026-10-29，native OCI导入metadata）：一次已成功的073 cache load后，原postcheck只在固定synthetic unhealthy073的Parent/Descriptor表示失败。原artifact index的3项annotations与导入后逐项相等，原Parent精确指向healthy root而导入后为null；Config/RootFS/ID/全部aliases及其它字段保持。来源以固定Engine源码、原fullinspect、原archive与实际postinspect的精确proof闭合，原rawExact=false、原failed/native load原样保存；新finish073仅0load只读接收。仅此固定对象/两表示差异可接收，不能忽略整个metadata、把摘要当fullinspect基线、重load或把rawExact改true。
 - 最近补充（2026-10-28，Docker进程探针）：docker top -eo args缺PID列而exit1；真实默认列已支持，改bare docker top并仅在内存判断SteamCMD，不打印或落盘可能含密码的完整参数。另误将原世界server名用于fresh daemon，inspect返回不存在；先枚举该专属daemon真实容器并核归属，再以确切名称读取，不能跨夹具套名称。原两个Steam任务终态和新请求ID独立保留，不因诊断失败重发动作。
@@ -67,9 +95,15 @@
 
   最近复发/补充（2026-11-04，pwsh7/只读检索）：在frontend工作目录查询backend，以及 `rg --files scripts internal`、猜测不存在的 saves_handlers.go，均exit2且零业务写入。改完整捕获真实库存及退出码后在内存限量，已确认叶子先Test-Path；重复规则落实为忽略目录的 search-confirmed-file.ps1（workspace containment、唯一库存成员、现存叶子和单文件literal rg守卫），不再靠猜路径。080探测的只读投影又先索引可空Labels，随后把current.images keyed object与base无images误当同一数组，均在API前失败；先键/类型/存在性，再取current.images.panel.archive真实FileRef，并逐项核SHA。沿用既有库存、typed ABI与退出码规则，原失败保留。
 
+  C12前补充（2026-11-05，只读源码）：SDK诊断误猜game_integrity.go返回rg exit2，实际成员为junimo140_game_integrity.go；后续只消费完整库存精确成员，零业务动作。此为工具路径错误，不把真实SDK raw输出产品缺陷归作命令失误。
+
+  最近补充（2026-11-05，任务库存与同源路径）：忽略目录只加--hidden仍缺任务脚本；另只规范化inventory一侧而未规范Join-Path结果，均在读内容前拒绝。完整捕获rg --files -uu及exit后，对库存和请求路径使用同一分隔符函数，再核唯一成员与现存叶子。旧scope081.py猜名exit2须从真实import定位scope073081.py；保留失败，不将路径字符串修正扩展为资源身份或元数据归一化。沿用search-confirmed-file.ps1和AGENTS库存规则。
+
   最近复发/补充（2026-10-29）：目录增长后 inventory 又混入同名 synthetic 后代并截断。精确 parent+leaf 过滤后再全局限量；未来产物先 Test-Path，稀疏覆盖包以入口真实 base/manifest 路径为准。JSON先键/类型再字段投影，不能把数组的 SyncRoot 等对象属性当条目；长文档和库存分开读，截断只补缺段。原生命令完整capture后立即保存exit，再投影内存；stdout/stderr ErrorRecord先ToString，不序列化无关对象树。
 
 - 最近补充（2026-10-28，默认矩阵与真实integration夹具）：795候选在纯health Auth integration失败，Driver已注入legacy125而辅助赋真实ID循环仍读Builtin140，导致旧Auth候选保留合成ID，生产强ID检查正确拒绝；回滚超时由测试刻意timeout模式触发。仅同_test.go统一legacy矩阵并删未用import，预算/断言/生产均不改。首轮本地复验又在Dockerfile APK冷下载超原2分钟而未进入Auth断言；先只读确认0资源/仅原alpine，再独立有界预热精确FROM/RUN层，校归属仅删owned预热tag留cache，新attempt实际15.85s全部通过。默认变更须同时审计带integration tag的辅助fixture；依赖准备与业务预算分开，不能把setup超时误判产品或直接重放未知测试。
+
+  最近补充（2026-11-05，离线编译前置）：固定runner自身既有任务label先被误拒；下一scope已接受两cache后，workspace overlay又不在受限evidence映射根，helper尚未create。独立tail保原失败，核固定base标签来源，将已绑定overlay按原字节复制至批准树，并在任何create前审完全部bind；仅复用精确两已接受cache发未发helper。实际无网络/socket编译及helper/两cache精确清理通过，不能凭当前卷差集授删。
 
   最近复发/补充（2026-11-04，081发布/API夹具）：旧CI用Alpine冒充推荐140并预建空source，固定digest及existing-source克隆校验正确提前拒绝；现供应固定真实140、保持fresh source不存在，清理由精确cache create receipts/生产typed intent绑定。RootSDK缺Alpine时只导入已验host同imageID副本，0pull；backend-only binary无前端index时收窄本地repro为安装HTTP合同，生产前端断言保留；不支持的0.8.1-test-only版本同步500/无job，改受支持0.8.1并保留test-only文件名/label/receipt。Windows write_text生成fake SteamCMD引入CRLF导致127，改显式LF bytes，先直验exit5/InvalidPassword再发API；CI heredoc本为LF。080隔离probe的internal桥host端口45秒不通而容器healthy，保留原timeout/精确清理后改唯一同网Python helper访问真实HTTP，并在清理前保留logs。41861232380的旧事务修复fixture仍声明140却供应125 FIFO且无完整setpriv，180秒只读观察误早于生产20分钟就绪/10分钟停服预算；原状态rolling_back不作终态失败。先独占native证伪，再补140 FIFO/UID权限及util-linux，以真实writer回执和单次public repair同ID终态证明；observer新增身份漂移拒绝回归并覆盖完整预算，不缩生产时限。以上均为执行夹具纠正，不把产品CredentialsRequired缺陷或预期负向守卫记作执行失误。
 
@@ -84,15 +118,21 @@
 - 最近复发/补充（2026-10-28，文档补丁锚点）：组合四份发布记录时猜测docs06标题而apply_patch原子拒绝，已逐份只读确认三份前段也未改，再读docs06真实标题后应用短hunk。沿用先读当前精确锚点的规则，不能根据相邻文档推标题，也不能把前段看似有效当成部分已提交。最近复发（2026-11-05，081收尾）：手抄Notebook整行漏掉中间既有短句，多文件补丁原子拒绝；只读status和精确内容确认四份均未改，取当前完整行后应用短补丁。沿用既有唯一边界/真实锚点规则，不把前项看似有效当部分成功。
 
 - 最近补充（2026-10-28，Go fixture批量适配）：AST工具预设7个fixture同用UpdateEnvFile，真实为5个os.WriteFile与2个未写env，写前计数断言panic/exit1、零文件修改；改先只读库存节点，再在7个真实Install调用前补明确模板。另文本替换误改限定的sjconfig.InspectRuntimeStack、恢复后测试import未用，均在编译前/编译门禁纠正；限定selector与裸ident用AST区分，适配后gofmt并定向编译，312项回归通过。不能按业务语义猜初始化形态或把文本替换当类型安全变换。
+
+  最近补充（2026-11-05，mirror纯测试签名）：替身为显式class method设置side_effect却漏self，首测试exit1，零业务动作；按真实调用接受显式flow参数后八项通过并保原失败。mock须复制实际函数签名/绑定方式，不能因替身错误降低生产断言或重跑已接受业务。
 - 最近复发/补充（2026-10-28，精确路径与引号）：后端恢复追加未库存client.go、fresh准备追加未库存install.go，分别被Test-Path/rg退出拒绝；均未业务执行。先取得真实文件清单再Test-Path，后者不是猜文件的许可。fresh探针还把含引号Go switch模式按反斜杠嵌PowerShell而ParserError，改简单逐项rg-F/精确行段，复杂模式用外部脚本；沿用既有禁止混用转义规则。
 - 最近补充（2026-10-28，初始化脚本诊断最小投影）：整段读取历史初始化脚本时夹带了测试登录字面量；后续此类脚本先只列路径、接口、字段名及状态码，不输出登录值。新fresh账号使用运行时生成的专用值，Steam输入只在内存传递，原请求敏感body不进入公开日志或证明。
 
   最近复发/补充（2026-10-29）：只读 native argv、通用 exception.message/stack 和后置host inspect也会携带非目标容器完整ID；私证同样须最小化。只落参数SHA/个数、错误类型及已识别文件名，非目标host container/volume/daemon标识只存SHA；完整值仅内存精确集合比较，任务精确目标仅留受保护private plan/native动作所需。先保存白名单事实再断言，不输出Env、凭据、玩家标识或全错误命令。
 
+  最近补充（2026-11-05，持久化前脱敏）：NetworkMode实际可能是完整网络ID，不能按“配置字段”原样输出。旧Journal还在private raw落了host docker-info完整daemon ID；经明确授权核原argvSHA/结果/exit/bodySHA后，仅该两条raw改为OSType与ID_SHA并保脱敏映射，不能把旧raw hash称为新正文hash。新host-info wrapper在任何持久化前投影并传播原exit；private权限不能代替最小化。
+
 - 最近补充（2026-10-28，source073Ready输入尺寸）：首份真实ready把旧证据重复展开684引用，wx后148442B，超过真实object loader的128KiB；事实复验成功不等于输入格式可接受。保留原件，另生成18706B/92引用compact版本，非references事实逐值相同，14必需roles与本轮raw保留、历史链按SHA连接、extendedReady只hash。080草稿还误把真实Web applyRequests单项POST body数组当计数，已按实际数组及confirm字段严格验证、保留失败且不重放动作。封存前必须用真实loader核类型、tuple返回、字节上限及引用图，不放宽上限或覆盖原件。
 
   最近补充（2026-10-29，collector自身前置与显式role）：final file-only check会读取自己的prepared.safe.json，未封source manifest便检查导致FileNotFoundError；另有未执行helper缺AUTH_COMMIT定义。先按真实依赖封source-only prepared、核独立import和全部来源引用，再check-only；source prepared不声明runtime/acceptance成功。managed receipts实际在parent证据根，新fresh scope不能误拒这些原件或泛放行parent；按本次8个成功slot的精确path+SHA、script/action/run和ownership/终态逐一绑定，原failed observers继续留作context。所有原失败保留，只有完整实际输入检查通过后才允许wx唯一结果。
 - 最近复发/补充（2026-10-28，精确工具及只读投影）：NVM与bundled Node同时在PATH时，Get-Command node.exe -CommandType Application返回数组，.Source不能直接作可执行路径；改已确认单一绝对路径并版本探针后语法检查通过。旧fixture审计另复发宽New(检索截断与语句式for后接管道ParserError，均未业务执行；改精确构造器锚点/现成cmdlet和独立脚本。同轮 Get-Command wsl.exe 也命中 System32 与 WindowsApps 两项，精确可执行守卫在运行前拒绝；改已验证 System32 绝对路径。嵌套 foreach/if 审计载荷又因括号缺失而零执行，改独立 Python 脚本后17份输入SHA全通过，不重放原内联形态。继续执行AGENTS既有scalar路径、全局预算和循环不接管道规则。
+
+  最近补充（2026-11-05，Windows native wrapper）：Get-Command同时得到docker.exe与extensionless wrapper，须验证绝对候选PE/SHA，仅同canonical路径及同SHA可去重，不能任取first。Run-Exact的$Python switch又按PowerShell大小写不敏感规则遮蔽外层$python路径，首native前拒绝；改$pythonExecutable/-UsePython，并从实际AST调用两分支进入原native helper，真实只读Python/Docker-info均0，审计16包装器同名冲突。静态parse和邻近mock不能代替真实callback。
 
   最近复发/补充（2026-11-04，子代理只读 Node Compose 投影）：未先探测工具就猜测 C:/Program Files/Git/usr/bin/tar.exe，spawn ENOENT，零业务操作。改用已验证 Python 的 stdlib tarfile 读取归档，未继续猜 tar 路径；沿用既有精确可执行路径与版本探针规则，工具来源不能从 Git 安装目录命名推导。
 
@@ -109,6 +149,8 @@
 - 最近补充（2026-10-28，候选超时测试虚拟时钟）：candidate40635176841在holder-wait timeout用例ticks4失败，未构建或推送镜像；Bash特殊SECONDS随setup真实时间增长，使deadline从30变31。测试先unset SECONDS再作为普通变量由mock sleep唯一推进，保留严格ticks3/所有安全断言，并加入setup跨秒回归；Linux22项与ShellCheck通过，生产观察函数未改。
 - 最近复发/补充（2026-10-28，新恢复工具AST探针）：内联Python -c跨pwsh反斜杠引号导致零执行SyntaxError，改独立check-new-attempt.py后13份Python AST及PowerShell/行为审查通过。沿用复杂Python逻辑写任务脚本的既有规则，不继续拼多层引号。
 
+  最近补充（2026-11-05，只读载荷复发）：长apply_patch的JavaScript嵌套引号曾在工具执行前SyntaxError，须核零文件后用无冲突载体，不在坏载荷上续拼；raw载体也必须排除反引号及插值序列。Notebook草稿又用pwsh内Python -c携带多行exec/字典引号而SyntaxError，零文档/目标写；现改notebook_merge_auditor_v1.py参数化mode/行号并强制完整行/字符预算。生成remote worker在journal/native前先本地compile；HTTP字面CRLF以AST解析字节验真，不能从JSON渲染反斜杠猜源码。
+
   最近复发/补充（2026-11-04，pwsh7/Posh-SSH只读诊断）：JavaScript字符串承载Python时，SQL引号的反斜杠被外层消费，远端编译报SyntaxError/exit1，数据库未打开。改用SQL参数占位符和独立参数值后，仅续同一只读查询成功。Base64只保护传输，不验证编码前的源码；发送前核对最终载荷的引号契约，错误输出只投影类型/状态，不整段回显载荷。
 
   同日补充（2026-11-04，子代理归档 AST 路径分类）：扩展名正则经 JavaScript 字符串承载时丢失字面点号，把 `push` 等词误标为路径；未按错误输出读文件或执行命令。改用 `endswith` 精确扩展名分类，并核对真实库存成员后再消费路径。沿用 AGENTS 多层转义与库存规则；适用于源码归档/审计分类，输出看似路径不能代替库存证据。
@@ -121,13 +163,25 @@
 
   最近复发/补充（2026-11-05，pwsh7只读证据）：长目录库存/合并源码再次被工具截断时，不据截断内容宣称已读；使用完整捕获及原exit，再在内存投影精确文件/短段，任务reader同时强制80行/9500字符。猜测路径Get-Content失败曾被后续成功掩盖，包装须ErrorActionPreference=Stop且先验证真实库存。混合PSCustomObject与原生文本并立即exit曾使自动formatter漏显示对象，改为单一显式JSON形状后再执行原生命令。固定代码封存清单若误包含可变pending错题本，须保留原manifest与不匹配，单独核全部固定源未变，不能回滚pending内容伪造全匹配。恢复上下文后再次凭43行读取发布文档，实际9922字符超过预算；后续长期文档必须经已验reader发送，不能绕过字符前置检查。另误猜updater/full_stack_runner.go两次rg失败并被后续成功掩盖，实际文件在driver；改完整捕获rg --files后精确定位，原生失败须立即保存和传播，不复用猜测路径。
 
+  C12前补充（2026-11-05，长期文档字符预算）：一次65行实际13547字符，绕过现有read-doc-section081守卫，行数未超并不代表输出有界；原截断不作已读，随后仅以guard读取精确64–79段。同轮又把docs09的72–78段和RED/GREEN JSON放同一exec输出，虽字符未超仍违反独立文档读取；剩余长期文档一call一doc，不与源码或JSON合并。继续执行行数与完整字符双前置，不绕过reader按经验估计。
+
+  最近补充（2026-11-05，post-tag草稿）：normalizer长段及冷态Compose标签投影超过可用context时，原结果不作已读；只补缺段或同SHA输入的key存在/计数/布尔。Notebook本次检索使用独立locator完整保存rg stdout/exit后再限量，参数化auditor在输出前限制最多80行/9500字符，常用块再留7300字符余量；不合并长期文档，不以native0冒称内容齐备。
+
   同日补充（计数、聚合guard与root路径）：CI只读投影先手估5条succeeded观察，原18行实际4条；按解析stage计数后封存，不把观察数当写次数。RootSDK首聚合identity guard失败且0Go/cache写；后续逐字段实际全相同，原原因仍未定，不能凭猜测归因时间精度。v2只按既有规则对唯一Destination、同数量的effective Mounts完整对象排序，其它typed/数组仍严格。TCP审计误把声明outputRoot当foreground attempt子目录，带尾分隔符的子路径guard只读拒绝；核实际config与receipt.parent后改读准确attempt，不扩大写/清理根。事实和对象契约先于投影断言，保留原失败，不重放业务。
 
   同日补充（复盘JSON产物）：手工append在首items后闭合根对象，后4条悬空；最终source索引只hash未parse，原803337坏文件与d386源码seal均保留。独立v2重建同5条并做schema/数量/JSON roundtrip，补件feeed6记录纠正，0产品/业务改动、不重测试。JSON生产者在封SHA前必须严格parse与schema断言，不能把可读文本或hash成功当结构有效；同次services.go/client.go猜路径及Delete+Add同测试路径的原子拒绝沿用既有精确库存、单路径单patch操作规则。
 
+  最近补充（2026-11-05，manifest fail-fast）：另一内联manifest构建器在解析错误前曾写出JSON null，原SHA及失败保留；新任务文件在独占新根写完整对象后独立parse/schema/引用核验再封存。源码patch误夹无关hunk时以原子拒绝为准，逐文件确认零修改后只发已核目标短hunk；不得把前项有效或hash成功当结构与整包成功。
+
   最近复发/补充（2026-11-05，时间与文本ABI）：ConvertFrom-Json将OCI created转DateTime后与原字符串比较会误拒；先核类型、按不变区域规范UTC，再与固定build date比较，原OCI bytes/label检查保留。公开Markdown回放受autocrlf影响时，只能对声明的公开文档做EOL-aware canonical核验并保留rawSHA，不将换行归一化用于私有快照、SDK或通用配置。Python文本与stdout都显式UTF-8；新runtime/Node子项目先核实际解释器和scripts，不猜路径、包脚本或跨夹具资源名。
 
+  同轮Notebook接收器首次把整份文件不得含U+FFFD当门禁，原错题正文已用该字符描述乱码，故在0写前误拒。保原失败，改为旧/新计数相等、只拒新增；baseline/index/source SHA、CRLF、原行subsequence和无新heading仍严格，随后native0按已审bfb4e字节应用。不能清除历史说明或把已有字面字符当本次编码损坏。
+
+  最近补充（2026-11-05，Windows Python诊断）：unittest原生错误文本及本次locator首轮stdout仍受默认codec影响，UTF-8文件不能代表终端通道正确。测试显式-X utf8，入口显式sys.stdout.reconfigure(encoding="utf-8")；保原乱码/正确UTF-8 capture，只用独立reader重投影同输入，不重跑Docker、HTTP或业务。locator与auditor现均固定UTF-8并先断言完整输出预算。
+
   最近复发/补充（2026-11-05，真实UI与动态accessible name）：更新入口初始“检查更新”会随异步状态变“升级中”，缓存第一次完整aria-label再getByRole(exact)会在同一唯一按钮仍存在时得到0；真实diagnostic先定位源码行及fresh DOM，再用已证唯一button/class和稳定aria片段定位，保留原失败。六图布局/主题断言通过仍不能证明业务状态正确，须同时对当前操作身份/目标/完成声明作语义断言并实际view截图；不因几何0错误把旧范围成功或manual_action当本次全部验收完成。
+
+  最近补充（2026-11-05，scope对话框就绪）：dialog shell可见不代表hook已收到实际prepared op；首帧仍有检查范围按钮，立即断言会误拒且0后台写。独立v3等唯一实际确认按钮，再核同op/hash、明确confirmationExpired=false及可确认；同原操作六主题/宽度视图通过，保v2失败与fresh URL/heading/button/viewport。不能用壳可见或首次DOM快照代替异步数据就绪。
 
 - 最近补充（2026-10-27–28，pwsh7/.NET原生客户端）：bounded pull假进程首轮真实exit0却因VoidTaskResult泄漏误失败；fake的failure OR flaky AND firstAttempt未分组又使exit7场景第二次变成功，仅给fake的flaky子条件加括号，生产安全断言不变。6场景实测保留原二进制stdout/stderr、argv和终态，所有owned客户端/独立哨兵已退出；超时先核精确PID/Path/StartTime/argv，仅停止本任务客户端并WaitForExit，停止不完整禁止第二次pull。冷恢复审查另发现release.json先出现再写完的race与输入打开晚于客户端启动的异常缺口：改为同目录wx临时inode写完、flush/fsync后原子无覆盖link，输入预开；异常也只按相同归属核验停止客户端并记录退出。CompactOS只读query曾在原exit102时先退出而未先保存输出，状态未分类；native必须先持久化双流/原exit再断言，不把观察/投影失败改判产品失败。
 
@@ -135,11 +189,15 @@
 - 最近补充（2026-10-27–28，冷备份工具与封存路径）：根fs源提取器误把/etc/os-release软链接当regular而exit1；审查还纠正了拟只STOP PID1的方案：实际/proc树的PID1为docker-init，先pause原inner，再仅冻结已核exe/父关系/运行bin SHA的dockerd/containerd，并在finally完整恢复；未执行错误信号。先按tar类型投影链接，仅提取allowlist内真实脚本，已有提取文件必须同SHA。源清单os.walk还跨入6个overlay merged运行视图重复计数；改为源清单与GNUtar统一one-file-system，只保留这些mountpoint目录并证明持久来源已覆盖，不丢未知持久挂载或同device bind。验证器补齐独立inode被错误合并硬链、额外/冲突ACL及同数量mount替换的拒绝，正例及三轮分别11、8、3项损坏负例通过；5个运行态socket按精确path/type/dev/inode/owner/mode小policy绑定例外，不伪造内核连接。恢复前seal检查又误设flat目录，原241项实际含saved-checkpoint-tools后代；仅允许精确root下canonical relative descendants，逐祖先拒绝symlink/reparse/ADS/traversal，保留regular size/SHA/241及前后stat稳定。修正后独立全量通过，原seal不变；保留失败receipt并仅续未执行下游，不重import/create。
 - 最近补充（2026-10-27–28，冷恢复API默认值表示）：旧outer停机重启只有Dns null→[]，精确create201后只多OomKillDisable null→bool false；官方adaptContainerSettings会把nil OomKillDisable设false，仍启用OOM killer。随后6个inner的差异只有Dns 6项、DnsOptions/DnsSearch各4项null→严格空list，Config/Image/bind保持精确。分别用outer/inner专用等价函数，只对明确存在的已批准键规范化；OOM true、数字0、缺键以及DNS非空/false/0/其它字段类型值不能被泛化豁免，非空列表保持原样。9项OOM与11项inner行为检查通过；保留rawExact=false及原失败，另报显式维护等价flag，sealed/spec原值不改。一次fresh完整复核通过后只发从未执行的start；原policy有1个unless-stopped/5个no，daemon release本身可自动启动原同ID，必须在三root与keyfiles验证后明确批准冷启动，不能以未显式start宣称无进程运行。DNS/默认值表示变化不等于数据损坏。
 
+  最近补充（2026-11-05，已接受网络与部署默认值）：Docker29 network create实际Options还含enable_ipv4=true/enable_ipv6=false；首次接收器只有单ICC假对象，在create0后误拒。独立tail绑定原ID/intent，仅准确三项typed Options；连接后Status.IPAM的唯一子网两计数只准本次endpoint对应+1/-1，其余metadata/原StartedAt/RestartCount严格，不重create/connect。新标准Panel另有Devices空list→null及NetworkMode声明名→同已接受网络ID；首diagnostic漏后者不能称唯一根因。实际原render与endpoint逐项绑定后锁新完整HC，递归symtable补齐resolved全局，8pure/只读尾0后才封实际producer，不泛化其它默认值。
+
   最近复发/补充（2026-10-29，快照接收语义）：普通Hashtable重建后字段逐项相同，却因 ConvertTo-Json key枚举顺序不同造成整体hash误拒。实际OLD逐字段diff0，production仅根 observedAtUtc 为每次采样元数据。局部接收器递归以Ordinal对象key无序比较，数组保留原序且typed值精确；仅明确根observedAtUtc另核UTC/单调/不未来，其余时间与Config/HostConfig原hash不豁免。effective Mounts仅在Destination唯一/数量相同时按Destination排序完整对象，不能排序其它数组。先存字段路径/type/hash差异事实，确认表示差异再派生新receiver；不得全局忽略metadata或把旧失败改成功。
 - 最近补充（2026-10-28，local volume冷文件系统时间）：实际inner 29.8.1/GitCommit464cd50c3d9e92877d56940ea160de6fca7bea23的[local_unix.go:212–218](https://github.com/moby/moby/blob/464cd50c3d9e92877d56940ea160de6fca7bea23/daemon/volume/local/local_unix.go#L212-L218)取os.Stat(v.rootPath).Stat_t.Ctim作为CreatedAt；[local.go:83–117](https://github.com/moby/moby/blob/464cd50c3d9e92877d56940ea160de6fca7bea23/daemon/volume/local/local.go#L83-L117)从既有volume根目录恢复对象。该值是inode change time，不是birthtime或metadata.db持久创建时间；新tmpfs inode和tar还原元数据会刷新ctime。5个volume的Name/Driver/Mountpoint/Labels/Options/Scope、metadata.db与全部数据、uid/gid/mode/xattr/mtime和硬链关系在离线还原验证中均精确，内核只读核对5/5 CreatedAt等于根ctime、0/5等于保留mtime；不能据此称volume create或数据损坏。仅声明这5项的冷FS边界，各新时间须落唯一成功extract原native时窗，并钉住首次cold inspect SHA和逐项CreatedAt使后续完全稳定；raw元数据不宣称全同，不重设原基线，不放宽非CreatedAt字段。
 
 - Bash行为回归的动态作用域（本地Alpine）：新holder等待测试首轮exit1且公共日志为空；observer的local session_hash与mock全局session_hash同名，mock Docker在赋值右侧解析到尚未初始化的local，set -u触发后错误被私有重定向隐藏。修复测试状态为fixture_session_hash，生产observer不变；失败钩子仅输出用例/轮次/安全reason，保留首轮空日志，不盲目重跑。预防：source真实函数的Bash mock状态统一使用fixture_前缀，避免与被测函数局部变量动态绑定；失败时要有不含原始私有对象的定位摘要。v2行为测试通过后ShellCheck指出SC2251：裸`! grep`不会因set-e自动中止，不能作为隐私断言；改为显式if/exit，并覆盖有禁止文本时确实拒绝，未用禁用lint掩盖。 最近补充（2026-10-28下载回归）：新测试在case中用单引号匹配字面量命令替换起始，ShellCheck SC2016令exit1；改成双引号显式转义美元符，保留所有操作符的eval前拒绝，原功能与11项负向通过，缓存v0.10.0显式shellcheck复验exit0、临时容器0。 暂存后cached diff-check才发现新脚本EOF额外空行；此前工作区diff不含untracked，故“diff-check通过”不能覆盖新文件。只删额外空行保留一个LF，后续新增文件须暂存后cached--check或明确no-index检查。
 - 异步Prepare等待契约（GitHub/Linux）：candidate40468438454的032 Web升级/回滚均通过，helper succeeded和073版本可见后立即grep未知holder的STEAM_INVITE_ENABLED=false失败，候选artifact为0。生产Prepare在helper健康接受后异步执行，032未预写新intent；版本可见不能充当迁移完成证明。原日志无env分支/阶段，保留“竞态或更早Prepare失败尚待区分”，不补造根因。正确方式为有界只读等待显式false与唯一安全Compose状态，每轮持续校验容器/会话/marker/Auth镜像；保存HTTP状态/原操作ID安全摘要和白名单阶段诊断，禁止重放apply或补写false。该类异步误判已有前例，预防规则已提升AGENTS。
+
+  最近补充（2026-11-05，preparing到已准备）：宿主handoff把确认后的完整identity合同套在预检尚完成planSha256的合法转换上而误拒，零目标动作。准备期间持续绑定同operationId/actorId/Panel/continuation，awaiting时再固定本次最终reviewed hash及有效期；确认后的hash仍不得漂移。三项纯合同同时拒错误身份、过期及已授权，原prepare不重发。
 - 真实Docker测试前置与结果缓存（GitHub/Linux）：`go test -tags=integration ./internal/docker` 被缓存为(cached)，随后资源夹具首ComposeUp退出1；旧测试仅t.Fatal(err)，丢弃CommandResult，日志不能证明旧runner具体底层原因。夹具固定alpine:3.20/pull_policy:never却未自行准备是独立可复现的前置缺陷。已给9条真实Docker调用-count=1、夹具有界inspect/pull/再inspect、保留原exit/timedOut/脱敏输出；空镜像DinD证实初始无镜像、pulled=true后业务断言及7场景通过。轻量门禁防缓存/空集合/漏选4父项，AGENTS提升外部状态不得缓存及夹具自备前置。未删业务断言，未把未知错误编造成registry故障。
 - 同类路径限制的多代理传播补充：Web回归子代理组合检索尾项误猜 `stardew_junimo/smapi.go`，rg退出2；独立库存确认真实 `smapi_mod.go` 后只用清单路径并先Test-Path。此前主链已发生路径错误，但该已生效限制没有显式传递到新子任务；已提升AGENTS，后续委派必须携带已确认检索根、先rg --files以及不得猜文件名的状态，主代理把同类新错误同步给仍检索的代理。
 - 跨仓库/路径复发（pwsh7）：将Panel的 `scripts/compatibility_matrix.py` 与Auth的AGENTS检索放在Auth workdir，首项rg退出2；官网审计另猜不存在的 `frontend/src/games/stardew/useStardewInstallation.ts`，同样退出2。两次均在写操作前停止，独立rg --files核对目录清单、Test-Path后只读真实路径继续。后续相对路径命令只涉及单一仓库，跨仓库使用独立exec_command，严格核对workdir；沿用AGENTS已有库存与单目录位置参数硬规则，不靠有效前项掩盖后项错误。 最近补充（2026-10-28自动tag）：run40548742682在checkout前执行gh run download未传--repo，CLI寻找本地Git仓库而exit1，身份guard/tag/提升均未开始，不是候选失败。先只读确认远端tag/Release/提升缺席，再显式repo获取唯一candidate/acceptance云artifact，补齐同源原bytes/版本/完整SHA/build date/digest、acceptance CLI、072/最老032矩阵及fresh干净同步main的完整守卫，才由等价本地controller创建并push同一annotated v0.7.3 tag。该user-token push已自动触发唯一promotion40551398256，未另dispatch；原自动失败保留、候选未重建，发布已确认。checkout前的gh必须给显式repo；源码修复及仓库外mock回归在073正式后纳入080准备，不为此改变073候选输入。
@@ -149,6 +207,8 @@
 - 复用候选补丁补充：为fresh门禁添加条件包裹时，两次长hunk手工省略原空行导致apply_patch拒绝；首轮零修改，第二轮仅前两份独立补丁成功，后续fresh补丁未执行。先读取当前精确范围，改成唯一首尾边界的短hunk，逐项检查实际diff与PowerShell/Bash语法；禁止把编排中前项成功当作全部成功。主代理已获通知将“结构包裹使用唯一边界短hunk，不手抄长段空行”提升到AGENTS预防规则。 最近复发（2026-10-27冷恢复）：输出字段补丁用了旧v1上下文，apply_patch原子拒绝且两文件均未变；按当前v2尾段重新定位后才修改。沿用唯一短锚点，不在旧载荷上局部续写。
 
 - PowerShell发布输入审计：把原生命令和退出码判断串在 `[bool](git ...; $LASTEXITCODE -eq 0)` 中导致 ParserError/Missing closing ')'，解析阶段零执行。立即用已验证最小exec骨架核对状态，随后把审计改为外部Python脚本，独立执行git并保存returncode；235个已确认输入的BOM/混合换行和独立目录ignore检查通过。预防：类型转换圆括号仅放表达式，原生命令/退出码先独立保存；复杂只读审计写任务脚本，不在属性值中压缩语句序列。 最近复发/补充（2026-10-27）：只读换行探针把语句式foreach直接接管道而ParserError，零读取/写入后以完整ForEach-Object骨架替换。冷恢复包装器另遇终止异常但LASTEXITCODE为null；统一ErrorAction Stop、try/catch及明确exit 1，null不是native成功。此类包装器检查必须覆盖PowerShell异常与native退出两条路径。
+
+  最近补充（2026-11-05，ps1与native结果）：用&调用ps1后读未赋值LASTEXITCODE，null判断曾进入exit null，工具exit0/空输出但下游Node核验未运行。将确切probe作为child pwsh -NoLogo -NoProfile -File取得真实native code，再核typed结果及最终stage证据。原生0不能替代缺失产物。Root、parent及本次Notebook locator又复发statement foreach/for直接接管道ParserError，均零native/目标执行；余下检索用独立Python参数脚本或ForEach-Object完整骨架，保原错误，沿用现有AGENTS禁止规则。
 - 并行补丁上下文：发布审计代理准备补充080专属升级矩阵时，主代理已在同一位置加入相同规则，首个apply_patch因上下文不符而拒绝，后续编排步骤未执行。先核对协作消息和当前文件，确认零修改后撤回重复编辑，只继续各自负责文件。预防：共享发布脚本的所有权变更先即时通知；同一文件已由另一代理接管时不继续重放旧hunk。
 
 ## 2026-10-26 更新中心改造工具记录

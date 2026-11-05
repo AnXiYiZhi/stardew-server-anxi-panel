@@ -149,13 +149,13 @@ test -x /game/StardewModdingAPI
 	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp",
 		"--label", "com.anxi-panel.smapi-metadata-helper=true", "--label", "com.anxi-panel.game-data-volume="+volumeName,
 		"--mount", mount, "--entrypoint", "sh", imageID, "-c", script)
-	result, _, err := c.runJunimo140Read(ctx, "read SMAPI assembly metadata", dir, c.timeouts.Ps, nil, volumeName, imageID, projects, args...)
+	_, raw, err := c.runJunimo140Read(ctx, "read SMAPI assembly metadata", dir, c.timeouts.Ps, nil, volumeName, imageID, projects, args...)
 	if err != nil {
 		return RuntimeSMAPIMetadata{}, err
 	}
 	values := map[string]string{}
 	hashes := map[string]string{}
-	for _, line := range strings.Split(strings.ReplaceAll(result.Stdout, "\r\n", "\n"), "\n") {
+	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
 		if key, value, ok := strings.Cut(line, "="); ok {
 			values[strings.TrimSpace(key)] = strings.TrimSpace(value)
 			if name, ok := strings.CutPrefix(key, "HASH:"); ok {

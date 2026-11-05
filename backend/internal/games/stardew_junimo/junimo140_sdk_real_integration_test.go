@@ -10,7 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -138,6 +140,41 @@ func TestJunimo140SDKPublicBuildRealOptIn(t *testing.T) {
 	if err != nil || !junimo140SMAPIIdentityVerified(metadata) {
 		t.Fatalf("production staging rejected the real current SDK: %v", err)
 	}
+	// Exercise the current-reader subprocess path too. These owned test volumes
+	// have no game/Auth holders; this is not running-game or SDK ABI evidence.
+	currentResources := func() []string {
+		t.Helper()
+		var snapshot []string
+		for _, args := range [][]string{
+			{"container", "ls", "--all", "--quiet", "--no-trunc", "--filter", "label=com.anxi-panel.current-runtime-read=true"},
+			{"volume", "ls", "--quiet"},
+		} {
+			output, err := exec.CommandContext(ctx, "docker", args...).Output()
+			if err != nil {
+				t.Fatal("current SDK test resource inventory unavailable")
+			}
+			entries := strings.Fields(string(output))
+			sort.Strings(entries)
+			snapshot = append(snapshot, strings.Join(entries, "\n"))
+		}
+		return snapshot
+	}
+	beforeCurrent := currentResources()
+	currentSDK, err := client.RuntimeInspectCurrentJunimo140SDK(ctx, dir, good.name, imageRef, image.ID, []string{project})
+	if err != nil || currentSDK.SDKFiles != 2 || currentSDK.SDKBytes <= 0 {
+		t.Fatalf("current reader rejected the real installed SDK: %v", err)
+	}
+	currentSMAPI, err := client.RuntimeReadCurrentPinnedSMAPIMetadata(ctx, dir, good.name, imageRef, image.ID, []string{project})
+	if err != nil || !junimo140SMAPIIdentityVerified(currentSMAPI) || !reflect.DeepEqual(currentSMAPI, metadata) {
+		t.Fatalf("current reader lost the verified patched SMAPI metadata: %v", err)
+	}
+	modHashes, err := client.RuntimeReadJunimo140ModHashes(ctx, dir, imageRef, image.ID)
+	if err != nil || len(modHashes) != 2 || len(modHashes["JunimoServer.dll"]) != 64 || len(modHashes["manifest.json"]) != 64 {
+		t.Fatalf("image-only reader lost the fixed Junimo Mod hashes: %v", err)
+	}
+	if !reflect.DeepEqual(beforeCurrent, currentResources()) {
+		t.Fatal("current metadata readers left a helper or automatic volume behind")
+	}
 	if after := string(run(good, "sdk-after", "check-sha256", sdkFingerprint, "")); after != before {
 		t.Fatal("production staging changed the installed SDK payload or ACF")
 	}
@@ -177,6 +214,13 @@ func TestJunimo140SDKPublicBuildRealOptIn(t *testing.T) {
 	// Preserve the actual SDK's ELF header while removing its program table
 	// and payload. Header shape alone must never publish a completion marker.
 	run(badSDK, "truncate-sdk", "restore", `truncate -s 96 /game/.steam-sdk/linux64/steamclient.so`, "")
+	beforeCurrent = currentResources()
+	if _, err := client.RuntimeInspectCurrentJunimo140SDK(ctx, dir, badSDK.name, imageRef, image.ID, []string{project}); err == nil {
+		t.Fatal("current reader accepted the truncated real SDK")
+	}
+	if !reflect.DeepEqual(beforeCurrent, currentResources()) {
+		t.Fatal("rejected current SDK read left a helper or automatic volume behind")
+	}
 	if err := prepareJunimo140GameMarkers(ctx, client, dir, badSDK.name, selected, time.Now()); err == nil {
 		t.Fatal("a truncated SDK with its original ELF header was accepted")
 	}

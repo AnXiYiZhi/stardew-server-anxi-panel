@@ -25,12 +25,12 @@ sha256sum JunimoServer.dll manifest.json`
 	}
 	args := append([]string{"run", "--rm"}, helper...)
 	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--entrypoint", "sh", imageID, "-c", script)
-	result, _, err := c.runJunimo140Read(ctx, "read fixed Junimo Mod identity", dir, c.timeouts.Ps, nil, "", imageID, []string{}, args...)
+	_, raw, err := c.runJunimo140Read(ctx, "read fixed Junimo Mod identity", dir, c.timeouts.Ps, nil, "", imageID, []string{}, args...)
 	if err != nil {
 		return nil, err
 	}
 	hashes := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 || !runtimeDigestPattern.MatchString("sha256:"+fields[0]) ||
 			(fields[1] != "JunimoServer.dll" && fields[1] != "manifest.json") || hashes[fields[1]] != "" {

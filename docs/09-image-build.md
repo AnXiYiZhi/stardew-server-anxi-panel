@@ -35,6 +35,7 @@
 | 新装冒烟 | 同一不可变候选的空Panel、health/version、未初始化状态及Panel重启。 |
 | SDK正常路径 | 旧SDK与实际SDK253均接受；实际ACF/库和源卷保持，SDK marker使用真实manifest；cached-SMAPI不重复安装但重验payload/刷新marker。 |
 | SDK关键边界 | 缺失/不完整ACF、错误depot/架构、link、ELF表/段越界或溢出、96B截断库拒绝；游戏固定build/核心hash/Content损坏继续拒绝，失败不发布marker。 |
+| 元数据命令输出 | SDK、SMAPI、固定Junimo Mod identity和游戏文件统计均从私有raw返回值解析；实际生产runner的公开CommandResult.Stdout保持为空。真实子进程回归覆盖unused staging和current helper生命周期、正常/错误帧及错误输出不泄露；真实SDK253与最终候选长链另行验收，不能以直接执行shell脚本代替该返回值合同。 |
 | SMAPI前置 | present/missing均先核游戏/SDK/运行栈；已成功dry-run后SDK缺失/不完整或游戏漂移时，apply复核拒绝且运行变更0；合法SDK253仍接受。 |
 | 权限/恢复/资源 | actor/operation/hash/scope仍严格；helper只在固定镜像和owned unused卷执行，恢复allowlist/取消及精确清理闭合；保留原失败与操作ID。 |
 | 运行中预检 | 真实运行源的保存/范围确认；瞬态保存写入可有界收敛，持续变化/损坏/取消拒绝且未授权前不执行停服；原容器/配置/运行选择变化仍拒绝。 |
@@ -67,6 +68,18 @@
 第十轮仍不得正式提升：只读审计确认已满足140的实例仍先被旧兼容入口判为 `legacy_full_stack_confirmation_required`；再确认会重复保存、停服、备份和重建。新增上述“已满足运行栈”专项，并由后续新提交生成新候选；仅在完整只读正证成立时跳过游戏迁移，未知或旧125保持原确认流程。该候选缺失073桥的真实负例已按预期在打开数据库前拒绝，DB/WAL/SHM不变且资源清理完成，但只属于该历史候选。未创建081正式tag、Release或提升正式镜像。
 
 无需迁移修复的本地验证已完成：同组全成员/实际镜像/游戏与SDK/SMAPI/Junimo/Control完整只读核验后，CAS绑定同一次成功Panel更新；每进程重新证明，旧持久receipt不直接跳过，新的预检会取消并等待reader清理。原staging仍requireUnused，current专用reader仅挂只读nocopy源、最小DAC_READ_SEARCH、数字0:0、network none和只读rootfs；accepted helper ID/固定image/自动卷唯一holder均复核后精确清理。Linux v3为205 pass及一项native空工作目录夹具失败，改t.TempDir后v4的10项current回归全部通过，含固定140实际UID1000/0600、无cap负例、取消和资源守恒；其余独立通过项未机械重跑。前端状态、25个Chrome场景和production build通过；390/1440截图经复核，本次080→081完成且保留主动重检，旧080成功记录不覆盖当前。31路径源码/测试/文档索引为 `release081-current-noop-20261105-cf7d2ccb/source-freeze-final-v1.safe.json`，SHA `d38629035d011d9701fcf6f6b72b01a94ecdbd16ceb9d3b7449a988e762a451d`。最终候选真实运行140 Noop与073/125 SDK253迁移仍为必跑待验项。
+
+第十一轮候选 `41945591074`、兼容 `41945591529` 均成功；提交 `8be70408cb87e0ff039ad8cefd5dd38bd4aa25e5`，固定build date `2026-11-05T01:01:23Z`，验证digest `sha256:33de8c60ca4167455003ed2770328ce9f6a8c37d5eb339f466cad956ca5b7e8e`，原证明SHA `9275cd69f63e96715b5204eea83b23badbcc8d3ade41eed30db146613d43231d`。实际CI的15组门禁通过，job持续1609秒，其中代码门禁733秒；080真实Web更新及同引用unhealthy回滚通过。完整原日志/制品及安全投影在 `release081-ci41945591074-summary-20261105-cf7d2ccb/actual-CI-summary.safe.json`，SHA `24f346352a694579551fd81e0ba373c852a14f75cc74095e1f89ae1312b4a726`。本轮缺失073桥负例也在打开DB前按预期拒绝并保持DB/WAL/SHM及归档字节，唯一helper已清理；仅属于该候选。
+
+同一候选的真实073 Web check、同ID dry-run、唯一apply均成功，实际新Panel为081/上述commit/digest且原125 Game/Auth保持运行。新Panel的一次范围准备进入awaiting_confirmation，服务端confirmationExpired明确false；在同一operation/最终plan内，唯一手动存档及同command的GameLoop.Saved完成后，原Game/Auth的PID、启动时间、完整Config/有序Env/HostConfig/挂载和所选存档身份均保持。真实浏览器在存档前后各验双主题×1440/390/360，共12组，确认按钮可用、无过期提示、无后端写入；安全回执SHA分别为 `cfaa46c13443b4429bad559c18b68f51ae4e4f9c15fff77c808721c2cffadcc9`、`6bac3c19477e0655cd0bf7de357b810c07c965152d9360bc4155a3d21e291300`。初版观察器只等dialog外壳而抢读hook首帧，失败原件保留；独立v3改等真实范围确认按钮就绪后才采样，不重发预检或存档。
+
+第十一轮仍不得正式提升：同范围唯一confirm接受202后，实际游戏组迁移安全回滚；顶层为failed_safe/shared_runtime_rolled_back，同子job的原始错误为“verify installed SDK runtime files: invalid installed SDK metadata response”。所有17项操作身份字段保持。回滚后原125/Auth实例恢复running/ui ready，outer从未停止或重启；只读检查未发现OOM，剩余容量仅记录回滚后值，不倒推峰值。根因安全投影在 `release081-bridge073-20261104-f68a/scope081-failure-diagnostics-failedsafe11-01/safe-failure-projection.safe.json`，SHA `ff7541482f38ea309571db4297f50a7dcd92b23fb839f2ceaa447b26aa72d2c9`。未重放confirm、prepare或recover，未创建081正式tag、Release或提升正式镜像。
+
+源码确认生产runWithEnvironmentRaw为了隐私将CommandResult.Stdout固定清空，仅第二返回值保留原始输出；新增SDK reader丢弃raw、解析空诊断字段，故真实迁移必然误拒。相同调用错误还影响SMAPI和固定Junimo Mod identity；游戏stdin统计统一显式读取raw。修复只调整这四个消费者，不回填公开stdout、不放松ELF/hash/资源校验。原脚本级与mock测试绕过了生产runner返回值边界；本次增加实际子进程runner回归及真实SDK253专项，修复提交须生成全新081候选，并重新完成真实073/SDK253迁移和已140 Noop验收。第十一轮证明与页面结果保留为历史证据，不代替新候选证明。
+
+生产runner回归已按同一冻结测试先RED后GREEN验证：旧8be四份消费者在staging/current SDK、SMAPI及image-only Junimo assets共5个叶用例失败，stdin统计和原本正确的game evidence保持通过；四处修复后为16 pass、0 skip、exit 0。完整Go JSON日志位于 `runtime-sdk-repair-20261104-cf7d2ccb/sdk-raw-output-fix-20261105-cf7d2ccb/{red,green}/go-test.jsonl`，原生终态SHA分别为 `d0c4b50119c32e2e8982ca6e2dcfe4b6cb9ba1e8300edf4168e006c3ca69c44c`、`dcedfe68fc256f00d56626562b0a4a76882cd89ca53e096662b0f19ec22885e9`。回归通过真实临时可执行文件和默认ExecRunner核返回契约；它不启动Docker或游戏，真实SDK及最终候选的运行链仍须独立验收。
+
+新候选准备期间，本机三个隔离outer在 `2026-11-05T04:27:23Z` 同时退出255，均PID0、OOMKilled=false、RestartCount0；当前Docker Desktop/WSL进程在同分钟新启动，具体触发原因未知。本任务未发Desktop重启。共同事件只读收据 `runtime-sdk-repair-20261104-cf7d2ccb/docker-lifecycle-interruption-20261105-01.safe.json`，SHA `f192eb81608d96a3c2bacd93d003ed0f11c8a1fce58bb419262fc2c10f54e0c3`。真实SDK专项尚未开始；RootSDK四卷和标准080两卷为持久named volume，可在绑定原归属与新生命周期后恢复。073夹具的data/DockerRoot为tmpfs，旧就绪与运行证据仅保历史；其GET摘要没有归档文件内容，不能用来追造数据，须从已封完整072 checkpoint恢复新夹具并重新通过真实Web桥073及后续链。该本机事件不改变远程生产服务器；候选代码CI可以并行，正式提升仍等待全部真实验收与清理完成。
 
 最终081候选workflow、正式workflow、唯一digest、实际条件矩阵/耗时及故障清理在完成后追加；本节不将历史候选通过项冒充最终候选证明。
 

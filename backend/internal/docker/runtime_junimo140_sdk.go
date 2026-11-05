@@ -129,7 +129,7 @@ func (c *Client) readJunimo140SDKMetadataWithScope(ctx context.Context, dir, vol
 		}
 		args = append(args, strconv.FormatUint(request.offset, 10), strconv.FormatUint(request.length, 10))
 	}
-	result, _, err := c.runJunimo140Read(ctx, "inspect installed Linux Steam SDK metadata", dir, time.Minute, nil, volume, imageID, projects, args...)
+	result, raw, err := c.runJunimo140Read(ctx, "inspect installed Linux Steam SDK metadata", dir, time.Minute, nil, volume, imageID, projects, args...)
 	if err != nil {
 		// CommandError normally retains stdout. Encoded binary metadata must not
 		// escape through errors or job logs.
@@ -140,7 +140,7 @@ func (c *Client) readJunimo140SDKMetadataWithScope(ctx context.Context, dir, vol
 		}
 		return empty, errors.New("installed SDK metadata inspection failed")
 	}
-	return parseJunimo140SDKMetadata(result.Stdout, result.StdoutTruncated, requests, previous)
+	return parseJunimo140SDKMetadata(raw, result.StdoutTruncated, requests, previous)
 }
 
 func parseJunimo140SDKMetadata(output string, truncated bool, requests [2]sdkELFRange, previous *[2]sdkELFMetadata) ([2]sdkELFMetadata, error) {

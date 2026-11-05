@@ -140,11 +140,11 @@ done < /tmp/expected | awk '{n[$1]++; b[$1]+=$2} END {printf "%.0f %.0f %.0f %.0
 	}
 	args := append([]string{"run", "--rm", "-i"}, helperArgs...)
 	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp:size=16m", "--mount", junimo140ReadMount(volume, projects), "--entrypoint", "timeout", imageID, "--kill-after=2s", limit, "bash", "-euo", "pipefail", "-c", script, "--", width, algorithm)
-	result, _, err := c.runJunimo140Read(ctx, "verify fixed legacy game files", dir, 11*time.Minute, strings.NewReader(input), volume, imageID, projects, args...)
+	result, raw, err := c.runJunimo140Read(ctx, "verify fixed legacy game files", dir, 11*time.Minute, strings.NewReader(input), volume, imageID, projects, args...)
 	if err != nil {
 		return RuntimeGameFileStats{}, err
 	}
-	parts := strings.Fields(result.Stdout)
+	parts := strings.Fields(raw)
 	if result.StdoutTruncated || len(parts) != 4 {
 		return RuntimeGameFileStats{}, errors.New("invalid fixed game verification statistics")
 	}

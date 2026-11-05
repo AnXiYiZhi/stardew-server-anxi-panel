@@ -1,5 +1,9 @@
 ## 2026-11-04 0.8.1 修复接手
 
+2026-11-05 真实迁移阻断：候选11的073/125共享组子任务因 `verify installed SDK runtime files: invalid installed SDK metadata response` 失败并回滚，原服务/专用Auth已恢复ready，不得提升该候选。`runtime_update.go` 的 `runWithEnvironmentRaw` 按隐私契约清空公开 `CommandResult.Stdout`，原始输出只在第二返回值；统一 current/staging helper 后，SDK、SMAPI、Junimo Mod 读取器仍解析前者，纯帧/脚本测试未覆盖生产返回契约。修复 `runtime_junimo140_sdk.go`、`runtime_junimo140_assets.go`、`runtime_smapi.go` 及 `runtime_junimo140_game.go` 的统计读取，私有 raw 只用于解析，不回填命令结果或日志，不放松任何 payload/镜像/卷归属检查。新增 `runtime_junimo140_raw_runner_test.go` 用真实子进程可执行文件驱动生产 runner：Linux 旧8be源码 RED 复现 SDK/SMAPI 的 staging/current 与镜像 Mod 五个失败，修复源码 GREEN 16 项通过、0跳过，命令公开 stdout 为空的契约保持。完整日志位于本次 `sdk-raw-output-fix-20261105-cf7d2ccb` 证据根。下一步完成真实SDK253新增current读取和新候选完整迁移、已140无停服Noop，不能复用候选11证明。
+
+环境续接：RED/GREEN 已终态后，三份隔离 outer 于 2026-11-05T04:27:23.74Z 同时 exited255/OOM=false，宿主 Docker Desktop/WSL 进程亦在该时间重新启动；RootSDK 真实 SDK253 opt-in 尚未发 Go。其四个原 named volume 与有效挂载保留，日志未发现磁盘满或只读文件系统，但这不证明卷内容完整。恢复只能按同一任务身份、停止后的完整 Config/HostConfig/原序数组/挂载基线和新的 StartedAt 另立执行 admission；最终 SDK/current 与候选长链均保持待验证。
+
 2026-11-05 Noop收口：`full_stack_current.go`复用driver完整只读检查，`junimo140_game_integrity.go`拆开验证与marker提交；Docker新增明确current-group读入口，原staging的unused guard保留。全组正证后`updater.RecordRuntimeNoop`复核实际Panel OCI并CAS同apply，保留原Panel终态/ID，不产生新授权或游戏事务。`CurrentRuntimeVerified`仅为此次检查凭证；每进程重新强验，成员/配置/owner变化失效，任何失败仍走原确认。GET仅做轻量凭证与local指纹检查。current helper采用RO/nocopy、数字0:0及DAC_READ_SEARCH，接受create ID后严格校验，独立20秒取消清理校验自身和固定镜像声明的自动卷。Linux聚焦与固定140实际0600读取/无cap拒绝/运行中取消/零残留已通过；新不可变候选实际无停服验证仍待执行，禁止把原C10或纯fixture作为最终通过证明。
 
 改动：SDK 采用实际 ACF/depot 和有界 ELF 结构检查，marker 记录真实 manifest；游戏固定内容校验保持。普通检测、140 预检、安装及 cached-SMAPI 快路径共用该契约。运行中存档读取有界等待稳定，确认错误分阶段，过期观测只在 GET 投影。
