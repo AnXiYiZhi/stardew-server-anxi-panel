@@ -48,6 +48,10 @@
 
   最近复发/补充（2026-10-29）：prepared.sources 有 keyed object 与 array 两种真实版本；可空 inputs/Labels/Tmpfs、字符串 imageID、原 stdout.safe 与追加 observedAtUtc 的宿主 receipt 也被误当相邻包结构。先列键、类型与条目数，再按已确认 ABI 读取；缺省 Labels 用存在性检查处理，不能在 StrictMode 下先访问缺失属性。生产 operation ID 必须取源码 canonical stack_ 前缀与32位小写hex契约，并与原 prepared op/plan 精确相等、校验路径 containment。bool、整数、字符串、内联 Linux 文件与外部路径分别校验；AST负向检查只分析实际执行源，不扫描测试断言自身或把 pruneUsed:false 当命令。原失败和原证据字节保持。 本轮Origin guard纠正：先在同一输入运行实际失败guard并保存字段差异，不能仅发现optional Labels就判其为唯一根因。实际首先失败是RepoDigests基线取自system/df摘要（3项各1），而原已批准完整image inspect与实际恢复为2/4/2且全部13身份精确；新receiver只从immutable原full inspect取完整expected集合，不adopt当前快照。摘要可供容量判断，不能代替完整身份基线。
 
+  2026-11-05 C12 补充（Windows PowerShell 7，收据类型）：RootSDK 的 originalAuthority 是说明文字，Tmpfs 也可缺省。把文字当路径、对空键调用 GetType、下标空 attempts 或把缺失 FileRef 传给 Split-Path，均在目标写入前失败。先输出键与类型并按源收据逐项读取。SQLite 根组存在空字符串键，普通 ConvertFrom-Json 退出1，改 -AsHashtable 或 Python。单元素 inspect 保持 -NoEnumerate。把 DateTime 强转文化字符串还曾误报冷角色已启动，现保持原时间字符串和 typed 对比。本补件自检还把混用单数和数组的 failedPattern(s) 当成统一数组，退出1且零写。按两种实际键分别验证原单项与数组追加前缀。相关预防已在 AGENTS 的 JSON 投影及时间规则落实。
+
+  同日补充（C12 真实收据绑定）：手输执行器 seal SHA 漏重复片段，check12-01 在 journal 前 exit2、0 POST；按 producer FileRef 原样重绑 path/SHA，只续确证未发动作。首次 active125 filecheck 把历史 Panel 替换前六角色行和当前 Scope IDs 混用，原 DTO 与当前独立全量行应分别保留并逐 ID 核验。Stop binder 的 `E:/` 与 Windows 绝对路径拼写差异先核 samefile/完整 SHA，再携带实际 producer 规范 ref；不能替换真实响应 `{ok:true}` 为推测 jobId，须以原 jobs census、唯一新任务与同 ID 终态闭合。
+
   C12前补充（2026-11-05，进度JSON）：sdkFixtureInDind实际位于localResources，根级值为null，直接GetType产生非终止错误；改根键→嵌套键/类型和显式null检查，ErrorActionPreference=Stop。失败没有Docker/目标动作，不把后续成功探针掩盖原投影错误。
 
   同轮复盘草稿的结构自检又先假定Root新增主题仅在列表尾，实际在首项；再误猜parent类型主题索引13而实际20，两次均在新输出前assert。旧草稿/快照保留；只读键与diff-path投影后，显式证明Root原六整项以原序保留在新尾，并要求parent精确两个追加路径，不对任意数组重排或放宽。此为草稿合并器错误，零tracked与目标写。
@@ -77,11 +81,23 @@
 
   最近复发/补充（2026-11-05，Docker29/Windows表示）：Auth的config.digest不是该daemon实际image.Id；按原OCI root/platform/config关联及实际native inspect分别记录，不混称Engine ID。按@digest拉取也不保证配置tag已命名，先核实际引用及已加载固定内容；曾补拉080 tag后才确认原configure本已本地tag，此次额外拉取只作无内容变化的历史事实，不宣称修复必要步骤。negative夹具根DB选择须限定原/data根，不能因归档内updater backup同basename误拒；原非空WAL/SHM整组保留。已accepted create后如Mount.Source以原Windows路径返回，需由原request、samefile和完整组SHA闭合同源；Docker合并显式Env覆盖的顺序不可凭镜像默认顺序猜测，锁实际新Config/Env原序后只续同ID未发start/rm，不能重create或放宽现有容器数组比较。
 
+  2026-11-05 C12 补充（归档根和可执行入口）：归档中 updater backup 与根 panel.db 同名，首次文件校验在241项哈希通过后误拒。按规范化归档根唯一选择 DB/WAL/SHM，保留非空 WAL 与嵌套备份。恢复工具也曾把两套 Get-Command git 结果拼成 Bash 路径，改用已核版本的唯一可执行文件和对应真实安装根。恢复校验沿 AGENTS 的根数据库和 Git Bash 规则执行。
+
+  同日补充（C12 资源归档）：Docker29 固定140 archive helper 镜像声明三处自动卷，旧程序只预计一处，首次在 create 前拒绝。精确验固定镜像和三处路径，用空的独立只读 bind 覆盖后一次创建，并证明零匿名卷；CAP_DAC_READ_SEARCH 可能由 Docker 规范化加前缀，先验实际 accepted ID 的完整安全合同再续原 ID。DockerRoot tar 合法 Linux POSIX 路径可含冒号，Windows 便携路径校验拒绝时不重归档、不解压；继续离线严格拒绝绝对/穿越/反斜线并验证原 payload 和 footer。
+
   同日补充（冷恢复与OOM默认值）：已发布一次的冷恢复被3个已存在DNS键null/[]差异挡住；独立六ID派生只接受明确空类型转换，保留rawExact=false、新完整HC并后续严格，不重publish。另一缺073负例已正确exit1却被启动时OomKillDisable false→null挡住；实际daemon能力false、完整其它HC严格，原创建HC仅有hash时用同参数从未启动的独立probe证明原完整HC，再只删除两已接受目标，未重start。新primary-v5在唯一start前保存完整HC/inspect，6项pure只允许有实际能力证据的typed false→null，DNS及其它字段仍逐typed严格；不能把原字段缺失、0、true或反向转换当作等价。
+
+  2026-11-05 C12 补充（中断恢复与冷元数据）：标准080 的同 outer Start 已接受，观察器被已证空 DNS 表示及旧运行服务动态网络端点挡住。只归因实际字段，锁新完整 raw，旧 Game/Auth 配置、Env 原序、挂载及冷状态仍逐项核验。旧073 导出前因唯一 Dns null→[] 退出2，0次 export。独立收据锁完整当前 HostConfig，纯回归拒绝非空 DNS、其它 DNS 字段与 OOM 差异，续发唯一 export 后结构/哈希和停止状态均通过。镜像 worker 实际退出0，观察器却误判 container:<registry> 继承的实际 Hostname 和无 OOM 禁用能力时的 false→null。重新只读核两 tag 与五个 feed 字节，按完整新身份清理原已接受 helper，不重放 PUT/start。
+
+  同日补充（C12 缓存和隔离路由）：官方 Auth 归档只有历史私有标签，目标固定内容已缓存但 canonical 缺失；先证 root/config/platform 及无写入，单次加载仅变 Docker/OCI 名称外层，不另 tag、pull 或启动。原缓存探针误读 net-03 旧路径，在 4 次只读后 exit2；逐 stage 盘点内嵌 provider 路径并重绑当前隔离网。Docker Desktop/WSL 恢复会清除 managed HostsPath 中手动附加的 ghcr.io 项；对 exact private registry 用原 manifest 类型、SNI、CA、body SHA 和响应 digest 证明，再只恢复原映射。记录原 `image_unavailable` 终态后仅发一次新 dry，禁止重放旧请求。
 
 - 最近补充（2026-11-05，任务私有TLS与传输）：宿主18872只读GET断开，而owned outer的127:8090及唯一实际PanelIP返回正确072；Desktop内部转发根因未定，不能重启承载tmpfs源的outer。独立固定outer/127:8090原样HTTP传输保留method/path/body/cookie与原status/ID写入顺序后通过admit。桥registry另因Python3.14/OpenSSL3.5默认严格X509拒缺AKI，30次GET无响应且0mutation；按原7任务文件/元数据仅补标准BC/KU/SKI/AKI/EKU/SAN，实际默认CERT_REQUIRED/hostname/strict与registry200通过，原renew/3transfer不重发且不降TLS。准备worker曾把native日志计数与文件循环共用index，静态发现后先分名并做O_EXCL唯一序号回归，未用坏draft执行。
 
 - 最近补充（2026-11-05，离线生产合同输入）：SDK clone夹具用了32hex staging名，实际生产及已编译原source只接受24hex，首次clone在volume/helper前拒绝；保留原空owned卷/请求，以新24hex计划仅续独立新目标，真实clone/5文件注入/inspect通过，不冒充boot或ABI。原game绑定还实际采用HC.Mounts而非Binds，Compose5.5与2.27创建label/有序配置不同；首次bind前读数拒绝未写，后续已接受recreate只能只读派生新目标，不重bind。离线Inspector的cap-drop ALL helper不能因UID0就假定能读所有0600，原整data指纹在Go前拒绝后已清理；后续限定真实所需4文件及一致DB/pending证明，不造文件或放开cap。适用于临时验收工具，生产严格校验不放宽。
+
+  2026-11-05 C12 补充（恢复启动链与前向扫描）：首个 named-root gate 容器已 Create/Start，因仍调用旧 tmpfs 门禁退出1。追踪归档内 PATH→dind tail→实际 gate 字节，旧失败目标保持停止；新版只变精确 RO 挂载和一次 mounts-ready 调用，原 wait/validate/exec 契约保留。新版 Create201 后又被单个 Windows file bind 的规范路径和已证 OOM 表示挡在 Start 前，核同源、无 reparse、RO 内容 SHA 与其它字段后仅续原已接受 ID。前向扫描准备曾用 formal072 helper 选择实际 standard080 Auth，exit2 发生在 ACL 子目录与 native 之前；直接用 recovered producer 的精确 Auth ID/镜像/冷状态，并在文件预检演练选择器后，唯一实际 V5 扫描退出0。
+
+  同日补充（C12 消费器合同）：标准080 `docker compose config` 省略 `restart`，旧读取器 KeyError 且无 Start；只在原完整 Docker HostConfig=`no` 且无 deploy policy 时接受缺省，保持其它字段严格。当前 negative bridge 的真实 kind 是 primary-dynamic，旧 finish consumer exit2；先验 exact candidate/ref、退出1、DB/归档不变且无 Game/Auth，再按当前 receipt kind 续读。后台 Noop 的 legacy manual_action 是临时 GET 投影，不能以首次观察误判 terminal；按同 apply 观察完整强核验预算，真正拒绝再定位。
 
   最近补充（2026-11-05，Nginx只读helper）：数字0:0/cap-drop ALL不保证默认worker101的chown/initgroups可用；实际feed create已接受后退出EPERM。任务探针须证明真实前台HTTP/TLS而非nginx -t；master_process off也不等于daemon off。后续原feed又因默认client_temp位于只读根失败，独立配置仅把五temp_path放入已声明/tmp并固定daemon off，真实严格TLS200后才续已诊断目标；原create/退出/失败保留，不重建资源或降低TLS。
 
@@ -98,6 +114,10 @@
   C12前补充（2026-11-05，只读源码）：SDK诊断误猜game_integrity.go返回rg exit2，实际成员为junimo140_game_integrity.go；后续只消费完整库存精确成员，零业务动作。此为工具路径错误，不把真实SDK raw输出产品缺陷归作命令失误。
 
   最近补充（2026-11-05，任务库存与同源路径）：忽略目录只加--hidden仍缺任务脚本；另只规范化inventory一侧而未规范Join-Path结果，均在读内容前拒绝。完整捕获rg --files -uu及exit后，对库存和请求路径使用同一分隔符函数，再核唯一成员与现存叶子。旧scope081.py猜名exit2须从真实import定位scope073081.py；保留失败，不将路径字符串修正扩展为资源身份或元数据归一化。沿用search-confirmed-file.ps1和AGENTS库存规则。
+
+  2026-11-05 C12 补充（库存路径）：两个只读检查把相邻模块的下划线套到实际连字符命名的验收模板或 UI 源，分别读失败与存在性拒绝。旧073 计划源的后缀正则还误收了带前缀的其它 cleanup 脚本，数量守卫退出1。先完整保存 rg 库存与 exit，再精确 leaf/父目录匹配及 Test-Path。使用 AGENTS 已有库存规则与任务已有的确认路径工具，模板矩阵保持26项待实测。
+
+  同日补充（C12 只读证据路径）：以前序已验证旧输出的精确角色/路径为准；不要把历史 session ID 或以前 provider 硬编码地址作为实际依据。UI runner 按 checkpoint/attempt 输出，查找缺失先核对真实 path.join；不重跑 12 个已成功视图。检索 catalog 先拿 `rg --files` 的唯一真实路径，仅投影要核的两个公共键，不列出大 Content 键集，也不猜目录。
 
   最近复发/补充（2026-10-29）：目录增长后 inventory 又混入同名 synthetic 后代并截断。精确 parent+leaf 过滤后再全局限量；未来产物先 Test-Path，稀疏覆盖包以入口真实 base/manifest 路径为准。JSON先键/类型再字段投影，不能把数组的 SyncRoot 等对象属性当条目；长文档和库存分开读，截断只补缺段。原生命令完整capture后立即保存exit，再投影内存；stdout/stderr ErrorRecord先ToString，不序列化无关对象树。
 
@@ -146,6 +166,8 @@
 - 最近复发/补充（2026-10-28，目录检索预算）：`rg -m`限制每文件命中数，不是目录总数；审计目录仍聚合333行并截断，后端上下文恢复又复发两次。目录检索先完整捕获原退出码，再全局限量投影，或先`rg -l`取得真实文件库存后分文件短段读取；不得仅靠`-m`推断全局输出有界。已将本任务后续内容检索限定为已确认单文件、扩库存仅捕获rg--files后限量的强制规则提升到AGENTS，避免继续重复目录查询。
 
   最近复发/补充（2026-11-04，073 来源与账户窗口审计）：子代理一次回显 258 条账户窗口库存路径而截断；后续仅消费已确认的 origin-account-window-v7/inputs.safe.json。073 只读审计的文档短段、checkpoint/归档文件名和 DB 表清单投影也数次超出总预算，本轮整理笔记时合并短段又截断；原 native 退出已保存为 0，未据截断结果执行写入，缺失文档段另行补读。该类已多次复发，任务 auditor 现先断言聚合记录不超过 12、完整输出不超过 2000 字符，258 条和超字符输入均在输出前拒绝；完整证据留 ignored tmp，再按精确对象投影。继续沿用 AGENTS 全局限量规则，不新增重复章节或规则。
+
+  2026-11-05 C12 补充（全局输出限额）：073 归档候选171条、allclosed manifest 全依赖路径以及嵌入原基线的生产 verify 源合并输出各自超过工具预算。全量库存留证据，工具只投影计数与精确叶子。长派生源只看与已审基线的精确 diff，另查 Go DTO 已确认短段。`git diff --no-index` 的1表示发现差异。已有 AGENTS 独立短段与全局字符上限，新增恢复审计器只输出计数和精确收据。
 - 最近补充（2026-10-28，候选超时测试虚拟时钟）：candidate40635176841在holder-wait timeout用例ticks4失败，未构建或推送镜像；Bash特殊SECONDS随setup真实时间增长，使deadline从30变31。测试先unset SECONDS再作为普通变量由mock sleep唯一推进，保留严格ticks3/所有安全断言，并加入setup跨秒回归；Linux22项与ShellCheck通过，生产观察函数未改。
 - 最近复发/补充（2026-10-28，新恢复工具AST探针）：内联Python -c跨pwsh反斜杠引号导致零执行SyntaxError，改独立check-new-attempt.py后13份Python AST及PowerShell/行为审查通过。沿用复杂Python逻辑写任务脚本的既有规则，不继续拼多层引号。
 
@@ -169,11 +191,17 @@
 
   同日补充（计数、聚合guard与root路径）：CI只读投影先手估5条succeeded观察，原18行实际4条；按解析stage计数后封存，不把观察数当写次数。RootSDK首聚合identity guard失败且0Go/cache写；后续逐字段实际全相同，原原因仍未定，不能凭猜测归因时间精度。v2只按既有规则对唯一Destination、同数量的effective Mounts完整对象排序，其它typed/数组仍严格。TCP审计误把声明outputRoot当foreground attempt子目录，带尾分隔符的子路径guard只读拒绝；核实际config与receipt.parent后改读准确attempt，不扩大写/清理根。事实和对象契约先于投影断言，保留原失败，不重放业务。
 
+  2026-11-05 C12 补充（独占证据目录）：新 RootSDK 证据子根发现4条额外继承 Allow，先拒绝私有写入；仅该任务目录收窄为当前 SID/System/Admin，并用实际后续样本校验继承。原 manifest 与文件 SHA 保持。沿用 AGENTS 的路径、归属和私有证据投影规则。
+
+  同日补充（C12 解析与保留检查）：PowerShell 单条 rg 结果会退化为 string，索引前用 `@()` 物化；复合 -e 模式用独立参数，不添 stray token。跨 Python 模块的 sha 同名不代表相同参数类型，raw 字节用 hashlib.sha256(raw)，FileRef 用实际路径，旧 adapter file-only TypeError 后按真实合同更正。真实 140 数据保留对比发现专用 probe Mod 的 `Loads` 自增与归档权限阶段 0→1000；用同一 sealed tar 和 IL 证实唯一计数变化，保持其余字节与权限严格比较，不把整个 Mod 树排除。
+
   同日补充（复盘JSON产物）：手工append在首items后闭合根对象，后4条悬空；最终source索引只hash未parse，原803337坏文件与d386源码seal均保留。独立v2重建同5条并做schema/数量/JSON roundtrip，补件feeed6记录纠正，0产品/业务改动、不重测试。JSON生产者在封SHA前必须严格parse与schema断言，不能把可读文本或hash成功当结构有效；同次services.go/client.go猜路径及Delete+Add同测试路径的原子拒绝沿用既有精确库存、单路径单patch操作规则。
 
   最近补充（2026-11-05，manifest fail-fast）：另一内联manifest构建器在解析错误前曾写出JSON null，原SHA及失败保留；新任务文件在独占新根写完整对象后独立parse/schema/引用核验再封存。源码patch误夹无关hunk时以原子拒绝为准，逐文件确认零修改后只发已核目标短hunk；不得把前项有效或hash成功当结构与整包成功。
 
   最近复发/补充（2026-11-05，时间与文本ABI）：ConvertFrom-Json将OCI created转DateTime后与原字符串比较会误拒；先核类型、按不变区域规范UTC，再与固定build date比较，原OCI bytes/label检查保留。公开Markdown回放受autocrlf影响时，只能对声明的公开文档做EOL-aware canonical核验并保留rawSHA，不将换行归一化用于私有快照、SDK或通用配置。Python文本与stdout都显式UTF-8；新runtime/Node子项目先核实际解释器和scripts，不猜路径、包脚本或跨夹具资源名。
+
+  2026-11-05 C12 补充（旧080 配置字节）：冷审误用 Panel 运行前的 .env 作为旧080 Prepare 后预期而退出1。该版本的受管卷更新会把同一个空值规范写出。由正式旧080 源码和原字节推导精确期望，复核两个角色的有效密码仍为空，保留原 raw 不等及其它数据守卫，独立只读检查通过。
 
   同轮Notebook接收器首次把整份文件不得含U+FFFD当门禁，原错题正文已用该字符描述乱码，故在0写前误拒。保原失败，改为旧/新计数相等、只拒新增；baseline/index/source SHA、CRLF、原行subsequence和无新heading仍严格，随后native0按已审bfb4e字节应用。不能清除历史说明或把已有字面字符当本次编码损坏。
 
@@ -259,6 +287,8 @@
 - 同轮工具前置故障（2026-10-25）：full-v4 vet首次在apk索引TLS失败、未开始Go时退出3；宿主调用还提前结束、原容器存在，先inspect终态并恢复完整tools日志，没有重复创建同名门禁。以本轮已通过unit的精确owned容器冻结GNU工具链镜像（源码/cache/evidence均为bind、不会进入commit），复用同base和已安装工具；仅重跑未执行的vet，以retry1日志保留首故障，随后通过。另一次猜instance_routes.go被rg拒绝，独立库存后定位lifecycle_handlers.go；余下检索仅允许已确认目录，读取走read-verified。apply_patch不接受同一载荷同时Delete/Add同一路径，零执行拒绝后保留旧脚本，使用独立新版checkpoint文件，不重放同一补丁。
 
   最近复发/补充（2026-11-04，apply_patch）：同一文件的 Delete+Add 组合再次被工具拒绝，零修改。保留原文件并改为单个 Update File 补丁；发送前核同一路径的操作唯一性和真实完整行，继续执行 AGENTS 已有补丁分段规则，适用于既有文件替换，不原样重放拒绝载荷。
+
+  2026-11-05 C12 补充（补丁顺序）：同一 ignored ledger 的两个插入按反向行序发送，原子拒绝且零修改。先用短段确认当前锚点顺序，再按文件实际顺序提交，或拆为两个独立补丁。原失败保留并逐项核定最终 diff。
 
   最近复发/补充（2026-11-04，Alpine 离线工具包前置）：缺缓存索引的 `apk fetch` 异常仍退出 0 且未产出 .apk，随后空 glob 离线安装失败；改为先 `apk update` 并断言实际包产物。首次递归包全装又因新 libcrypto3 与镜像既有 libssl/openssl 精确版本冲突而退出 7，零安装。保留失败，仅安装所需 coreutils/acl/attr/utmps、setpriv 及 cap-ng/econf 依赖，保留系统 crypto/musl/busybox，最终探针通过。适用于隔离 runner 工具准备；退出码、产物与依赖闭包须分别核验，不因工具升级扩大系统库替换范围。
 - 同轮restart API契约补充（2026-10-25）：把新Panel restart响应误当start的jobId，实际202 `{ok:true}`后断言失败，但原restart已经接受。读取当前handler/driver契约后，通过SQLite按原请求时间、目标、lifecycle类型和operation=restart唯一定位原job，只读公共GET续接并确认succeeded/邀请码恢复，绝不重放restart。首次bridge健康升级观察器超时准确来自Galaxy CONNECTION_FAILURE后code为空，不是Panel/Control失败；一次明确的新restart成功恢复。后续观察器先读具体端点响应形态，不跨动作复用jobId假设；.140邀请码status为connection_ready等，最终按用户明确的“拿到邀请码”标准检查非空有效码，不能硬套125的ready字面量。
@@ -4563,6 +4593,8 @@
 
 - 最近复发/补充：2026-08-27 同一 Auth 安全收口把三个 Go 包整包合入 30 秒调用后，编排仍只输出 `output` 并把尚不存在的 `exit_code` 显示为 `undefined`，再次丢失可续接 `session_id`。立即按精确命令行核对该 `go.exe` 已自行结束且没有 Docker 资源，才改为单包执行并完整输出返回对象、用 `write_stdin(session_id)` 续接。只读或测试命令也不得投影单字段；任何可能超过 yield 的调用从第一轮就必须保存完整对象。
 - 最近复发/补充：2026-08-27 运行 `go test ./internal/web -count=1` 时，统一执行工具在 30 秒返回仍在运行的 session；编排代码却在输出完整结果前直接把缺失的 `exit_code` 与 0 比较并抛错，因而同时丢失 `session_id`。随后按精确命令行和父子 PID 核对唯一 `go.exe/web.test.exe` 已自行结束，未并发重跑。以后所有整包 Go 测试先输出/保存完整返回对象；存在 `session_id` 时只用 `write_stdin(session_id)` 续接，只有明确返回的 `exit_code` 非 0 才判失败。
+
+- 2026-11-05 C12 补充（Windows 长命令终态）：公共宿主中断后，已不存在的旧前台进程对应会话返回 unknown process，原退出码保持未知。两轮按原 accepted 101 个子进程及其创建身份核对全部退出和原端口无监听，保留独立异常关闭证明，无强停或伪造正常终态。另一次 OCI 只读结果显示在上下文截断中丢失，直接读回事先保存的完整工具返回，原 exit0 与归档 SHA 闭合，未重跑下载。沿用 AGENTS 的完整返回保存和精确进程身份检查。
 - 最近复发/补充：2026-08-26 修复 save-import Web 回归时，`go test ... -count=5` 超过 30 秒初始等待后，编排仍只输出 `output/exit_code`，没有保留可能存在的 `session_id`；随后按精确测试名筛查 `go.exe`/`web.test.exe`，确认进程已结束且未创建 Docker 资源，才缩小为有界重复测试重新执行。以后任何重复 Go 测试都必须输出 `session_id` 并在返回时续接，不能因单次通常很快就忽略累计时长。
 - 最近复发/补充：2026-08-16 修复候选时序测试后，在尚未单次验证显式 `Manager.Cancel` 会把 job 终态写成 `canceled` 的情况下直接执行 `-count=100`；测试 helper 仍等待 `failed`，每轮都会耗尽 15 秒 observer 上限，五分钟无输出后人工中断。中断宿主 Docker CLI 没有自动停止容器，随后按精确 owner label 找到 `interesting_euler`，确认归属后定点 `rm -f`，两个 cache volume 最终也精确清理。正确顺序是先 `-count=1 -v` 验证状态契约，再做有界重复；本次单次失败明确显示 `got canceled` 后修正 helper，不能把无输出当作普通编译慢。
 - 最近复发/补充：2026-08-15 发布后首次拉取正式 `v0.4.18` 并启动冒烟时，30 秒 yield 返回可续接 session，但编排再次只输出 `r.output`，丢失 `session_id`；随后只读精确查询确认任务容器和卷均已由原脚本 `finally` 清零，才以缓存镜像和新唯一名称重跑，没有并发启动重复资源。所有可能包含 image pull/readiness 的调用即使预期很快，也必须同时转发 `output/session_id/exit_code`，不能凭缓存或经验投影单字段。

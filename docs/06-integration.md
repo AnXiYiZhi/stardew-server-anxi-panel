@@ -1,5 +1,6 @@
 ## 2026-11-04 0.8.1 候选联调契约
 
+- 真实 080→候选 `41969505983` 的 Panel 更新和重连成功；已运行 140 的 Noop 尚未通过，两份核心 Galaxy 库启动后变为固定运行时成对内容。候选停止提升。后续保持 `fullStack` / `currentRuntimeVerified` 协议，仅为已安装 140 的后台只读核验补充精确成对验证。只在整套检查成功后展示 `not_needed`；任一未知、混用、损坏或状态漂移仍要求管理员确认。须在新候选的真实 080 与 073 链上复验。
 - 新Panel对健康完整140组可在后台只读证明后，将同一成功apply的`fullStack`记为`not_needed`；`currentRuntimeVerified`含updateId、精确Panel内容、scope/local摘要和验证时间。记录通过CAS防覆盖并发helper/新apply，进程重启必须重新强验证；它不是授权，不写运行栈marker，也不创建full-stack事务。未知/损坏/未恢复组保留原manual路径，新scope仍按原op/hash确认。新prepare会取消后台只读检查并等其helper精确清理，再检查新范围。Linux聚焦、固定140权限/取消清理、前端状态/25个Chrome入口/构建通过；实际080承载140→新候选需证明原Game/Auth PID/配置/卷保持，073/125→新候选仍需明确迁移确认，最终证据不得继承C10。
 - SDK 完成标记从实际 App1007/Linux1006 manifest 和已核验库统计生成，SDK build 为诊断元数据；游戏固定清单保持。140 预检先读 ACF，staging 再验游戏与 SDK，失败不发布完成 marker。
 - `GET /api/system/update/full-stack` 新增兼容性可选字段 `confirmationExpired`；新服务端 GET 显式 true/false，持久 Public 不保存该观测，plan hash 不变。过期仅限未授权的 awaiting_confirmation。

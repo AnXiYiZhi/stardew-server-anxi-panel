@@ -58,6 +58,12 @@ func TestCurrentJunimo140EveryReadRejectsMissingScope(t *testing.T) {
 	if _, err := client.RuntimeReadCurrentJunimo140GameEvidence(ctx, ".", "game", "sdvd/server:1.5.0-preview.140", id, "game", nil); err == nil {
 		t.Fatal("evidence read missing scope")
 	}
+	if _, err := client.RuntimeReadCurrentJunimo140GameEvidence(ctx, ".", "game", "sdvd/server:1.5.0-preview.140", id, RuntimeCurrentJunimo140GalaxyPairEvidence, nil); err == nil || err.Error() != "current game scope missing" {
+		t.Fatal("Galaxy evidence must use a current group scope", err)
+	}
+	if _, err := client.RuntimeReadJunimo140GameEvidence(ctx, ".", "game", "sdvd/server:1.5.0-preview.140", id, RuntimeCurrentJunimo140GalaxyPairEvidence); err == nil || err.Error() != "invalid fixed game evidence kind" {
+		t.Fatal("Galaxy evidence must not be available to staging", err)
+	}
 	if _, err := client.RuntimeVerifyCurrentJunimo140GameFiles(ctx, ".", "game", "sdvd/server:1.5.0-preview.140", id, "sha256", nil, nil); err == nil {
 		t.Fatal("checksum read missing scope")
 	}

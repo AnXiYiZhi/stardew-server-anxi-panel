@@ -61,6 +61,7 @@
 ## 命令执行与编码错题本
 
 - 复用 HTTP 验收夹具前，先按对应接口源码核对成功状态码和 JSON 包裹结构（例如任务详情为 `{"job": ...}`）。写请求接受后先保存原始状态码、operation/job/update ID，再做后续断言；断言失败必须先只读核对同一操作，禁止按旧脚本的错误假设重发动作。`wait` 结果必须先读取终态，再决定是否需要下一次写操作，不能在同一编排里预排重试。
+- Stardew 实例 Stop 接口返回 `202 {"ok":true}`，没有 jobId。验收先保留旧 jobs 列表，保存原始响应后只选择此次唯一新增的同实例 `stop` 任务，再追同一 job 到终态和实际容器状态；禁止合成响应 jobId。Panel 已更新后的 `legacy_full_stack_confirmation_required` 可能是后台只读 Noop 核验期间的 GET 投影，必须按实际生产尝试预算观察同 apply，再判定是否拒绝。
 
 GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同一 run ID、artifact 名或精确引用最多三次有界重读；监控失败不代表 workflow 失败。不得把只读重试用于 dispatch、取消、tag、push、Release edit 或镜像提升；写操作响应不确定时先核对外部实际状态。
 

@@ -25,12 +25,6 @@ func (c *Client) readJunimo140GameEvidence(ctx context.Context, dir, volume, ima
 	if !ok {
 		return nil, errors.New("invalid fixed game evidence kind")
 	}
-	if err := c.junimo140ReadVolume(ctx, dir, volume, projects); err != nil {
-		return nil, err
-	}
-	if err := c.pinnedSMAPIImage(ctx, dir, imageRef, imageID); err != nil {
-		return nil, err
-	}
 	const script = `set -eu
 cd /game
 file=$1
@@ -39,12 +33,23 @@ while test "$part" != .; do test ! -L "$part"; part=$(dirname "$part"); done
 test -f "$file"
 test "$(stat -c %s "$file")" -le 1048576
 cat "$file"`
+	return c.runJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, kind, projects, script, file)
+}
+
+func (c *Client) runJunimo140GameEvidence(ctx context.Context, dir, volume, imageRef, imageID, kind string, projects []string, script string, operands ...string) ([]byte, error) {
+	if err := c.junimo140ReadVolume(ctx, dir, volume, projects); err != nil {
+		return nil, err
+	}
+	if err := c.pinnedSMAPIImage(ctx, dir, imageRef, imageID); err != nil {
+		return nil, err
+	}
 	helperArgs, err := junimo140ReadHelperArgs(volume, "evidence-"+kind, projects)
 	if err != nil {
 		return nil, err
 	}
 	args := append([]string{"run", "--rm"}, helperArgs...)
-	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--mount", junimo140ReadMount(volume, projects), "--entrypoint", "timeout", imageID, "--kill-after=2s", "30s", "sh", "-c", script, "--", file)
+	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--mount", junimo140ReadMount(volume, projects), "--entrypoint", "timeout", imageID, "--kill-after=2s", "30s", "sh", "-c", script, "--")
+	args = append(args, operands...)
 	result, raw, err := c.runJunimo140Read(ctx, "read fixed legacy game evidence", dir, time.Minute, nil, volume, imageID, projects, args...)
 	if err != nil {
 		return nil, err

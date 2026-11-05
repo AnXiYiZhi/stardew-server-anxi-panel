@@ -39,6 +39,8 @@ type currentRuntimeTestDocker struct {
 	*fakeDocker
 	services                   []paneldocker.RuntimeJunimo140ServiceSnapshot
 	mod                        map[string]string
+	actualCoreFiles            map[string]string
+	coreChecks                 int
 	failHolder, failSDK, drift bool
 	reads                      int
 }
@@ -89,6 +91,15 @@ func (f *currentRuntimeTestDocker) RuntimeVerifyCurrentJunimo140GameFiles(ctx co
 	if err := f.RuntimeAssertJunimo140GameGroup(ctx, dir, volume, projects, false); err != nil {
 		return paneldocker.RuntimeGameFileStats{}, err
 	}
+	return f.RuntimeVerifyJunimo140GameFiles(ctx, dir, volume, image, id, algorithm, files)
+}
+func (f *currentRuntimeTestDocker) RuntimeVerifyJunimo140GameFiles(ctx context.Context, dir, volume, image, id, algorithm string, files map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+	if algorithm == "sha256" {
+		f.coreChecks++
+		if f.actualCoreFiles != nil && !reflect.DeepEqual(f.actualCoreFiles, files) {
+			return paneldocker.RuntimeGameFileStats{}, errors.New("test full core checksum mismatch")
+		}
+	}
 	return f.fakeDocker.RuntimeVerifyJunimo140GameFiles(ctx, dir, volume, image, id, algorithm, files)
 }
 func (f *currentRuntimeTestDocker) RuntimeInspectCurrentJunimo140SDK(ctx context.Context, dir, volume, image, id string, projects []string) (paneldocker.RuntimeGameFileStats, error) {
@@ -116,6 +127,11 @@ func currentRuntimeFixture(t *testing.T, sdkBuild string) (*Driver, *currentRunt
 		manifestID = "4559160656493359681"
 	}
 	completeJunimo140GameEvidence(t, base, installedSDKFixture(sdkBuild, manifestID))
+	pins, err := fixedJunimo140GamePins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.gameIntegrityEvidence[paneldocker.RuntimeCurrentJunimo140GalaxyPairEvidence] = []byte(pins.CoreFiles[galaxyLibrary] + "\n" + pins.CoreFiles[galaxyGlueLibrary] + "\n")
 	fake := &currentRuntimeTestDocker{fakeDocker: base, mod: map[string]string{}}
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
@@ -201,6 +217,67 @@ func TestCurrentRuntimeNoopFullEvidenceAndZeroGameMutation(t *testing.T) {
 			}
 			if f.reads != reads {
 				t.Fatal("GET-style receipt validation started Docker helpers")
+			}
+		})
+	}
+}
+
+func TestCurrentRuntimeNoopGalaxyPairProfiles(t *testing.T) {
+	pins, err := fixedJunimo140GamePins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyGalaxy, legacyGlue := pins.CoreFiles[galaxyLibrary], pins.CoreFiles[galaxyGlueLibrary]
+	legacyPair := legacyGalaxy + "\n" + legacyGlue + "\n"
+	noExecPair := galaxyNoExecSHA256 + "\n" + galaxyGlueNoExecSHA256 + "\n"
+	for _, test := range []struct {
+		name, pair               string
+		noExec, changedOtherCore bool
+		completeCoreCheck, ready bool
+	}{
+		{name: "depot pair", pair: legacyPair, completeCoreCheck: true, ready: true},
+		{name: "fixed140 no-exec pair", pair: noExecPair, noExec: true, completeCoreCheck: true, ready: true},
+		{name: "mixed legacy Galaxy", pair: legacyGalaxy + "\n" + galaxyGlueNoExecSHA256},
+		{name: "mixed legacy glue", pair: galaxyNoExecSHA256 + "\n" + legacyGlue},
+		{name: "unknown library", pair: strings.Repeat("0", 64) + "\n" + galaxyGlueNoExecSHA256},
+		{name: "partial read", pair: galaxyNoExecSHA256},
+		{name: "unexpected third hash", pair: noExecPair + strings.Repeat("0", 64)},
+		{name: "read unavailable"},
+		{name: "pair changed after profile read", pair: noExecPair, completeCoreCheck: true},
+		{name: "unrelated core mismatch", pair: noExecPair, noExec: true, changedOtherCore: true, completeCoreCheck: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			driver, docker, _, panel := currentRuntimeFixture(t, "25329704")
+			docker.gameIntegrityEvidence[paneldocker.RuntimeCurrentJunimo140GalaxyPairEvidence] = []byte(test.pair)
+			docker.actualCoreFiles = make(map[string]string, len(pins.CoreFiles)+1)
+			for name, digest := range pins.CoreFiles {
+				docker.actualCoreFiles[name] = digest
+			}
+			docker.actualCoreFiles["Content/ContentHashes.json"] = pins.Content.ManifestSHA256
+			if test.noExec {
+				docker.actualCoreFiles[galaxyLibrary] = galaxyNoExecSHA256
+				docker.actualCoreFiles[galaxyGlueLibrary] = galaxyGlueNoExecSHA256
+			}
+			if test.changedOtherCore {
+				docker.actualCoreFiles["Content/ContentHashes.json"] = strings.Repeat("0", 64)
+			}
+			apply := updater.ApplyStatus{UpdateID: "actual-apply", Phase: updater.PhaseSucceeded, ToVersion: panel.Version, SelectedDigest: panel.ImageID, CleanupCompleted: true}
+			result, err := driver.inspectCurrentFullStack(context.Background(), panel, apply)
+			ready := err == nil && result.Phase == "not_needed" && !result.RuntimeRequired && result.CurrentRuntimeVerified != nil
+			if ready != test.ready || (docker.coreChecks == 1) != test.completeCoreCheck {
+				t.Fatalf("ready=%v complete core checks=%d error=%v", ready, docker.coreChecks, err)
+			}
+			if len(docker.gameDownloadMarkers) != 0 || docker.installVolumeClones != 0 || docker.installVolumeCreates != 0 || len(docker.pulledImages) != 0 {
+				t.Fatal("current profile inspection called a game mutator")
+			}
+			if test.ready && test.noExec {
+				image := RuntimeUpdateSelectedImage{Image: "sdvd/server:1.5.0-preview.140", Digest: junimo140Digest}
+				if err := prepareJunimo140GameMarkers(context.Background(), docker, ".", "staging", image, time.Now()); err == nil {
+					t.Fatal("legacy staging accepted current-only Galaxy pair")
+				}
+				if len(docker.gameDownloadMarkers) != 0 {
+					t.Fatal("legacy staging published markers for the rejected variant")
+				}
 			}
 		})
 	}

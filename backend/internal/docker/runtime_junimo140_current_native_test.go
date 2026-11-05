@@ -181,6 +181,23 @@ func TestCurrentJunimo140NativeReadPermissionsAndCancellation(t *testing.T) {
 	if err != nil || string(got) != payload {
 		t.Fatalf("fixed140 DAC-only production reader failed: %v", err)
 	}
+	if _, err := owned(prefix+"-galaxy-seed", false, nil, "set -eu; printf galaxy > /game/libGalaxy64.so; printf glue > /game/libGalaxyCSharpGlue.so; chown 1000:1000 /game/libGalaxy64.so /game/libGalaxyCSharpGlue.so; chmod 0600 /game/libGalaxy64.so /game/libGalaxyCSharpGlue.so"); err != nil {
+		t.Fatal("Galaxy pair fixture setup failed")
+	}
+	readPair := func() ([]byte, error) {
+		return c.RuntimeReadCurrentJunimo140GameEvidence(context.Background(), dir, volume, "sdvd/server:1.5.0-preview.140", image, RuntimeCurrentJunimo140GalaxyPairEvidence, []string{prefix})
+	}
+	got, err = readPair()
+	want := fmt.Sprintf("%x\n%x\n", sha256.Sum256([]byte("galaxy")), sha256.Sum256([]byte("glue")))
+	if err != nil || string(got) != want {
+		t.Fatalf("fixed140 scoped Galaxy reader failed: %v", err)
+	}
+	if _, err := owned(prefix+"-galaxy-link", false, nil, "set -eu; mv /game/libGalaxyCSharpGlue.so /game/glue; ln -s glue /game/libGalaxyCSharpGlue.so"); err != nil {
+		t.Fatal("Galaxy symlink fixture setup failed")
+	}
+	if _, err := readPair(); err == nil {
+		t.Fatal("scoped Galaxy reader accepted a symlink")
+	}
 	// Cancel while the actual helper is running. The production independent
 	// cleanup context must remove that exact container and its automatic volume.
 	helperArgs, err := junimo140ReadHelperArgs(volume, "native-cancel", []string{prefix})

@@ -2,6 +2,14 @@
 
 ## 2026-11-04 0.8.1 修复候选与发布矩阵
 
+候选 `41969505983`（`d9f29d70bebb31caf09761f460a362ccb8d2c1de`、`sha256:e60071ce63c39dacbf47260690386bbb82c4fecba9fc53d68388b309e98c9be7`）通过自动门禁和兼容 `41969505899`；真实 SDK253、073→081 Web、运行中保存后确认、实际 140/Auth/邀请和恢复也通过。标准 080 承载已运行 140 的 Web 更新本身成功并重连，但三次只读核验均拒绝自动跳过迁移；该候选不正式提升。实际现有游戏卷中 227 项核心仅 `libGalaxy64.so`、`libGalaxyCSharpGlue.so` 两个 hash 不同，完整读取无缺失、链接或不稳定项。两个独立安装的精确归档及实机表明：启动前两库匹配原游戏清单；现有 080/140 与通过真实 073 迁移/回档的 140 启动后得到同一对替换内容。私有证据 `actual-C12-core-file-readback.safe.json` SHA `b17e1b51671f320b78a319c7b7338fa866c8c82ea095c6345a7dea012bcdb7be`、`c12-after-140-galaxy-proof.safe.json` SHA `0275a064741bca0a65a00f3625955fecf858864181e7bbe287b1a7602b4cc15e`。
+
+两库离线二进制比较分别仅在偏移 348 / 292 将唯一 ELF `PT_GNU_STACK` 的 `p_flags` 从 `0x07` 改为 `0x06`；只清除执行位即可从原始归档重构两份实际完整 SHA，其余字节严格一致。原始对、运行时对和两组独立现存安装的证明在 `galaxy-pt-gnu-stack-c12.safe.json`，SHA `889d1f29c765590434adfaff86efcd7460b6c3b4f3dd93ee5f098632b452a33b`。
+
+后续候选新增专项：仅已安装 140 的只读检查接受已证明的整对 Galaxy 核心库身份，同时完整重验其它核心文件、Content、SDK、SMAPI、Junimo/Control、运行组和卷持有者；测试原始对、精确运行时对、两种混用、未知损坏、链接及其它核心漂移，安装/暂存迁移的原始清单仍严格。以同一新候选重跑上一正式 080 的真实更新与不健康回滚、受影响最老 073→候选、运行中预检/保存/确认及新装冒烟；真实健康 140 Noop 要求同 apply 收敛到 `not_needed`，原 Game/Auth 进程/挂载/用户数据、历史范围和资源清理有实际凭据。候选 `41969505983` 的历史结果不能充当后续候选证明。
+
+实现新增封闭的 `galaxy-pair-sha256` current-only 证据，固定两个非链接普通文件、有界读取、输出不进公开命令结果；选择整对后复用原完整核心验证，并把选定 profile 纳入 scope 证明。Windows 聚焦 Go 原生日志 34 个 pass events、0 fail、3 个既有 Linux shell 夹具跳过，exit 0；日志 `release081-c13-galaxy-cf7d2ccb/focused-go-windows-final.jsonl` SHA `59f4bf60e9d4ce3b7091276b3a910d896302b8a991e3449b16ffc7eef64552b3`。固定140的 Linux helper 专项按 `PANEL_CURRENT_READ_NATIVE_EVIDENCE` opt-in 另验实际两摘要、链接拒绝、DAC-only 与清理；未计入本地 Windows 结果。
+
 本版变更：SDK 与固定游戏 build/hash 分离，按实际安装清单和有界 ELF 段结构核验并写实际 marker；140 预检、普通检测、新装和 cached-SMAPI 快路径闭合。运行中保存窗口使用有界稳定读取，确认错误分阶段；GET 过期投影不入持久记录或授权hash，前端按服务端状态重新预检。通用发行政策按目标实例化，073可发现081及未来082；新版本范围目标取当前Panel版本。更新中心按当前操作关联选择范围，历史成功记录保留为历史，不能覆盖本次目标、完成声明或范围确认入口。已完整满足140的全部游戏组经有界后台只读核验，将同次成功Panel更新标记为无需迁移；新预检、待恢复事务及未知或损坏状态保留原确认路径。
 
 受影响链路为游戏/SDK安装与迁移、共享组预检/确认、更新中心及发行政策生成。Junimo140/Auth140/Control0.3.9制品身份保持，SDK参考build仅作诊断；实际运行和Steam链按本候选验收。候选版本为0.8.1，当前上一正式版取Release列表最高稳定080，受影响最老代表为073；GitHub网页latest073保留旧客户端桥，073本身读取正式列表。

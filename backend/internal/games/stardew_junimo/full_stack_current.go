@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,17 +37,51 @@ type currentFullStackDocker interface {
 }
 
 type currentGameEvidenceReader struct {
-	docker   currentFullStackDocker
-	projects []string
+	docker      currentFullStackDocker
+	projects    []string
+	coreProfile string
 }
 
-func (r currentGameEvidenceReader) RuntimeReadJunimo140GameEvidence(ctx context.Context, dir, volume, imageRef, imageID, kind string) ([]byte, error) {
+const (
+	galaxyLibrary     = "libGalaxy64.so"
+	galaxyGlueLibrary = "libGalaxyCSharpGlue.so"
+	// These exact installed .140 bytes differ from the pinned depot pair only
+	// in the cleared execute bit on the unique ELF PT_GNU_STACK header.
+	galaxyNoExecSHA256     = "b4b885643bbe50159e051413f3b45cade9e9741116a409c3f2e0d79cb4e79e0a"
+	galaxyGlueNoExecSHA256 = "d6588b76a63f77d5c022ac805d1b6abd175da98e99025bad210df4681ea30fc4"
+)
+
+func (r *currentGameEvidenceReader) RuntimeReadJunimo140GameEvidence(ctx context.Context, dir, volume, imageRef, imageID, kind string) ([]byte, error) {
 	return r.docker.RuntimeReadCurrentJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, kind, r.projects)
 }
-func (r currentGameEvidenceReader) RuntimeVerifyJunimo140GameFiles(ctx context.Context, dir, volume, imageRef, imageID, algorithm string, files map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+func (r *currentGameEvidenceReader) RuntimeVerifyJunimo140GameFiles(ctx context.Context, dir, volume, imageRef, imageID, algorithm string, files map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+	if algorithm == "sha256" {
+		evidence, err := r.RuntimeReadJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, paneldocker.RuntimeCurrentJunimo140GalaxyPairEvidence)
+		if err != nil {
+			return paneldocker.RuntimeGameFileStats{}, fmt.Errorf("read current Galaxy pair: %w", err)
+		}
+		pair := strings.Fields(string(evidence))
+		legacyGalaxy, hasGalaxy := files[galaxyLibrary]
+		legacyGlue, hasGlue := files[galaxyGlueLibrary]
+		if len(pair) != 2 || !hasGalaxy || !hasGlue {
+			return paneldocker.RuntimeGameFileStats{}, errors.New("incomplete current Galaxy pair")
+		}
+		switch {
+		case pair[0] == legacyGalaxy && pair[1] == legacyGlue:
+			r.coreProfile = "legacy-depot"
+		case pair[0] == galaxyNoExecSHA256 && pair[1] == galaxyGlueNoExecSHA256:
+			r.coreProfile = "fixed140-galaxy-gnu-stack-noexec"
+			files = maps.Clone(files)
+			files[galaxyLibrary], files[galaxyGlueLibrary] = galaxyNoExecSHA256, galaxyGlueNoExecSHA256
+		default:
+			return paneldocker.RuntimeGameFileStats{}, errors.New("unsupported current Galaxy pair")
+		}
+		// The complete verifier rechecks both selected hashes along with every
+		// other core file, so a change after the profile read cannot pass.
+	}
 	return r.docker.RuntimeVerifyCurrentJunimo140GameFiles(ctx, dir, volume, imageRef, imageID, algorithm, files, r.projects)
 }
-func (r currentGameEvidenceReader) RuntimeInspectJunimo140SDK(ctx context.Context, dir, volume, imageRef, imageID string) (paneldocker.RuntimeGameFileStats, error) {
+func (r *currentGameEvidenceReader) RuntimeInspectJunimo140SDK(ctx context.Context, dir, volume, imageRef, imageID string) (paneldocker.RuntimeGameFileStats, error) {
 	return r.docker.RuntimeInspectCurrentJunimo140SDK(ctx, dir, volume, imageRef, imageID, r.projects)
 }
 
@@ -275,7 +311,8 @@ func (d *Driver) inspectCurrentFullStack(ctx context.Context, panel updater.Pane
 			full.Instances = append(full.Instances, updater.FullStackInstanceStatus{InstanceID: peer.ID, Phase: "not_needed", Progress: 100})
 		}
 		var payload junimo140VerifiedGamePayload
-		if err := verifyJunimo140GamePayload(ctx, currentGameEvidenceReader{docker: docker, projects: junimo140Projects(plan)}, member.Root, plan.SourceVolume, image, time.Now(), &payload); err != nil {
+		reader := &currentGameEvidenceReader{docker: docker, projects: junimo140Projects(plan)}
+		if err := verifyJunimo140GamePayload(ctx, reader, member.Root, plan.SourceVolume, image, time.Now(), &payload); err != nil {
 			return full, err
 		}
 		smapi, err := docker.RuntimeReadCurrentPinnedSMAPIMetadata(ctx, member.Root, plan.SourceVolume, image.Image, image.ImageID, junimo140Projects(plan))
@@ -286,7 +323,7 @@ func (d *Driver) inspectCurrentFullStack(ctx context.Context, panel updater.Pane
 		if err != nil || !reflect.DeepEqual(first, last) {
 			return full, errors.New("current services changed during inspection")
 		}
-		observations = append(observations, currentRuntimeHash([]any{plan.membershipDigest(), first, payload, smapi}))
+		observations = append(observations, currentRuntimeHash([]any{plan.membershipDigest(), first, payload, smapi, reader.coreProfile}))
 		checkedGroups = append(checkedGroups, checkedGroup{plan: plan, scopes: scopes, snapshots: first})
 	}
 	for _, group := range checkedGroups {

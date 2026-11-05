@@ -7,6 +7,22 @@ import (
 	"errors"
 )
 
+// The current reader reports the two fixed Galaxy hashes in this order. It
+// does not return library bytes or accept an arbitrary filename from a caller.
+const RuntimeCurrentJunimo140GalaxyPairEvidence = "galaxy-pair-sha256"
+
+const currentJunimo140GalaxyPairScript = `set -eu
+test ! -L /game
+cd /game
+for file in libGalaxy64.so libGalaxyCSharpGlue.so; do
+    test ! -L "$file"
+    test -f "$file"
+    size=$(stat -c %s -- "$file")
+    test "$size" -gt 0 && test "$size" -le 67108864 || exit 1
+    checksum=$(sha256sum -- "$file")
+    printf '%s\n' "${checksum%% *}"
+done`
+
 // Nil is reserved for the original staging callers: their unused-volume guard
 // is unchanged. Current readers need a nonempty authoritative project scope,
 // and recheck every actual volume holder before each read/helper invocation.
@@ -43,6 +59,9 @@ func junimo140ReadHelperArgs(volume, operation string, projects []string) ([]str
 func (c *Client) RuntimeReadCurrentJunimo140GameEvidence(ctx context.Context, dir, volume, imageRef, imageID, kind string, projects []string) ([]byte, error) {
 	if len(projects) == 0 {
 		return nil, errors.New("current game scope missing")
+	}
+	if kind == RuntimeCurrentJunimo140GalaxyPairEvidence {
+		return c.runJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, kind, projects, currentJunimo140GalaxyPairScript)
 	}
 	return c.readJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, kind, projects)
 }
