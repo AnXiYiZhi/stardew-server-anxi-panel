@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import type { FullStackUpgradeStatus, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus } from '../src/api.ts'
-import { projectFullStackApply, selectCurrentFullStackUpgrade, selectHistoricalFullStackRecovery } from '../src/games/stardew/full-stack-state.ts'
+import { currentGameUpgradeComplete, projectFullStackApply, selectCurrentFullStackUpgrade, selectHistoricalFullStackRecovery } from '../src/games/stardew/full-stack-state.ts'
 import {
   canStartPanelUpdate,
   hasGameUpgradeFlow,
@@ -200,5 +200,16 @@ assert.equal(selectHistoricalFullStackRecovery(recoveryHistory,null),recoveryHis
 assert.equal(selectHistoricalFullStackRecovery(recoveryHistory,recoveryHistory),null,'a current recovery is not duplicated as history')
 assert.equal(selectHistoricalFullStackRecovery(history080,null),null)
 assert.equal(selectHistoricalFullStackRecovery({...recoveryHistory,authorizedAt:undefined},null),null)
+
+const currentNoop: PanelUpdateApplyStatus = {...current081,selectedDigest:'sha256:'+'2'.repeat(64),fullStack:{phase:'not_needed',progress:100,runtimeRequired:false,currentRuntimeVerified:{updateId:current081.updateId,panel:currentScope.panel,scopeSha256:'a'.repeat(64),localSha256:'b'.repeat(64),verifiedAt:'2026-11-05T00:05:00Z'}}}
+assert.equal(currentGameUpgradeComplete(currentNoop,history080,'0.8.1'),true,'unrelated old success cannot require a new migration after the current no-op')
+assert.equal(currentGameUpgradeComplete(currentNoop,currentPrepared,'0.8.1'),false,'new unapproved preflight overrides the previous completed no-op')
+assert.equal(currentGameUpgradeComplete(currentNoop,{...currentPrepared,phase:'preparing'},'0.8.1'),false)
+assert.equal(currentGameUpgradeComplete(currentNoop,null,'0.8.1',recoveryHistory),false,'old manual recovery remains actionable')
+assert.equal(currentGameUpgradeComplete(currentNoop,null,'0.8.2'),false)
+assert.equal(currentGameUpgradeComplete({...currentNoop,updateId:'another-apply'},null,'0.8.1'),false)
+assert.equal(currentGameUpgradeComplete({...currentNoop,selectedDigest:'sha256:'+'9'.repeat(64)},null,'0.8.1'),false)
+assert.equal(currentGameUpgradeComplete(current081,currentScope,'0.8.1'),true)
+assert.equal(currentGameUpgradeComplete(currentNoop,{...currentScope,phase:'manual_action'},'0.8.1'),false)
 
 console.log('panel update state machine tests passed')

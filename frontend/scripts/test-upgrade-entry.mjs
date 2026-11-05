@@ -28,6 +28,7 @@ const entry = [
   "if(f.authorized)data.fullStackUpgrade={operationId:'stack_fixture',phase:f.recovery?'manual_action':'waiting_panel',authorizedAt:'2026-10-25T00:00:00Z',panel:{version:'0.8.0'},groups:[]};data.recoverFullStack=expected=>{f.recovered++;f.recoveredPlan=expected};const {fullStackUpgrade,...dashboardData}=data;",
   "if(f.scopePrepared){data.fullStackUpgrade={operationId:'stack_prepared',phase:'awaiting_confirmation',panel:{version:'0.8.0'},groups:[]};data.confirmFullStack=digest=>{f.confirmed++;f.confirmDigest=digest};data.cancelFullStack=()=>f.cancelled++}",
   "if(f.staleScope){data.updateApply={updateId:'actual-panel-081',fromVersion:'0.8.0',toVersion:'0.8.1',phase:'succeeded',progress:100,startedAt:'2026-11-05T00:00:00Z',logs:[],fullStack:{phase:'manual_action',progress:100,runtimeRequired:true,errorCode:'legacy_full_stack_confirmation_required'}};data.rawFullStackUpgrade={operationId:'old-scope',planSha256:'6'.repeat(64),actorId:f.oldActor||41,phase:f.oldPhase||'succeeded',authorizedAt:'2026-10-28T00:01:00Z',createdAt:'2026-10-28T00:00:00Z',panelUpdateId:'old-panel',panel:{version:f.oldTarget||'0.8.0'},groups:[]};data.fullStackUpgrade=selectCurrentFullStackUpgrade(data.updateApply,data.rawFullStackUpgrade,data.versionInfo.version);data.historicalFullStackRecovery=selectHistoricalFullStackRecovery(data.rawFullStackUpgrade,data.fullStackUpgrade);data.updateApply=projectFullStackApply(data.updateApply,data.fullStackUpgrade,data.versionInfo.version)}",
+  "if(f.currentNoop){data.updateApply.selectedDigest='sha256:'+'a'.repeat(64);data.updateApply.fullStack={phase:'not_needed',progress:100,runtimeRequired:false,result:'全部现有游戏组已通过只读完整核验，无需重复保存、停服或迁移。',currentRuntimeVerified:{updateId:data.updateApply.updateId,panel:{version:'0.8.1',imageId:data.updateApply.selectedDigest},scopeSha256:'b'.repeat(64),localSha256:'c'.repeat(64),verifiedAt:'2026-11-05T00:05:00Z'}};if(f.noopPrepared){data.fullStackUpgrade={operationId:'new-scope',planSha256:'7'.repeat(64),actorId:41,phase:'awaiting_confirmation',confirmationExpired:false,createdAt:'2026-11-05T00:06:00Z',panel:{version:'0.8.1'},groups:[]};data.confirmFullStack=()=>f.confirmed++;data.cancelFullStack=()=>f.cancelled++}}",
   "createRoot(document.getElementById('root')).render(React.createElement(FixtureProvider,{value:data},React.createElement(UpdateDetailsDialog,{user:{id:41,role:'admin',username:'admin'},dashboardData})))",
 ].join('\n')
 
@@ -70,6 +71,9 @@ const patchScenarios=[
   {name:'081 manual confirmation after historical080 recovery',game:true,loadedVersion:'0.8.1',staleScope:true,oldPhase:'manual_action'},
   {name:'081 historical recovery requires original administrator',game:true,loadedVersion:'0.8.1',staleScope:true,oldPhase:'manual_action',oldActor:42},
   {name:'081 new apply after same-version historical success',game:true,loadedVersion:'0.8.1',staleScope:true,oldTarget:'0.8.1'},
+  {name:'healthy140 current081 no-op keeps historical080 success',game:true,loadedVersion:'0.8.1',staleScope:true,currentNoop:true},
+  {name:'new preflight replaces completed current081 no-op',game:true,loadedVersion:'0.8.1',staleScope:true,currentNoop:true,noopPrepared:true},
+  {name:'historical recovery remains actionable after old no-op',game:true,loadedVersion:'0.8.1',staleScope:true,currentNoop:true,oldPhase:'manual_action'},
 ]
 try {
   for (const scenario of [{ name: 'ordinary Panel patch', game: false }, { name: 'junimo140', game: true }, { name: 'bridge before major', game: false, knownTarget: '0.8.0', nextVersion: '0.7.4' }, { name: 'bridge to declared major', game: false, knownTarget: '0.8.0', expectGame: true }, { name: 'unknown future release', game: true, knownTarget: '0.8.0', nextVersion: '0.8.1', expectGame: false }, { name: 'authorized reconnect', game: false, authorized: true }, { name: 'important notice', game: false, notice: true }, { name: 'blocked release', game: false, blocked: true }, { name: 'successful history', game: false, history: true }, { name: 'completed game history', game: false, finishedGame: true, notice: true }, { name: 'patch after game upgrade', game: false, finishedGame: true, nextPatch: true }, { name: 'blocked release retains authorized recovery', game: false, authorized: true, blocked: true, recovery: true }, { name: 'prepared scope requires notice confirmation', game: true, notice: true, scopePrepared: true }, { name: 'night important notice', game: false, notice: true, theme: 'night' },...patchScenarios]) {
@@ -102,7 +106,7 @@ try {
       assert.equal(await page.getByRole('button', { name: scenario.scopePrepared ? '确认范围并升级' : '立即升级', exact: true }).isEnabled(), true)
     }
     if (scenario.history) assert.equal(await page.locator('.sd-update-history').getAttribute('open'), null)
-    if (scenario.staleScope) {
+    if (scenario.staleScope && !scenario.currentNoop) {
       const progress = await page.locator('.sd-update-apply').textContent()
       assert.ok(progress.includes('v0.8.0 → v0.8.1'))
       assert.ok(progress.includes('等待游戏迁移确认'))
@@ -110,6 +114,19 @@ try {
       assert.ok(!progress.includes('Panel 与全部目标游戏组验收完成'))
       assert.equal(await page.getByRole('button',{name:'检查升级范围',exact:true}).isEnabled(),scenario.oldPhase!=='manual_action','old recovery preserves the current scope entry but blocks another preparation until recovery finishes')
       assert.equal(await page.locator('.sd-update-history').count(),0,'unrelated historical success must not become the current successful apply')
+    }
+    if (scenario.currentNoop) {
+      assert.ok((await page.locator('.sd-update-version-path').textContent()).includes('v0.8.1'))
+      if (scenario.noopPrepared) {
+        assert.equal(await page.getByRole('button',{name:'确认范围并升级',exact:true}).isEnabled(),true,'a fresh unapproved plan takes precedence over old no-op completion')
+      } else if (scenario.oldPhase !== 'manual_action') {
+        assert.equal(await page.getByRole('button',{name:'检查升级范围',exact:true}).count(),0)
+        assert.equal(await page.getByRole('button',{name:'确认范围并升级',exact:true}).count(),0)
+        await page.locator('.sd-update-history > summary').click()
+        assert.ok((await page.locator('.sd-update-apply').textContent()).includes('无需重复保存、停服或迁移'))
+        await page.getByRole('button',{name:'重新检查游戏组件更新',exact:true}).click()
+        assert.equal(await page.evaluate(()=>window.fixture.prepared),1)
+      }
     }
     if (process.env.QA_ARTIFACT_DIR && (scenario.staleScope || ['important notice','blocked release','successful history','completed game history','bridge latest patch 081','bridge latest patch 082'].includes(scenario.name))) {
       assert.ok(path.isAbsolute(process.env.QA_ARTIFACT_DIR))
@@ -119,7 +136,9 @@ try {
       await page.setViewportSize({ width: 1440, height: 1000 })
       await page.screenshot({ path: path.join(process.env.QA_ARTIFACT_DIR, name + '-desktop.png'), fullPage: false })
     }
-    if (scenario.scopePrepared) {
+    if (scenario.currentNoop && scenario.oldPhase !== 'manual_action') {
+      assert.equal(await page.evaluate(()=>window.fixture.applied+window.fixture.confirmed+window.fixture.recovered),0,'no-op display never authorizes runtime actions')
+    } else if (scenario.scopePrepared) {
       assert.equal(await page.locator('.sd-update-center-footer .sd-update-apply-button').count(), 1)
       assert.equal(await page.locator('.sd-update-center-body .sd-update-actions').count(), 0)
       await page.getByRole('button', { name: '确认范围并升级', exact: true }).click()

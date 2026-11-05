@@ -903,6 +903,13 @@ export interface PanelUpdateApplyStatus {
   updatedAt: string
   finishedAt: string | null
   fullStack?: {
+    currentRuntimeVerified?: {
+      updateId: string
+      panel: FullStackUpgradeStatus['panel']
+      scopeSha256: string
+      localSha256: string
+      verifiedAt: string
+    }
     phase: string
     progress: number
     instanceId?: string

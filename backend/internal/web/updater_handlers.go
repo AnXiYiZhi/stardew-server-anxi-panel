@@ -152,6 +152,9 @@ func (s *server) enrichFullStackUpdateStatus(ctx context.Context, status *update
 	if s.enrichAuthorizedFullStackStatus(status) {
 		return
 	}
+	if driver, ok := s.fullStackDriver(); ok && driver.HasCurrentRuntimeNoop(ctx, *status) {
+		return
+	}
 	if updater.IsActiveApplyPhase(status.Phase) {
 		status.FullStack = &updater.FullStackStatus{Phase: "waiting_panel", Progress: min(status.Progress*40/100, 40), RuntimeRequired: true, Result: "Panel 更新完成后将自动检查并补齐游戏运行栈。"}
 		return

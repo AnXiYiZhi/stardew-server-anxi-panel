@@ -25,11 +25,13 @@ func (d *Driver) RunFullStackCoordinator(ctx context.Context, panel FullStackPan
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	lastError := ""
+	noopAttempts := currentRuntimeNoopAttempts{}
 	for {
 		if err := d.reconcileFullStackPanel(ctx, panel); err != nil && err.Error() != lastError {
 			lastError = err.Error()
 			d.logger.Warn("full-stack coordinator is waiting for recovery", "error", err)
 		}
+		d.reconcileCurrentRuntimeNoop(ctx, panel, &noopAttempts)
 		select {
 		case <-ctx.Done():
 			return

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 )
 
@@ -22,6 +23,10 @@ func (s *ApplyStateStore) Path() string               { return s.path }
 func (s *ApplyStateStore) Read() (ApplyStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.readLocked()
+}
+
+func (s *ApplyStateStore) readLocked() (ApplyStatus, error) {
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return ApplyStatus{}, ErrNoApplyStatus
@@ -42,6 +47,24 @@ func (s *ApplyStateStore) Read() (ApplyStatus, error) {
 func (s *ApplyStateStore) Write(status ApplyStatus) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.writeLocked(status)
+}
+
+// CompareAndSwap never replaces a newer helper, cleanup or administrator result.
+func (s *ApplyStateStore) CompareAndSwap(expected, replacement ApplyStatus) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	actual, err := s.readLocked()
+	if err != nil {
+		return false, err
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		return false, nil
+	}
+	return true, s.writeLocked(replacement)
+}
+
+func (s *ApplyStateStore) writeLocked(status ApplyStatus) error {
 	if status.Logs == nil {
 		status.Logs = []LogEntry{}
 	}

@@ -8,6 +8,42 @@ import (
 	"time"
 )
 
+// RuntimeReadJunimo140ModHashes reads the immutable image package without
+// mounting an instance, game or session volume. Anonymous image volumes belong
+// only to this --rm helper; no running service is modified.
+func (c *Client) RuntimeReadJunimo140ModHashes(ctx context.Context, dir, imageRef, imageID string) (map[string]string, error) {
+	if err := c.pinnedSMAPIImage(ctx, dir, imageRef, imageID); err != nil {
+		return nil, err
+	}
+	const script = `set -eu
+cd /data/Mods/JunimoServer
+for file in JunimoServer.dll manifest.json; do test -f "$file"; test ! -L "$file"; done
+sha256sum JunimoServer.dll manifest.json`
+	helper, err := junimo140ReadHelperArgs("", "mod-hashes", []string{})
+	if err != nil {
+		return nil, err
+	}
+	args := append([]string{"run", "--rm"}, helper...)
+	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--entrypoint", "sh", imageID, "-c", script)
+	result, _, err := c.runJunimo140Read(ctx, "read fixed Junimo Mod identity", dir, c.timeouts.Ps, nil, "", imageID, []string{}, args...)
+	if err != nil {
+		return nil, err
+	}
+	hashes := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || !runtimeDigestPattern.MatchString("sha256:"+fields[0]) ||
+			(fields[1] != "JunimoServer.dll" && fields[1] != "manifest.json") || hashes[fields[1]] != "" {
+			return nil, errors.New("invalid fixed Junimo Mod identity")
+		}
+		hashes[fields[1]] = fields[0]
+	}
+	if len(hashes) != 2 {
+		return nil, errors.New("incomplete fixed Junimo Mod identity")
+	}
+	return hashes, nil
+}
+
 func (c *Client) RuntimeExtractJunimo140Mod(ctx context.Context, dir string, request RuntimeInstanceArchiveRequest) error {
 	if err := validateRuntimeInstanceArchive(request); err != nil {
 		return err

@@ -104,7 +104,11 @@ func (c *Client) RuntimeReadSMAPIMetadata(ctx context.Context, dir, volumeName, 
 }
 
 func (c *Client) readSMAPIMetadataFromImageID(ctx context.Context, dir, volumeName, imageID string) (RuntimeSMAPIMetadata, error) {
-	const script = `set -eu
+	return c.readSMAPIMetadataFromImageIDWithCurrentScope(ctx, dir, volumeName, imageID, nil)
+}
+
+func (c *Client) readSMAPIMetadataFromImageIDWithCurrentScope(ctx context.Context, dir, volumeName, imageID string, projects []string) (RuntimeSMAPIMetadata, error) {
+	script := `set -eu
 if [ ! -f /game/StardewModdingAPI.dll ]; then printf 'PRESENT=0\nFILES=0\n'; exit 0; fi
 printf 'PRESENT=1\n'
 files=1
@@ -122,11 +126,30 @@ for path in StardewModdingAPI.dll StardewModdingAPI.runtimeconfig.json smapi-int
         printf 'HASH:%s=%s\n' "$path" "$hash"
     fi
 done`
-	result, err := c.run(ctx, "read SMAPI assembly metadata", dir, c.timeouts.Ps,
-		"run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp",
+	mount := "type=volume,src=" + volumeName + ",dst=/game,readonly"
+	args := []string{"run", "--rm"}
+	if projects != nil {
+		helper, err := junimo140ReadHelperArgs(volumeName, "smapi-metadata", projects)
+		if err != nil {
+			return RuntimeSMAPIMetadata{}, err
+		}
+		args = append(args, helper...)
+		mount += ",volume-nocopy"
+		script = `set -eu
+test ! -L /game
+for file in StardewValley StardewModdingAPI StardewModdingAPI.dll StardewModdingAPI.runtimeconfig.json smapi-internal/SMAPI.Toolkit.dll smapi-internal/0Harmony.dll; do
+part=$file
+while test "$part" != .; do test ! -L "/game/$part"; part=$(dirname "$part"); done
+test -f "/game/$file"
+done
+test -x /game/StardewValley
+test -x /game/StardewModdingAPI
+` + script
+	}
+	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp",
 		"--label", "com.anxi-panel.smapi-metadata-helper=true", "--label", "com.anxi-panel.game-data-volume="+volumeName,
-		"--mount", "type=volume,src="+volumeName+",dst=/game,readonly",
-		"--entrypoint", "sh", imageID, "-c", script)
+		"--mount", mount, "--entrypoint", "sh", imageID, "-c", script)
+	result, _, err := c.runJunimo140Read(ctx, "read SMAPI assembly metadata", dir, c.timeouts.Ps, nil, volumeName, imageID, projects, args...)
 	if err != nil {
 		return RuntimeSMAPIMetadata{}, err
 	}

@@ -2,7 +2,7 @@
 
 ## 2026-11-04 0.8.1 修复候选与发布矩阵
 
-本版变更：SDK 与固定游戏 build/hash 分离，按实际安装清单和有界 ELF 段结构核验并写实际 marker；140 预检、普通检测、新装和 cached-SMAPI 快路径闭合。运行中保存窗口使用有界稳定读取，确认错误分阶段；GET 过期投影不入持久记录或授权hash，前端按服务端状态重新预检。通用发行政策按目标实例化，073可发现081及未来082；新版本范围目标取当前Panel版本。更新中心按当前操作关联选择范围，历史成功记录保留为历史，不能覆盖本次目标、完成声明或范围确认入口。
+本版变更：SDK 与固定游戏 build/hash 分离，按实际安装清单和有界 ELF 段结构核验并写实际 marker；140 预检、普通检测、新装和 cached-SMAPI 快路径闭合。运行中保存窗口使用有界稳定读取，确认错误分阶段；GET 过期投影不入持久记录或授权hash，前端按服务端状态重新预检。通用发行政策按目标实例化，073可发现081及未来082；新版本范围目标取当前Panel版本。更新中心按当前操作关联选择范围，历史成功记录保留为历史，不能覆盖本次目标、完成声明或范围确认入口。已完整满足140的全部游戏组经有界后台只读核验，将同次成功Panel更新标记为无需迁移；新预检、待恢复事务及未知或损坏状态保留原确认路径。
 
 受影响链路为游戏/SDK安装与迁移、共享组预检/确认、更新中心及发行政策生成。Junimo140/Auth140/Control0.3.9制品身份保持，SDK参考build仅作诊断；实际运行和Steam链按本候选验收。候选版本为0.8.1，当前上一正式版取Release列表最高稳定080，受影响最老代表为073；GitHub网页latest073保留旧客户端桥，073本身读取正式列表。
 
@@ -39,7 +39,8 @@
 | 权限/恢复/资源 | actor/operation/hash/scope仍严格；helper只在固定镜像和owned unused卷执行，恢复allowlist/取消及精确清理闭合；保留原失败与操作ID。 |
 | 运行中预检 | 真实运行源的保存/范围确认；瞬态保存写入可有界收敛，持续变化/损坏/取消拒绝且未授权前不执行停服；原容器/配置/运行选择变化仍拒绝。 |
 | 过期/界面 | 服务端未完成、失败、不可确认、真过期分码；新GET显式true/false，record/hash不变；客户端时钟偏移、新旧API、跨期、重新预检和授权后续观。升级后验双主题/1440、390、360。 |
-| 当前范围与历史 | 真实080历史scope成功、本次081 apply成功但需新范围确认时，主卡片和footer均展示本次状态，不得显示081→080或全部游戏组验收完成；同ID当前范围、081新continuation、waiting_panel、同版本旧操作、历史失败与未授权预检覆盖选择边界。旧manual_action事务保留明确绑定原操作/目标的恢复入口，不覆盖本次升级。最终候选的真实Web升级产物必须再次验收。 |
+| 当前范围与历史 | 真实080历史scope成功、已140来源更新至081后应展示本次081 not_needed，不得显示081→080；真实073旧125来源在本次081 apply成功后仍需新范围确认，不得冒充全部游戏组完成。主卡片和footer一致；同ID当前范围、081新continuation、waiting_panel、同版本旧操作、历史失败、新预检优先于旧Noop及未授权预检覆盖选择边界。旧manual_action事务保留明确绑定原操作/目标的恢复入口，不覆盖本次升级。最终候选的真实Web升级产物必须再次验收。 |
+| 已满足运行栈 | 真实080承载已完整验收的140更新至最终081后，driver只读核全部组成员、实际游戏/SMAPI/SDK/Control与容器绑定，并确认没有待恢复事务；同次Panel更新可标记not_needed，游戏/Auth的PID、启动时间、完整配置和挂载保持。损坏、未知、旧125、新预检及历史待恢复不能被跳过；游戏marker/Env/Compose/staging和save/stop/recreate均不得发生。 |
 | 最新发行 | 实际生成器产出081及未来082政策，最低更新器073；旧073发现最高兼容正式版。旧073/080按其真实UI先Panel更新，新081再确认需迁移游戏范围。 |
 | 080→081 | 真实Panel Web check/dry-run/提示确认/apply/预期重连/终态；SQLite、初始化/用户、长期数据、非目标容器/volume与重启保持。 |
 | 同候选unhealthy | 同一候选引用注入目标不健康，必须failed_rolled_back/health_check_failed并恢复原080；只重跑失败及受影响下游。 |
@@ -48,6 +49,8 @@
 | 公开入口 | 081 README/官网9文件已构建并封存，正式提升后同字节回放，再记录Pages与线上验收，避免提前公开尚未存在的下载资产。 |
 
 现有080生产恢复已完成：先取得同commandId的GameLoop.Saved回执，保留SQLite/停服存档/原SDK目录与tar，恢复已验收的SDK原始ACF和两库，再从健康运行125创建新范围并确认一次；同operation最终succeeded，固定140健康、实例running、存档及角色身份集合保持。临时下载helper已按归属删除，短期维护session已撤销，备份保留。该恢复与081候选证明各自绑定。
+
+最老代表来源已准备就绪：原072正式源码的全新离线检查在仅替换SDK253五文件、保留125游戏/SMAPI的来源上判定up_to_date，临时helper/两cache清理完成；唯一真实Start随后得到健康125/Auth、有效邀请、fresh save和Control038。通过原072 Web check、同ID dry-run、唯一apply升级正式073，再等待required039和实际Control039就绪；SDK253五文件在两次真实boot后保持。最终073 ready为 `release072-observe-v2-start2727-observe073-sdk24-ready073-1105-01/source-ready.safe.json`，SHA `8757740d3520a1e7fcc523d7b9c359329a5e19701674b2296ef7a89549e4f6fa`。现停在该来源等待最终081候选，尚未执行073→081或140范围；此准备证据不代表最终候选长链通过。
 
 候选前已通过：Linux聚焦SDK/预检/政策、真实Chrome生命周期17场景与更新入口18场景；独立DinD真实SDK253 staging及坏游戏/截断SDK负例通过。SDK根日志为`E:/task-evidence/runtime-sdk-repair-20261104-cf7d2ccb/sdk-real-docker.jsonl`；私有SDK原tar SHA为`85303acb5466d5610dd5f8ca96ea9d986a43542fb494e4bf9f51d37e00f26d45`。不输出账号、token或存档标识。
 
@@ -58,6 +61,12 @@
 第九轮候选 `41894256697`、兼容 `41894256744` 均成功；对应提交 `7a039b4a08a9521d9b82bdc8c799faff1101b8f4`，固定build date `2026-11-04T19:09:49Z`，验证digest `sha256:1439993ab467922fbaa7a3efd8c5c8db8b85eed9b84cf38c9abefa5d5f848eb8`。该候选完成真实080 Web更新、用户/SQLite保留、保存/备份/导出/原restore同job成功及五文件精确恢复；缺失073桥的真实负例也已在打开DB前拒绝且完整DB/WAL/SHM不变。以上只属于该历史候选，不转用于后续候选身份。
 
 第九轮的升级后页面复核发现发布阻断：旧080已授权且成功的范围记录与本次081 apply的operation、panelUpdate和目标均不匹配，却仍覆盖当前apply；页面显示081→080、全部组完成，同时footer显示升级进行中。本次真实apply为081 succeeded，但其fullStack为manual_action/legacy_full_stack_confirmation_required。已存原API/截图及纯投影复现（`actual-projection-reproduction.safe.json` SHA `b06ffa23724f48e5adaa77ac782a7d772cf66ebc0cdf65646bb6a8433c9fdbc4`）；几何断言通过不能代替状态正确。该候选停止正式提升，未创建正式tag或Release。修复前端关联后由新提交生成唯一新候选，并按更新后的专项矩阵验收。
+
+第十轮候选 `41918409036`、兼容 `41918409081` 均成功；提交 `2d4552c28f59a0c02ad0c2f1759b938b5d588d73`，固定build date `2026-11-04T21:41:20Z`，digest `sha256:5a797e40cea3f3e2559afb66b9818c21d7b4c430b7581c1047bc01dbdee77f39`。实际CI选择的15组门禁通过，持续1651秒；其中代码门禁799秒、候选构建验收802秒。080真实Web更新及同引用unhealthy回滚通过，073长链由本地真实专项补充，未把CI跳过视为完成；完整日志与最小安全投影封存在 `release081-ci41918409036-summary-20261105-cf7d2ccb/actual-CI-summary.safe.json`，SHA `ea57ac8611644a204402492c30568c4244cd58ac8f3711602b6173bf4f3b70d3`。
+
+第十轮仍不得正式提升：只读审计确认已满足140的实例仍先被旧兼容入口判为 `legacy_full_stack_confirmation_required`；再确认会重复保存、停服、备份和重建。新增上述“已满足运行栈”专项，并由后续新提交生成新候选；仅在完整只读正证成立时跳过游戏迁移，未知或旧125保持原确认流程。该候选缺失073桥的真实负例已按预期在打开数据库前拒绝，DB/WAL/SHM不变且资源清理完成，但只属于该历史候选。未创建081正式tag、Release或提升正式镜像。
+
+无需迁移修复的本地验证已完成：同组全成员/实际镜像/游戏与SDK/SMAPI/Junimo/Control完整只读核验后，CAS绑定同一次成功Panel更新；每进程重新证明，旧持久receipt不直接跳过，新的预检会取消并等待reader清理。原staging仍requireUnused，current专用reader仅挂只读nocopy源、最小DAC_READ_SEARCH、数字0:0、network none和只读rootfs；accepted helper ID/固定image/自动卷唯一holder均复核后精确清理。Linux v3为205 pass及一项native空工作目录夹具失败，改t.TempDir后v4的10项current回归全部通过，含固定140实际UID1000/0600、无cap负例、取消和资源守恒；其余独立通过项未机械重跑。前端状态、25个Chrome场景和production build通过；390/1440截图经复核，本次080→081完成且保留主动重检，旧080成功记录不覆盖当前。31路径源码/测试/文档索引为 `release081-current-noop-20261105-cf7d2ccb/source-freeze-final-v1.safe.json`，SHA `d38629035d011d9701fcf6f6b72b01a94ecdbd16ceb9d3b7449a988e762a451d`。最终候选真实运行140 Noop与073/125 SDK253迁移仍为必跑待验项。
 
 最终081候选workflow、正式workflow、唯一digest、实际条件矩阵/耗时及故障清理在完成后追加；本节不将历史候选通过项冒充最终候选证明。
 

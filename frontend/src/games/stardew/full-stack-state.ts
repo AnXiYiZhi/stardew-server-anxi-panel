@@ -26,6 +26,17 @@ export function selectHistoricalFullStackRecovery(raw: FullStackUpgradeStatus | 
   return raw && raw !== current && raw.authorizedAt && raw.phase === 'manual_action' ? raw : null
 }
 
+export function currentGameUpgradeComplete(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string, historicalRecovery?: FullStackUpgradeStatus | null): boolean {
+  if (historicalRecovery) return false
+  const current = selectCurrentFullStackUpgrade(base, op, currentVersion)
+  const normalize = (value: string) => value.replace(/^[vV]/, '')
+  if (current) return current.phase === 'succeeded' && Boolean(current.authorizedAt) && normalize(current.panel.version) === normalize(currentVersion)
+  if (!base || base.phase !== 'succeeded' || normalize(base.toVersion) !== normalize(currentVersion) || base.fullStack?.phase !== 'not_needed' || base.fullStack.runtimeRequired) return false
+  const proof = base.fullStack.currentRuntimeVerified
+  // Legacy not_needed also represents an authoritative empty installed scope.
+  return !proof || proof.updateId === base.updateId && normalize(proof.panel.version) === normalize(currentVersion) && proof.panel.imageId === base.selectedDigest
+}
+
 export function fullStackConfirmationExpired(op: FullStackUpgradeStatus | null): boolean {
   if (!op || op.authorizedAt || op.phase !== 'awaiting_confirmation') return false
   return op.confirmationExpired === true

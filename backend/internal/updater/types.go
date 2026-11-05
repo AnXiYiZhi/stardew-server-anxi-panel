@@ -102,19 +102,30 @@ type ApplyStatus struct {
 // It is deliberately separate from Phase: the helper remains the authority
 // for Panel rollback while this status describes the second, resumable stage.
 type FullStackStatus struct {
-	Phase            string                    `json:"phase"`
-	Progress         int                       `json:"progress"`
-	InstanceID       string                    `json:"instanceId,omitempty"`
-	RuntimeRequired  bool                      `json:"runtimeRequired"`
-	ServerWasRunning bool                      `json:"serverWasRunning,omitempty"`
-	OnlinePlayers    int                       `json:"onlinePlayers,omitempty"`
-	BackupName       string                    `json:"backupName,omitempty"`
-	ErrorCode        string                    `json:"errorCode,omitempty"`
-	Error            string                    `json:"error,omitempty"`
-	Result           string                    `json:"result,omitempty"`
-	UpdatedAt        string                    `json:"updatedAt,omitempty"`
-	FinishedAt       string                    `json:"finishedAt,omitempty"`
-	Instances        []FullStackInstanceStatus `json:"instances,omitempty"`
+	CurrentRuntimeVerified *RuntimeNoopProof         `json:"currentRuntimeVerified,omitempty"`
+	Phase                  string                    `json:"phase"`
+	Progress               int                       `json:"progress"`
+	InstanceID             string                    `json:"instanceId,omitempty"`
+	RuntimeRequired        bool                      `json:"runtimeRequired"`
+	ServerWasRunning       bool                      `json:"serverWasRunning,omitempty"`
+	OnlinePlayers          int                       `json:"onlinePlayers,omitempty"`
+	BackupName             string                    `json:"backupName,omitempty"`
+	ErrorCode              string                    `json:"errorCode,omitempty"`
+	Error                  string                    `json:"error,omitempty"`
+	Result                 string                    `json:"result,omitempty"`
+	UpdatedAt              string                    `json:"updatedAt,omitempty"`
+	FinishedAt             string                    `json:"finishedAt,omitempty"`
+	Instances              []FullStackInstanceStatus `json:"instances,omitempty"`
+}
+
+// RuntimeNoopProof records a completed read-only inspection of this exact
+// successful Panel replacement. It is evidence, never runtime authorization.
+type RuntimeNoopProof struct {
+	UpdateID    string      `json:"updateId"`
+	Panel       PanelTarget `json:"panel"`
+	ScopeSHA256 string      `json:"scopeSha256"`
+	LocalSHA256 string      `json:"localSha256"`
+	VerifiedAt  time.Time   `json:"verifiedAt"`
 }
 
 type FullStackInstanceStatus struct {

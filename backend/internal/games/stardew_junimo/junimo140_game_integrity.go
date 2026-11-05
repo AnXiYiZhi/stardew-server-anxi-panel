@@ -29,10 +29,14 @@ type junimo140GamePins struct {
 	CoreFiles map[string]string `json:"coreFiles"`
 }
 
-type junimo140GameIntegrityDocker interface {
+type junimo140GameEvidenceDocker interface {
 	RuntimeReadJunimo140GameEvidence(context.Context, string, string, string, string, string) ([]byte, error)
 	RuntimeVerifyJunimo140GameFiles(context.Context, string, string, string, string, string, map[string]string) (paneldocker.RuntimeGameFileStats, error)
 	RuntimeInspectJunimo140SDK(context.Context, string, string, string, string) (paneldocker.RuntimeGameFileStats, error)
+}
+
+type junimo140GameIntegrityDocker interface {
+	junimo140GameEvidenceDocker
 	RuntimeCommitJunimo140GameMarkers(context.Context, string, string, string, string, paneldocker.RuntimeGameDownloadMarker, paneldocker.RuntimeGameDownloadMarker) error
 }
 
@@ -109,6 +113,20 @@ func fixedJunimo140ContentFiles(data []byte, pins junimo140GamePins) (map[string
 // builds and filtered content require a separately authorized download instead.
 // Every operation is restricted to an unused transaction-owned staging volume.
 func prepareJunimo140GameMarkers(ctx context.Context, docker junimo140GameIntegrityDocker, dir, volume string, image RuntimeUpdateSelectedImage, now time.Time) error {
+	var payload junimo140VerifiedGamePayload
+	if err := verifyJunimo140GamePayload(ctx, docker, dir, volume, image, now, &payload); err != nil {
+		return err
+	}
+	return docker.RuntimeCommitJunimo140GameMarkers(ctx, dir, volume, image.Image, image.ImageID, payload.Game, payload.SDK)
+}
+
+type junimo140VerifiedGamePayload struct {
+	Game, SDK paneldocker.RuntimeGameDownloadMarker
+}
+
+// This interface and function have no marker/install/clone method. Inspection
+// of an already current group must not reuse the mutating staging procedure.
+func verifyJunimo140GamePayload(ctx context.Context, docker junimo140GameEvidenceDocker, dir, volume string, image RuntimeUpdateSelectedImage, now time.Time, payload *junimo140VerifiedGamePayload) error {
 	if image.Digest != junimo140Digest {
 		return errors.New("fixed game migration requires the pinned Junimo .140 image")
 	}
@@ -168,6 +186,7 @@ func prepareJunimo140GameMarkers(ctx context.Context, docker junimo140GameIntegr
 	if contentStats.SDKFiles != 0 || contentStats.GameFiles != int64(pins.Content.Entries) || coreStats.SDKFiles != 0 || coreStats.GameFiles != int64(len(core)) {
 		return errors.New("incomplete legacy game integrity proof")
 	}
-	return docker.RuntimeCommitJunimo140GameMarkers(ctx, dir, volume, image.Image, image.ImageID,
-		marker(pins.Game, coreStats.GameFiles+contentStats.GameFiles, coreStats.GameBytes+contentStats.GameBytes), sdkMarker)
+	payload.Game = marker(pins.Game, coreStats.GameFiles+contentStats.GameFiles, coreStats.GameBytes+contentStats.GameBytes)
+	payload.SDK = sdkMarker
+	return nil
 }

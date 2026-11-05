@@ -118,16 +118,19 @@ type InstanceMutationExecutor interface {
 
 // Driver implements registry.GameDriver for Stardew Valley / JunimoServer.
 type Driver struct {
-	docker             DockerService
-	logger             *slog.Logger
-	jobs               *jobs.Manager
-	store              StateStore
-	importJournalWrite func(string, ImportJournal) error
-	panelVersion       string
-	panelIdentity      atomic.Pointer[updater.PanelTarget]
-	containerDataDir   string
-	hostDataDir        string
-	steamDownloads     *sharedsteamcmd.Manager
+	docker                 DockerService
+	logger                 *slog.Logger
+	jobs                   *jobs.Manager
+	store                  StateStore
+	importJournalWrite     func(string, ImportJournal) error
+	panelVersion           string
+	panelIdentity          atomic.Pointer[updater.PanelTarget]
+	currentRuntimeVerified atomic.Pointer[updater.RuntimeNoopProof]
+	currentRuntimeReadCancel context.CancelFunc
+	currentRuntimeReadDone chan struct{}
+	containerDataDir       string
+	hostDataDir            string
+	steamDownloads         *sharedsteamcmd.Manager
 
 	// guardChans maps running install job ID → channel for Steam Guard input.
 	mu         sync.Mutex

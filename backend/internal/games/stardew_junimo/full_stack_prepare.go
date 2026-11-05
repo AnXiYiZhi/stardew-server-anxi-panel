@@ -69,6 +69,12 @@ func (d *Driver) PrepareFullStackUpgrade(ctx context.Context, actor int64, panel
 	if err != nil {
 		return FullStackUpgradeStatus{}, err
 	}
+	// An explicit new plan takes precedence over background read-only checking.
+	// Wait for that check's exact helper cleanup before enumerating its holders.
+	readDone := d.currentRuntimeReadDone
+	if d.currentRuntimeReadCancel != nil {
+		d.currentRuntimeReadCancel()
+	}
 	id, err := randomHex(16)
 	if err != nil {
 		return FullStackUpgradeStatus{}, err
@@ -88,6 +94,13 @@ func (d *Driver) PrepareFullStackUpgrade(ctx context.Context, actor int64, panel
 		<-gate
 		if initialErr != nil {
 			return initialErr
+		}
+		if readDone != nil {
+			select {
+			case <-readDone:
+			case <-runCtx.Done():
+				return runCtx.Err()
+			}
 		}
 		return d.prepareFullStackGroups(runCtx, job, op)
 	}})

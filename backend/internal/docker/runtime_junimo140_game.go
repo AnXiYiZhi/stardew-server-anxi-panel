@@ -16,12 +16,16 @@ import (
 // Evidence reads are closed to the three files used by the fixed legacy payload
 // verifier. Callers cannot turn this into a general game-volume file reader.
 func (c *Client) RuntimeReadJunimo140GameEvidence(ctx context.Context, dir, volume, imageRef, imageID, kind string) ([]byte, error) {
+	return c.readJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, kind, nil)
+}
+
+func (c *Client) readJunimo140GameEvidence(ctx context.Context, dir, volume, imageRef, imageID, kind string, projects []string) ([]byte, error) {
 	files := map[string]string{"game": "steamapps/appmanifest_413150.acf", "sdk": ".steam-sdk/steamapps/appmanifest_1007.acf", "content": "Content/ContentHashes.json"}
 	file, ok := files[kind]
 	if !ok {
 		return nil, errors.New("invalid fixed game evidence kind")
 	}
-	if err := c.unusedSMAPIStaging(ctx, dir, volume); err != nil {
+	if err := c.junimo140ReadVolume(ctx, dir, volume, projects); err != nil {
 		return nil, err
 	}
 	if err := c.pinnedSMAPIImage(ctx, dir, imageRef, imageID); err != nil {
@@ -35,9 +39,13 @@ while test "$part" != .; do test ! -L "$part"; part=$(dirname "$part"); done
 test -f "$file"
 test "$(stat -c %s "$file")" -le 1048576
 cat "$file"`
-	args := append([]string{"run", "--rm"}, imageSMAPIHelperArgs(volume, "evidence-"+kind)...)
-	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--mount", "type=volume,src="+volume+",dst=/game,readonly", "--entrypoint", "timeout", imageID, "--kill-after=2s", "30s", "sh", "-c", script, "--", file)
-	result, raw, err := c.runWithEnvironmentRaw(ctx, "read fixed legacy game evidence", dir, time.Minute, nil, args...)
+	helperArgs, err := junimo140ReadHelperArgs(volume, "evidence-"+kind, projects)
+	if err != nil {
+		return nil, err
+	}
+	args := append([]string{"run", "--rm"}, helperArgs...)
+	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--mount", junimo140ReadMount(volume, projects), "--entrypoint", "timeout", imageID, "--kill-after=2s", "30s", "sh", "-c", script, "--", file)
+	result, raw, err := c.runJunimo140Read(ctx, "read fixed legacy game evidence", dir, time.Minute, nil, volume, imageID, projects, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,11 +93,15 @@ func fixedGameChecksumInput(files map[string]string, algorithm string) (string, 
 // symlinked parents. Hash lists arrive on stdin and are never interpolated into
 // shell source. The source volume and running game are never modified.
 func (c *Client) RuntimeVerifyJunimo140GameFiles(ctx context.Context, dir, volume, imageRef, imageID, algorithm string, files map[string]string) (RuntimeGameFileStats, error) {
+	return c.verifyJunimo140GameFiles(ctx, dir, volume, imageRef, imageID, algorithm, files, nil)
+}
+
+func (c *Client) verifyJunimo140GameFiles(ctx context.Context, dir, volume, imageRef, imageID, algorithm string, files map[string]string, projects []string) (RuntimeGameFileStats, error) {
 	input, err := fixedGameChecksumInput(files, algorithm)
 	if err != nil {
 		return RuntimeGameFileStats{}, err
 	}
-	if err := c.unusedSMAPIStaging(ctx, dir, volume); err != nil {
+	if err := c.junimo140ReadVolume(ctx, dir, volume, projects); err != nil {
 		return RuntimeGameFileStats{}, err
 	}
 	if err := c.pinnedSMAPIImage(ctx, dir, imageRef, imageID); err != nil {
@@ -118,9 +130,17 @@ done < /tmp/expected | awk '{n[$1]++; b[$1]+=$2} END {printf "%.0f %.0f %.0f %.0
 	if algorithm == "md5" {
 		width = "34"
 	}
-	args := append([]string{"run", "--rm", "-i"}, imageSMAPIHelperArgs(volume, "check-"+algorithm)...)
-	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp:size=16m", "--mount", "type=volume,src="+volume+",dst=/game,readonly", "--entrypoint", "timeout", imageID, "--kill-after=2s", "600s", "bash", "-euo", "pipefail", "-c", script, "--", width, algorithm)
-	result, err := c.runWithInput(ctx, "verify fixed legacy game files", dir, 11*time.Minute, strings.NewReader(input), args...)
+	helperArgs, err := junimo140ReadHelperArgs(volume, "check-"+algorithm, projects)
+	if err != nil {
+		return RuntimeGameFileStats{}, err
+	}
+	limit := "600s"
+	if projects != nil {
+		limit = "90s"
+	}
+	args := append([]string{"run", "--rm", "-i"}, helperArgs...)
+	args = append(args, "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp:size=16m", "--mount", junimo140ReadMount(volume, projects), "--entrypoint", "timeout", imageID, "--kill-after=2s", limit, "bash", "-euo", "pipefail", "-c", script, "--", width, algorithm)
+	result, _, err := c.runJunimo140Read(ctx, "verify fixed legacy game files", dir, 11*time.Minute, strings.NewReader(input), volume, imageID, projects, args...)
 	if err != nil {
 		return RuntimeGameFileStats{}, err
 	}

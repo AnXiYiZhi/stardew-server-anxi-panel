@@ -11,7 +11,7 @@
 
   最近复发/补充（2026-11-04，Python/tar 导出）：先启动 tar 子进程，随后因输出文件父目录缺失而打开目标失败，归档未完成。按精确进程身份停止并确认退出后，改为先验证批准的父目录、独占打开输出，再启动生产者。预防同时执行现有输入前置与 AGENTS 的 PID/归属/有界退出规则；适用于流式导出，不能遗留无人接收输出的子进程或重做已完成业务。
 
-  最近复发/补充（2026-11-05，081临时工具身份与ACL）：复用v1目录保护器时，新V4/V5/bridge阶段前缀在任何目标动作前被旧正则拒绝；纯模块测试不能证明真实stage可用。新补件只允许已批准的精确根及声明阶段前缀，逐祖先拒绝越界/链接，并以实际空目录验证protected ACL及错误根/嵌套/非空目录拒绝；原helper和失败保留。调用新验证器前先读parser/help并携带其要求的manifest与SHA；无参调用曾由argparse拒绝，不能当验证成功。适用于任务临时工具，不扩大目标动作授权。
+  最近复发/补充（2026-11-05，081临时工具身份与ACL）：复用v1目录保护器时，新V4/V5/bridge阶段前缀在任何目标动作前被旧正则拒绝；纯模块测试不能证明真实stage可用。新补件只允许已批准的精确根及声明阶段前缀，逐祖先拒绝越界/链接，并以实际空目录验证protected ACL及错误根/嵌套/非空目录拒绝；原helper和失败保留。调用新验证器前先读parser/help并携带其要求的manifest与SHA；无参调用曾由argparse拒绝，不能当验证成功。适用于任务临时工具，不扩大目标动作授权。克隆函数首次真实callback又因argparse不在复制namespace内NameError；须从原函数__globals__建立独立字典并重接peer，不能只复制导出module；真实填充Ref还需核gate.old常量接口。9项pure、5项真实callback及填充输入验证通过后才续接，原publish不重发。
 - 最近补充（2026-10-28，资源探针投影）：VM df按overlay路径匹配，输出了判断空间无需的存储标识，随后又发现同一文件系统在多个namespace视图重复。原raw保持私有；改只选已确认挂载点并输出容量数字，多行要求容量tuple一致，不假定只有一行。任何资源探针都应在输出前完成必要字段白名单投影。
 
   最近补充（2026-10-29，resource preflight原始事实）：aggregate guard在保存各条件前throw generic failure，丢失首轮individual容量/端口值，未运行bootstrap或其它夹具变更。保留首失败；新facts-only scope先持久每条件观测与原native终态，再做聚合准入。后续独立观测的MemAvailable确实低于固定cap+reserve，但不能倒推首轮未保存的数值。事实采集与行动准入分段，禁止用swap信用、降低reserve或重跑写动作补事实。
@@ -52,6 +52,14 @@
 - 最近补充（2026-10-28，OCI层级与平台形态）：只读checker误将合法direct platform root当index，另把加载后的Docker image ID与build config ID硬等，均执行前拒绝且无helper。先核原root/platform/config descriptor bytes；direct/index按真实media type分支，允许ID只取已证明的三层唯一集合，容器身份与完整OCI另核。不得扩大到任意当前ID或用版本tag代替内容身份；复用已验证的candidate identity工具，禁止在新探针重写层级假设。
 
   最近复发/补充（2026-11-05，Docker29/Windows表示）：Auth的config.digest不是该daemon实际image.Id；按原OCI root/platform/config关联及实际native inspect分别记录，不混称Engine ID。按@digest拉取也不保证配置tag已命名，先核实际引用及已加载固定内容；曾补拉080 tag后才确认原configure本已本地tag，此次额外拉取只作无内容变化的历史事实，不宣称修复必要步骤。negative夹具根DB选择须限定原/data根，不能因归档内updater backup同basename误拒；原非空WAL/SHM整组保留。已accepted create后如Mount.Source以原Windows路径返回，需由原request、samefile和完整组SHA闭合同源；Docker合并显式Env覆盖的顺序不可凭镜像默认顺序猜测，锁实际新Config/Env原序后只续同ID未发start/rm，不能重create或放宽现有容器数组比较。
+
+  同日补充（冷恢复与OOM默认值）：已发布一次的冷恢复被3个已存在DNS键null/[]差异挡住；独立六ID派生只接受明确空类型转换，保留rawExact=false、新完整HC并后续严格，不重publish。另一缺073负例已正确exit1却被启动时OomKillDisable false→null挡住；实际daemon能力false、完整其它HC严格，原创建HC仅有hash时用同参数从未启动的独立probe证明原完整HC，再只删除两已接受目标，未重start。新primary-v5在唯一start前保存完整HC/inspect，6项pure只允许有实际能力证据的typed false→null，DNS及其它字段仍逐typed严格；不能把原字段缺失、0、true或反向转换当作等价。
+
+- 最近补充（2026-11-05，任务私有TLS与传输）：宿主18872只读GET断开，而owned outer的127:8090及唯一实际PanelIP返回正确072；Desktop内部转发根因未定，不能重启承载tmpfs源的outer。独立固定outer/127:8090原样HTTP传输保留method/path/body/cookie与原status/ID写入顺序后通过admit。桥registry另因Python3.14/OpenSSL3.5默认严格X509拒缺AKI，30次GET无响应且0mutation；按原7任务文件/元数据仅补标准BC/KU/SKI/AKI/EKU/SAN，实际默认CERT_REQUIRED/hostname/strict与registry200通过，原renew/3transfer不重发且不降TLS。准备worker曾把native日志计数与文件循环共用index，静态发现后先分名并做O_EXCL唯一序号回归，未用坏draft执行。
+
+- 最近补充（2026-11-05，离线生产合同输入）：SDK clone夹具用了32hex staging名，实际生产及已编译原source只接受24hex，首次clone在volume/helper前拒绝；保留原空owned卷/请求，以新24hex计划仅续独立新目标，真实clone/5文件注入/inspect通过，不冒充boot或ABI。原game绑定还实际采用HC.Mounts而非Binds，Compose5.5与2.27创建label/有序配置不同；首次bind前读数拒绝未写，后续已接受recreate只能只读派生新目标，不重bind。离线Inspector的cap-drop ALL helper不能因UID0就假定能读所有0600，原整data指纹在Go前拒绝后已清理；后续限定真实所需4文件及一致DB/pending证明，不造文件或放开cap。适用于临时验收工具，生产严格校验不放宽。
+
+  同日补充（current只读reader原生测试）：新增native夹具把Client工作目录传空，在production reader create前被既有守卫拒绝；v3原205 pass及该失败保留，改为Linux t.TempDir后只续current10项，真实固定140的owner1000/0600无cap拒绝、最小DAC_READ_SEARCH读取成功、取消时精确helper/自动卷清理和原权限/内容保持全部通过。Unix权限不能由Windows或fake证明，目录契约直接由native测试在边界构造。只读closure误猜docker top的GNU ps参数又退出非0且stderr缺失，原因未定；改默认top在内存两次证明0writer，不重Go。后续原生观察须保存stderr并先核实际子进程工具能力。
 
   最近补充（2026-10-29，native OCI导入metadata）：一次已成功的073 cache load后，原postcheck只在固定synthetic unhealthy073的Parent/Descriptor表示失败。原artifact index的3项annotations与导入后逐项相等，原Parent精确指向healthy root而导入后为null；Config/RootFS/ID/全部aliases及其它字段保持。来源以固定Engine源码、原fullinspect、原archive与实际postinspect的精确proof闭合，原rawExact=false、原failed/native load原样保存；新finish073仅0load只读接收。仅此固定对象/两表示差异可接收，不能忽略整个metadata、把摘要当fullinspect基线、重load或把rawExact改true。
 - 最近补充（2026-10-28，Docker进程探针）：docker top -eo args缺PID列而exit1；真实默认列已支持，改bare docker top并仅在内存判断SteamCMD，不打印或落盘可能含密码的完整参数。另误将原世界server名用于fresh daemon，inspect返回不存在；先枚举该专属daemon真实容器并核归属，再以确切名称读取，不能跨夹具套名称。原两个Steam任务终态和新请求ID独立保留，不因诊断失败重发动作。
@@ -111,7 +119,11 @@
 
   最近复发（2026-10-29，补丁阅读总预算）：合并读取04前75行与05前25行，工具实际只返回67个长行仍由5890tokens截至5500，不能因行数少而称已读。发现后仅补04缺失24–33行（1091tokens），原截断未作完成依据。随后旧外部NEXT的前7个长行也超出1000token工具预算；未据旧待办执行动作，改用短完成状态指针覆盖其入口并原字节保留历史。后续逐文档独立输出，发送前将总字符限制在9500以内，并为工具返回预算保留余量；补丁优先只读added lines与必要短context，不能合并长期diff，也不能仅用行数限制替代字符预算。
 
-  最近复发/补充（2026-11-05，pwsh7只读证据）：长目录库存/合并源码再次被工具截断时，不据截断内容宣称已读；使用完整捕获及原exit，再在内存投影精确文件/短段，任务reader同时强制80行/9500字符。猜测路径Get-Content失败曾被后续成功掩盖，包装须ErrorActionPreference=Stop且先验证真实库存。混合PSCustomObject与原生文本并立即exit曾使自动formatter漏显示对象，改为单一显式JSON形状后再执行原生命令。固定代码封存清单若误包含可变pending错题本，须保留原manifest与不匹配，单独核全部固定源未变，不能回滚pending内容伪造全匹配。
+  最近复发/补充（2026-11-05，pwsh7只读证据）：长目录库存/合并源码再次被工具截断时，不据截断内容宣称已读；使用完整捕获及原exit，再在内存投影精确文件/短段，任务reader同时强制80行/9500字符。猜测路径Get-Content失败曾被后续成功掩盖，包装须ErrorActionPreference=Stop且先验证真实库存。混合PSCustomObject与原生文本并立即exit曾使自动formatter漏显示对象，改为单一显式JSON形状后再执行原生命令。固定代码封存清单若误包含可变pending错题本，须保留原manifest与不匹配，单独核全部固定源未变，不能回滚pending内容伪造全匹配。恢复上下文后再次凭43行读取发布文档，实际9922字符超过预算；后续长期文档必须经已验reader发送，不能绕过字符前置检查。另误猜updater/full_stack_runner.go两次rg失败并被后续成功掩盖，实际文件在driver；改完整捕获rg --files后精确定位，原生失败须立即保存和传播，不复用猜测路径。
+
+  同日补充（计数、聚合guard与root路径）：CI只读投影先手估5条succeeded观察，原18行实际4条；按解析stage计数后封存，不把观察数当写次数。RootSDK首聚合identity guard失败且0Go/cache写；后续逐字段实际全相同，原原因仍未定，不能凭猜测归因时间精度。v2只按既有规则对唯一Destination、同数量的effective Mounts完整对象排序，其它typed/数组仍严格。TCP审计误把声明outputRoot当foreground attempt子目录，带尾分隔符的子路径guard只读拒绝；核实际config与receipt.parent后改读准确attempt，不扩大写/清理根。事实和对象契约先于投影断言，保留原失败，不重放业务。
+
+  同日补充（复盘JSON产物）：手工append在首items后闭合根对象，后4条悬空；最终source索引只hash未parse，原803337坏文件与d386源码seal均保留。独立v2重建同5条并做schema/数量/JSON roundtrip，补件feeed6记录纠正，0产品/业务改动、不重测试。JSON生产者在封SHA前必须严格parse与schema断言，不能把可读文本或hash成功当结构有效；同次services.go/client.go猜路径及Delete+Add同测试路径的原子拒绝沿用既有精确库存、单路径单patch操作规则。
 
   最近复发/补充（2026-11-05，时间与文本ABI）：ConvertFrom-Json将OCI created转DateTime后与原字符串比较会误拒；先核类型、按不变区域规范UTC，再与固定build date比较，原OCI bytes/label检查保留。公开Markdown回放受autocrlf影响时，只能对声明的公开文档做EOL-aware canonical核验并保留rawSHA，不将换行归一化用于私有快照、SDK或通用配置。Python文本与stdout都显式UTF-8；新runtime/Node子项目先核实际解释器和scripts，不猜路径、包脚本或跨夹具资源名。
 

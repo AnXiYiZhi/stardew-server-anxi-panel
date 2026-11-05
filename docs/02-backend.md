@@ -1,5 +1,6 @@
 ## 2026-11-04 0.8.1 修复候选
 
+- 已是完整140的已安装共享组改由启动协调器只读核验：实际固定镜像、组成员/卷持有者、Junimo/Control、游戏全清单、patched SMAPI与实际SDK ACF/ELF全部通过后，按同apply与当前Panel完整OCI身份CAS记录`fullStack.not_needed`，不保存、停服、重建或写游戏marker/Env/Compose/staging。原unused staging入口保持；新current-group读取入口逐次检查完整known projects与实际holders。失败、未知及任何待恢复/新预检保持人工确认；完成凭证只在本进程强验证并CAS成功后可信，重启重新只读验证，GET不运行全量helper。current helper使用数字0:0、仅DAC_READ_SEARCH读取能力、RO/nocopy卷、只读根目录、无网络与no-new-privileges，create接受ID后校验，取消也用独立预算精确清理自身及已归属自动卷。Linux聚焦、真实固定140的1000:1000/0600权限和取消清理、前端状态与25个Chrome入口及生产构建通过；最终候选实际140无停服、125仍需确认迁移链待验收。
 - SDK 与固定游戏清单分离：游戏保留原 build/depot/manifest、226 个核心 SHA 和 3560 项 Content 校验；SDK 按实际 App1007/Linux1006 安装清单与有界 ELF 程序头、segment、DYNAMIC 结构核验，完成 marker 写实际 manifest。参考 SDK build 仅用于诊断，检测状态不再据此要求更新。
 - `junimo140_game_integrity.go`、`junimo140_sdk.go` 与 Docker `runtime_junimo140_sdk.go` 共用迁移/新装验证；140 dry-run 在停服前检查游戏/SDK ACF。cached patched-SMAPI 路径仍跳过重复安装，但先重新核验 payload、刷新实际 marker，失败清除旧 verified 回执。
 - SMAPI 缺失状态也先核验游戏、SDK、Junimo 与 Control 前置；旧 dry-run 成功后源内容变坏时，apply 重新核验并在运行变更前拒绝，合法新 SDK 仍可安装/更新。

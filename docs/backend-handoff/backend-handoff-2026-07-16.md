@@ -1,5 +1,7 @@
 ## 2026-11-04 0.8.1 修复接手
 
+2026-11-05 Noop收口：`full_stack_current.go`复用driver完整只读检查，`junimo140_game_integrity.go`拆开验证与marker提交；Docker新增明确current-group读入口，原staging的unused guard保留。全组正证后`updater.RecordRuntimeNoop`复核实际Panel OCI并CAS同apply，保留原Panel终态/ID，不产生新授权或游戏事务。`CurrentRuntimeVerified`仅为此次检查凭证；每进程重新强验，成员/配置/owner变化失效，任何失败仍走原确认。GET仅做轻量凭证与local指纹检查。current helper采用RO/nocopy、数字0:0及DAC_READ_SEARCH，接受create ID后严格校验，独立20秒取消清理校验自身和固定镜像声明的自动卷。Linux聚焦与固定140实际0600读取/无cap拒绝/运行中取消/零残留已通过；新不可变候选实际无停服验证仍待执行，禁止把原C10或纯fixture作为最终通过证明。
+
 改动：SDK 采用实际 ACF/depot 和有界 ELF 结构检查，marker 记录真实 manifest；游戏固定内容校验保持。普通检测、140 预检、安装及 cached-SMAPI 快路径共用该契约。运行中存档读取有界等待稳定，确认错误分阶段，过期观测只在 GET 投影。
 
 SMAPI 检测/工作流同时调整缺失分支的前置顺序：先核游戏、SDK、Junimo/Control，再允许安装。专用 fake 显式覆写版本读取，避免继承固定读数掩盖 game/SDK 场景；present/missing、合法 SDK253、旧预检后源漂移且零运行变更拒绝均有回归。

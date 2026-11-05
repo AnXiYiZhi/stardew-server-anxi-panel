@@ -104,16 +104,24 @@ func inspectSDKELFMetadata(read sdkELFMetadataReader) (RuntimeGameFileStats, err
 }
 
 func (c *Client) readJunimo140SDKMetadata(ctx context.Context, dir, volume, imageRef, imageID string, requests [2]sdkELFRange, previous *[2]sdkELFMetadata) ([2]sdkELFMetadata, error) {
+	return c.readJunimo140SDKMetadataWithScope(ctx, dir, volume, imageRef, imageID, requests, previous, nil)
+}
+
+func (c *Client) readJunimo140SDKMetadataWithScope(ctx context.Context, dir, volume, imageRef, imageID string, requests [2]sdkELFRange, previous *[2]sdkELFMetadata, projects []string) ([2]sdkELFMetadata, error) {
 	var empty [2]sdkELFMetadata
-	if err := c.unusedSMAPIStaging(ctx, dir, volume); err != nil {
+	if err := c.junimo140ReadVolume(ctx, dir, volume, projects); err != nil {
 		return empty, err
 	}
 	if err := c.pinnedSMAPIImage(ctx, dir, imageRef, imageID); err != nil {
 		return empty, err
 	}
-	args := append([]string{"run", "--rm"}, imageSMAPIHelperArgs(volume, "sdk-inspect")...)
+	helperArgs, err := junimo140ReadHelperArgs(volume, "sdk-inspect", projects)
+	if err != nil {
+		return empty, err
+	}
+	args := append([]string{"run", "--rm"}, helperArgs...)
 	args = append(args, "--pull", "never", "--network", "none", "--read-only",
-		"--mount", "type=volume,src="+volume+",dst=/game,readonly",
+		"--mount", junimo140ReadMount(volume, projects),
 		"--entrypoint", "timeout", imageID, "--kill-after=2s", "30s", "sh", "-c", inspectJunimo140SDKScript, "--", "/game")
 	for _, request := range requests {
 		if request.length == 0 || request.length > maxSDKMetadataBytes {
@@ -121,7 +129,7 @@ func (c *Client) readJunimo140SDKMetadata(ctx context.Context, dir, volume, imag
 		}
 		args = append(args, strconv.FormatUint(request.offset, 10), strconv.FormatUint(request.length, 10))
 	}
-	result, err := c.run(ctx, "inspect installed Linux Steam SDK metadata", dir, time.Minute, args...)
+	result, _, err := c.runJunimo140Read(ctx, "inspect installed Linux Steam SDK metadata", dir, time.Minute, nil, volume, imageID, projects, args...)
 	if err != nil {
 		// CommandError normally retains stdout. Encoded binary metadata must not
 		// escape through errors or job logs.

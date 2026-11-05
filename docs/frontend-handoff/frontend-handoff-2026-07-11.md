@@ -1,5 +1,7 @@
 ## 2026-11-04 0.8.1 更新入口接手
 
+2026-11-05 Noop：API的`currentRuntimeVerified`绑定同apply与实际Panel内容；`full-stack-state.ts/currentGameUpgradeComplete`统一判断当前完成，Dialog不因健康140仍重复要求迁移，保留“重新检查游戏组件更新”。新preparing/awaiting_confirmation及历史manual恢复不能被旧Noop隐藏；不新增effect/state。状态、25个Chrome入口及生产构建通过；原22场景及新3个Noop/新预检/恢复场景保留，390/1440截图已检查，最终候选实际升级后复验待执行。
+
 改动：过期范围可重新下载预检，组卡显示历史结果；有效性取新服务端 GET 的 `confirmationExpired` true/false，现有 5 秒轮询处理跨期。旧 API 缺字段时仍可确认有效计划，原 expired 拒绝只绑定同 operation 续观。授权后继续原计划，浏览器绝对时钟不参与授权期限判定。
 
 影响：`FullStackUpgradePanel.tsx`、`useFullStackUpgrade.ts`、`full-stack-state.ts`、API DTO 及真实 Chrome 状态/更新入口夹具。073 通过正式 Release 列表发现081/082；对旧客户端未知的发行先完成 Panel 更新，刷新后由新版本检查并确认实际游戏组。已激活版本显示自身当前发行目标。
