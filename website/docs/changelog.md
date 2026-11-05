@@ -6,7 +6,17 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.8.0（最新版本）
+## v0.8.1（最新版本）
+
+**SDK 独立更新更可靠**：修复 Steam SDK 版本变化导致游戏运行栈升级失败的问题。SDK 按实际 Linux 安装与运行文件独立检查，保留实际安装身份；游戏 build、depot 和内容哈希继续严格核验。
+
+**预检状态更准确**：区分预检执行中、预检失败和真正过期，过期后可直接重新检查范围。运行中的自动存档短暂替换文件时，预检会等待稳定读取；范围确认、取消、权限与失败恢复继续关联原操作。
+
+**先更新面板，再确认需要迁移的游戏组**：v0.7.2 及更早版本先完成 v0.7.3 准备；v0.7.3 及以后从正式发行列表选择适用的最高稳定版本，先更新面板至 v0.8.1。页面刷新后，再在新版本更新中心检查并确认游戏运行栈范围。新装直接使用 v0.8.1，默认运行栈保持 Junimo `.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。
+
+Docker Hub、阿里云 ACR、GHCR 的 `0.8.1/latest` 对应同一正式镜像；GitHub latest Release 保留 v0.7.3，供旧版先取得准备版本。完整说明见 [GitHub Release v0.8.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.1)，操作顺序见 [更新面板与游戏实例](/maintain/update)。
+
+## v0.8.0
 
 **新装默认使用 .140**：全新部署直接安装 v0.8.0，游戏运行栈采用 Junimo `1.5.0-preview.140`、正式 Auth `1.5.0-preview.140-anxi.1` 与配套 SMAPI `4.5.2`、Control `0.3.9`。按安装页完成游戏安装，需要 Steam 邀请码时再启用授权。
 

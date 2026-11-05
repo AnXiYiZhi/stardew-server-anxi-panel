@@ -1,12 +1,14 @@
 ## 2026-11-04 0.8.1 更新入口接手
 
-2026-11-05 Noop：API的`currentRuntimeVerified`绑定同apply与实际Panel内容；`full-stack-state.ts/currentGameUpgradeComplete`统一判断当前完成，Dialog不因健康140仍重复要求迁移，保留“重新检查游戏组件更新”。新preparing/awaiting_confirmation及历史manual恢复不能被旧Noop隐藏；不新增effect/state。状态、25个Chrome入口及生产构建通过；原22场景及新3个Noop/新预检/恢复场景保留，390/1440截图已检查，最终候选实际升级后复验待执行。
+2026-11-05 最终候选验收。实际 080/140 升级产物的双主题三宽度均显示本次 `080→081` 检查完成，原 080 范围保持历史。实际 073/125 的保存前后各六个视图按同计划和服务端显式未过期值展示待确认动作。`full-stack-state.ts` 的当前与历史选择继续以原 operation/panelUpdateId、目标版本和有效 Noop 凭证为准。新预检优先，历史待恢复保留其原操作入口。浏览器只读证据和公开入口复验分别见 docs09。
+
+2026-11-05 Noop：API的`currentRuntimeVerified`绑定同apply与实际Panel内容；`full-stack-state.ts/currentGameUpgradeComplete`统一判断当前完成，Dialog不因健康140仍重复要求迁移，保留“重新检查游戏组件更新”。新preparing/awaiting_confirmation及历史manual恢复不能被旧Noop隐藏；不新增effect/state。状态、25个Chrome入口及生产构建通过；原22场景及新3个Noop/新预检/恢复场景保留，390/1440截图已检查，最终候选实际升级后复验见本节首段。
 
 改动：过期范围可重新下载预检，组卡显示历史结果；有效性取新服务端 GET 的 `confirmationExpired` true/false，现有 5 秒轮询处理跨期。旧 API 缺字段时仍可确认有效计划，原 expired 拒绝只绑定同 operation 续观。授权后继续原计划，浏览器绝对时钟不参与授权期限判定。
 
 影响：`FullStackUpgradePanel.tsx`、`useFullStackUpgrade.ts`、`full-stack-state.ts`、API DTO 及真实 Chrome 状态/更新入口夹具。073 通过正式 Release 列表发现081/082；对旧客户端未知的发行先完成 Panel 更新，刷新后由新版本检查并确认实际游戏组。已激活版本显示自身当前发行目标。
 
-验证：最终 Chrome 生命周期17场景、更新入口18场景及 Linux Go 聚焦回归通过，覆盖客户端时钟超前/落后、新旧 API、服务端跨期、过期续观、重复确认与原 scope。桌面/手机截图已复核。候选升级后仍须按 docs09 验三宽度/双主题和真实身份恢复。
+验证：最终 Chrome 生命周期17场景、更新入口18场景及 Linux Go 聚焦回归通过，覆盖客户端时钟超前/落后、新旧 API、服务端跨期、过期续观、重复确认与原 scope。桌面/手机截图已复核。最终候选按 docs09 完成三宽度/双主题和真实身份复核。
 
 下一步：公开081九文件已封存并通过 docs:build，工作树保留已发布080入口；正式提升后按同字节补丁回放，再记录 Pages 和线上验收。原080和本轮候选证据保持各自身份。
 

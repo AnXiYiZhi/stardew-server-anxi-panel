@@ -1,5 +1,7 @@
 ## 2026-11-04 0.8.1 修复接手
 
+2026-11-05 最终验收接手。候选 `41992556686` 的健康 080/140 同 apply Noop 与最老 073/125→140 两条真实链通过。维护 `runtime_junimo140_*` 读取时保持私有 raw 与公开空 stdout 的契约，current 只读验证仅识别固定 Galaxy 整对并复验完整游戏/SDK，staging 继续使用原始清单。观察普通更新先绑定原 updateId，游戏范围继续绑定原 operation/hash，保存与停止用同一真实任务终态。生产已完成正式 0.8.1 同 apply 核验和 SQLite 在线备份，正式证据、候选和清理见 docs09。
+
 候选 `41969505983` 的真实 SDK253/current、073→081、运行中保存后同 plan 确认、140/Auth/邀请及实际回档均通过；标准 080 同次 apply 后后台 Noop 未通过。映射私有错误摘要确认失败在核心 SHA，实际 227 项只有两份 Galaxy 库不同，且标准 080/140 与独立迁移后 140 的两份原始游戏卷启动后得到同一对替换内容。保持 `/api/system/update/apply` 现有 DTO；只读 current reader 先验证精确整对，再用对应的完整核心清单核验同一个组，不对任一任意哈希或混用放行。后续需用新候选再次实际验证两个入口、当前进程与卷/数据保全；未达到完整门禁不发正式版。相关证据与专项矩阵见 `docs/09-image-build.md`。
 
 2026-11-05 真实迁移阻断：候选11的073/125共享组子任务因 `verify installed SDK runtime files: invalid installed SDK metadata response` 失败并回滚，原服务/专用Auth已恢复ready，不得提升该候选。`runtime_update.go` 的 `runWithEnvironmentRaw` 按隐私契约清空公开 `CommandResult.Stdout`，原始输出只在第二返回值；统一 current/staging helper 后，SDK、SMAPI、Junimo Mod 读取器仍解析前者，纯帧/脚本测试未覆盖生产返回契约。修复 `runtime_junimo140_sdk.go`、`runtime_junimo140_assets.go`、`runtime_smapi.go` 及 `runtime_junimo140_game.go` 的统计读取，私有 raw 只用于解析，不回填命令结果或日志，不放松任何 payload/镜像/卷归属检查。新增 `runtime_junimo140_raw_runner_test.go` 用真实子进程可执行文件驱动生产 runner：Linux 旧8be源码 RED 复现 SDK/SMAPI 的 staging/current 与镜像 Mod 五个失败，修复源码 GREEN 16 项通过、0跳过，命令公开 stdout 为空的契约保持。完整日志位于本次 `sdk-raw-output-fix-20261105-cf7d2ccb` 证据根。下一步完成真实SDK253新增current读取和新候选完整迁移、已140无停服Noop，不能复用候选11证明。

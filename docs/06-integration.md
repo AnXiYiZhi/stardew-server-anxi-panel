@@ -1,5 +1,7 @@
 ## 2026-11-04 0.8.1 候选联调契约
 
+- 2026-11-05 最终联调通过两条实际链。健康完整的 080/140 在 Panel 重连后，同 `updateId` 按固定 OCI 身份写入 `fullStack.not_needed` 和 `currentRuntimeVerified`，Game/Auth PID 与挂载保持。073/125 先完成普通 Panel 更新，新 081 才发起实际组预检。一次保存按同 commandId 完成后，使用同 operation/hash 确认并观察固定 140/Auth。候选 unhealthy 回滚与缺 073 桥拒绝各有独立证据。当前与历史显示、回档及容器保留均关联该唯一 digest，详见 docs09。
+
 - 真实 080→候选 `41969505983` 的 Panel 更新和重连成功；已运行 140 的 Noop 尚未通过，两份核心 Galaxy 库启动后变为固定运行时成对内容。候选停止提升。后续保持 `fullStack` / `currentRuntimeVerified` 协议，仅为已安装 140 的后台只读核验补充精确成对验证。只在整套检查成功后展示 `not_needed`；任一未知、混用、损坏或状态漂移仍要求管理员确认。须在新候选的真实 080 与 073 链上复验。
 - 新Panel对健康完整140组可在后台只读证明后，将同一成功apply的`fullStack`记为`not_needed`；`currentRuntimeVerified`含updateId、精确Panel内容、scope/local摘要和验证时间。记录通过CAS防覆盖并发helper/新apply，进程重启必须重新强验证；它不是授权，不写运行栈marker，也不创建full-stack事务。未知/损坏/未恢复组保留原manual路径，新scope仍按原op/hash确认。新prepare会取消后台只读检查并等其helper精确清理，再检查新范围。Linux聚焦、固定140权限/取消清理、前端状态/25个Chrome入口/构建通过；实际080承载140→新候选需证明原Game/Auth PID/配置/卷保持，073/125→新候选仍需明确迁移确认，最终证据不得继承C10。
 - SDK 完成标记从实际 App1007/Linux1006 manifest 和已核验库统计生成，SDK build 为诊断元数据；游戏固定清单保持。140 预检先读 ACF，staging 再验游戏与 SDK，失败不发布完成 marker。
@@ -7,7 +9,7 @@
 - confirm 区分 `full_stack_preflight_incomplete`、`full_stack_preflight_failed`、`full_stack_confirmation_unavailable` 和原 `full_stack_confirmation_expired`；actor、operation、plan、目标和范围检查保持。运行中存档只读捕获最多等90秒并服从取消。
 - 073 使用正式 Release 列表发现最高兼容版；实际073/080客户端对未知未来081先走普通 Panel check/dry-run/notice/apply，刷新后的081再检查当前游戏范围。旧二进制的080内置目标不变，新版本目标投影按自身发行版本。
 - `GET /api/system/update/full-stack`可能返回上次已授权操作，不代表它属于当前Panel apply。前端以operation/panelUpdateId、目标版本及可用的旧终态先后关系选择当前范围；旧080成功不能覆盖新081的`manual_action/legacy_full_stack_confirmation_required`。原始历史保留；旧manual_action另列原目标恢复，按原actor/operation/hash发既有recover，身份改变零POST，原恢复完成前按后端full_stack_busy阻止新prepare。实际旧响应已纯函数复现误投影，状态、22个Chrome入口和17个生命周期回归通过；新候选实际界面复验待完成。
-- 真实 SDK253 Docker staging 与坏游戏/截断SDK负例已通过；用户授权服务器的080→140运行栈恢复已 succeeded，独立备份和原记录保留。081候选的080/073代表链、同候选unhealthy回滚、升级后功能/数据/重启和实际Auth会话仍按 docs09 完成并绑定精确digest。
+- 真实 SDK253 Docker staging 与坏游戏/截断SDK负例已通过；用户授权服务器的080→140运行栈恢复已 succeeded，独立备份和原记录保留。最终081候选已完成080/073代表链、同候选unhealthy回滚、升级后功能/数据/重启与实际Auth会话，精确digest见 docs09。
 
 ## 2026-10-29 0.8.0 联调验收完成
 

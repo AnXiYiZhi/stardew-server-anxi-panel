@@ -1,9 +1,11 @@
 ## 2026-11-04 0.8.1 修复候选
 
+- 2026-11-05 最终 0.8.1 候选 `41992556686` 完成真实 080/140 同 apply 的 `not_needed` 与真实 073/125 确认后的 140 迁移。实际 140 运行后的 Galaxy 整对只在 current 只读核验识别，原始安装/暂存清单保持，缺桥、损坏、未知、混用和待恢复不进入 Noop。Linux 固定 140 专项和 SDK253 staging/current 已复核。原运行容器 PID、配置与挂载在 080 Noop 全程保持。真实 073 迁移另验证缓存 Auth、邀请码、活动存档/角色、Mod、备份、导出和回档。正式提升后，生产 Panel 同 apply 验证 0.8.1 和 `not_needed`，游戏/Auth 运行状态及数据保持。证据与清理见 docs09。
+
 - 2026-11-05 候选 `41969505983` 实测：标准 080 的实际 Web 更新和重连成功，已运行 140 的后台 Noop 在核心文件校验拒绝；225/227 SHA 一致，两处为 140 运行后的 Galaxy 库。原始 080/SDK209 游戏归档和 073/125 原挂载卷均匹配固定原始对；标准 080 实机与独立 073→140 迁移、回档后的游戏卷匹配同一替换对。仅现有 140 的只读核验按整对验证支持的运行时内容，完整核心和 Content 仍重验，未知/混用/损坏及身份漂移保留人工路径，安装和迁移继续用原始完整清单。正式提升等新候选的真实 Noop 和跨版本门禁。
 - 2026-11-05 真实 073→候选11 的共享组迁移在 SDK 元数据读取阶段失败并安全回滚，原 125/专用 Auth 恢复 running/ready，候选11停止正式提升。根因是统一只读 helper 后，SDK、SMAPI 和 Junimo Mod 读取器丢弃 `runWithEnvironmentRaw` 的独立 raw 返回值，再解析刻意清空的 `CommandResult.Stdout`；SDK 因空串报 `invalid installed SDK metadata response`。相关四个读取器现统一只在私有内存解析 raw（包括 stdin 文件统计），公开命令结果仍不保存元数据；游戏哈希、SDK ACF/ELF、镜像与 holder 校验不变。新增真实子进程 runner 回归覆盖 staging/current 两分支及输出隔离；Linux 旧8be源码 RED 准确复现两分支 SDK/SMAPI 和镜像 Mod 的五个失败，修复后 GREEN 16 项通过且无跳过。真实 SDK253 的新增 current 读取与新不可变候选真实迁移仍待验证。
 - 上述 RED/GREEN 完成后，本机三份隔离 outer 在 2026-11-05T04:27:23.74Z 同时 exited255/OOM=false，与 Docker Desktop/WSL 进程重新启动的时间一致；真实 SDK253 续验尚未发出，环境退出不能算作该测试失败或通过。RootSDK 的四个原 named volume 仍存在，恢复必须绑定同一 owned ID 和本次停止后的完整配置基线，明确记录新的生命周期；SDK/current 实验与最终候选两条真实链继续作为待完成门禁。
-- 已是完整140的已安装共享组改由启动协调器只读核验：实际固定镜像、组成员/卷持有者、Junimo/Control、游戏全清单、patched SMAPI与实际SDK ACF/ELF全部通过后，按同apply与当前Panel完整OCI身份CAS记录`fullStack.not_needed`，不保存、停服、重建或写游戏marker/Env/Compose/staging。原unused staging入口保持；新current-group读取入口逐次检查完整known projects与实际holders。失败、未知及任何待恢复/新预检保持人工确认；完成凭证只在本进程强验证并CAS成功后可信，重启重新只读验证，GET不运行全量helper。current helper使用数字0:0、仅DAC_READ_SEARCH读取能力、RO/nocopy卷、只读根目录、无网络与no-new-privileges，create接受ID后校验，取消也用独立预算精确清理自身及已归属自动卷。Linux聚焦、真实固定140的1000:1000/0600权限和取消清理、前端状态与25个Chrome入口及生产构建通过；最终候选实际140无停服、125仍需确认迁移链待验收。
+- 已是完整140的已安装共享组改由启动协调器只读核验：实际固定镜像、组成员/卷持有者、Junimo/Control、游戏全清单、patched SMAPI与实际SDK ACF/ELF全部通过后，按同apply与当前Panel完整OCI身份CAS记录`fullStack.not_needed`，不保存、停服、重建或写游戏marker/Env/Compose/staging。原unused staging入口保持；新current-group读取入口逐次检查完整known projects与实际holders。失败、未知及任何待恢复/新预检保持人工确认；完成凭证只在本进程强验证并CAS成功后可信，重启重新只读验证，GET不运行全量helper。current helper使用数字0:0、仅DAC_READ_SEARCH读取能力、RO/nocopy卷、只读根目录、无网络与no-new-privileges，create接受ID后校验，取消也用独立预算精确清理自身及已归属自动卷。Linux聚焦、真实固定140的1000:1000/0600权限和取消清理、前端状态与25个Chrome入口及生产构建通过；最终候选的两条实际链均在本节首段记录。
 - SDK 与固定游戏清单分离：游戏保留原 build/depot/manifest、226 个核心 SHA 和 3560 项 Content 校验；SDK 按实际 App1007/Linux1006 安装清单与有界 ELF 程序头、segment、DYNAMIC 结构核验，完成 marker 写实际 manifest。参考 SDK build 仅用于诊断，检测状态不再据此要求更新。
 - `junimo140_game_integrity.go`、`junimo140_sdk.go` 与 Docker `runtime_junimo140_sdk.go` 共用迁移/新装验证；140 dry-run 在停服前检查游戏/SDK ACF。cached patched-SMAPI 路径仍跳过重复安装，但先重新核验 payload、刷新实际 marker，失败清除旧 verified 回执。
 - SMAPI 缺失状态也先核验游戏、SDK、Junimo 与 Control 前置；旧 dry-run 成功后源内容变坏时，apply 重新核验并在运行变更前拒绝，合法新 SDK 仍可安装/更新。
@@ -12,7 +14,7 @@
 - `GET /api/system/update/full-stack` 对待确认且未授权的操作派生 `confirmationExpired`，新服务端显式返回 true/false；持久记录及 plan hash 不含此观测，已授权执行继续按原 ID 恢复。
 - 已激活 Panel 的运行栈范围目标按当前发行版本投影；旧 073 发现后续正式版本时先更新 Panel，再由新版本确认其实际游戏范围。通用发行政策按目标版本实例化，最低更新器保持 073，真实生成器覆盖未来 082。
 - 用户授权服务器已通过保存回执、停服/SDK 原目录保留、受控重启及运行中范围确认完成 080 的 125→140 升级，终态 succeeded，存档与角色身份集合保持，临时容器和维护 session 已收尾。
-- 聚焦 Linux/Chrome 回归与真实 SDK253 Docker staging、游戏损坏和截断 SDK 拒绝已通过。081 尚需同一不可变候选完成 080/073 Web 升级、回滚、实际运行/Steam 链和正式提升；矩阵及证据入口见 docs09。
+- 聚焦 Linux/Chrome 回归与真实 SDK253 Docker staging、游戏损坏和截断 SDK 拒绝已通过。最终 081 的实际 080/073 Web、回滚、运行栈与正式提升证据见 docs09。
 
 ## 2026-10-29 0.8.0 正式后端收尾
 

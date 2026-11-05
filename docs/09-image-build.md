@@ -2,6 +2,20 @@
 
 ## 2026-11-04 0.8.1 修复候选与发布矩阵
 
+### 2026-11-05 0.8.1 最终候选与验收
+
+- 最终候选 `41992556686`、兼容 `41992556722`，完整提交 `1e22f4925fba779154ac0f449f9d93381040062a`，UTC 构建 `2026-11-05T08:11:23Z`，唯一 OCI digest `sha256:212d32367f13a29bf56df6b29b763ad034e73b317c89b3b2dcb90fcf8ddba456`。候选证明 SHA `2ab96082132f37ec05c185d545a906fd1616748d4713836a00ed3d29a0970b4d`，原始 OCI 归档 SHA `b47af96be8dc9431c3ee37ce5206f9d6ad826df1f5c3c8968c7e89b70877383d`。
+- 候选 CI 成功，job 1642 秒。路径矩阵选择 15 组，包括后端 test/vet/build、前端回归与构建、Shell/ShellCheck、Windows 包装、发布政策与兼容、远程制品、真实 SMAPI 下载、Junimo/updater Docker 集成、受管资源、官网构建、候选新装/未初始化/重启、080 Web 与同候选 unhealthy 回滚。CI 的最老版本字段为空，自动跳过该 job 的 073 分支，另行完成真实 073 代表链。原 CI 汇总 SHA `1110aac695af1daa33d7f8487db73c9695b62e66251a1c887822d8177621f0fd`。
+- 同一 digest 从正式 080 走 Web check、dry-run、确认、apply、重连。注入 unhealthy 的同候选引用按原操作回到 080，结果 `failed_rolled_back/health_check_failed`。独立真实 080/140 fixture 验证同 apply `not_needed/runtimeRequired=false` 与 `currentRuntimeVerified`，游戏/Auth 原 PID、配置、挂载保持。再核 SQLite、初始化与用户、活动存档/角色、Mod、会话、卷和重启。更新中心实际双主题/1440、390、360 共六视图通过，显示本次 `080→081`，原 080 范围仍作为历史。Noop SHA `64a8b282c084fb238a09acdbe16885ab2f37014386c6f26dac6a1f7ade43cd05`，界面 SHA `17b8f958b9ebfa9f0b6749649e4db8708df32f53125b78bdc46eb2fb62676c8e`。
+- 最老正式 073 来源经原真实 072 检查点独立恢复，沿用已核 SDK253 和缓存 Auth，通过 Web 更新至同一 081。实际游戏仍在 125 运行时，执行一次范围预检、一次保存并等待同 commandId 成功，复核同 operation/plan 的 `confirmationExpired=false`，再确认一次。保存前后各六个真实只读视图通过。最终固定 140/Auth 健康、有效邀请码、存档/角色/Mod/Steam 会话保留，手动备份、导出、回档重启与旧客户端拒绝边界完成。范围终态 SHA `0a8a5c3c5615a49f547d6c5edc97fc3985ba288ac9dbb453309f86859ccd83e7`，完整专项 SHA `022ba99db21503f00aa9e2cf498fb72c25a6608d91e19c498dee69b42575e576`。
+- 15 项共用证据 SHA `7a2957c15066efaf9edbc9f358efabe5282435f4a2c73dbb4e9b14e1df893fa8`，最终 26 项实际验收全部通过，汇总 SHA `647264dbf50ab6d3e31ba12121fb53b1bde65da31e4bcd5ac4994f2a4c7e963e`。本轮 073 和 080 两套夹具均逐项确认专属资源移除，保留已校验的归档，终态分别为 `c8c621b66a2482c08a51a10085d7231167a10f180738652ca2818e0d835eb4b7`、`57bbaaf2bb522f5f5d8e63659287b28e94f265a42b0c281543fdc03ede840c8e`。历史工具环境和无额外删除授权的资源按 `f26ae61c4790a19de4c977cf0a74ef535f265deac1ca406539360470e83bda34` 另行保留。
+- 正式验收工作流 `42004272751` 成功，`acceptance.json` SHA `dd8df8cbc0c62273d9fb6ada623389302a3296da4ff646b9c8824054f7d6abfb`。Tag 工作流 `42004323851` 创建指向最终提交的 annotated `v0.8.1`。正式提升 `42004363888` 于 `2026-11-05T09:42:18Z` 发布 0.8.1，三仓的版本与 `latest` 共六个引用均为该候选 digest，官方回拉 health/version 冒烟成功。正式终态 SHA `bb7b463e2f6d3f226889b3ad3a91da5155f29db983e8e97dc172326a738963f8`。[正式发布](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.1) · [提升工作流](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/42004363888)
+- 实际正式 073 通过公开 GitHub Release 列表发现 `v0.8.1`，真实浏览器验证精确正式 tag 和政策。GitHub `/releases/latest` 仍返回 0.7.3 兼容桥。该独立发现夹具清理完成，证据 SHA `f23cbf4922051e82b1e4f56014fc9a6059cc75cddb70485efad9a868a45a12df`。
+- 正式发布后按原封存字节应用 README/官网共九个文件。实际 VitePress 1.6.4 构建耗时 5.44 秒，退出 0，八份 HTML 的 25 项针对性核验通过。构建回执 SHA `6a9e4fbe9e1f3571d37a73568d2a1b7297056919dbd8d483484a129dbad4f1be`，字节和渲染核验 SHA `edc52680f3c070cd442ff75387c13a7c6767ed90c6cde2371d9a509ad97f4c7d`。Pages 部署与线上复核单独记录。
+- 用户授权的生产 Panel 由 0.8.0 经 Web 更新至正式 0.8.1，先完成 SQLite 在线备份，再沿唯一 apply 的原 ID 观察到 `succeeded` 和 `cleanupCompleted=true`。正式镜像元数据匹配，同次运行栈核验到达 `not_needed/runtimeRequired=false`，原 Game/Auth 运行状态、卷、存档身份及用户与最后登录保持，短期维护会话已撤销。在线备份 SHA `91d0ab607362376f1045e5de1cb458a8373165266d24a986845a7d9e3055a291`，生产汇总 SHA `18fe6f1dbc6322fa166e8304bb1db1fe27be16b70fcbe665868b7064a6398ce0`。
+
+### 历史候选记录与验收矩阵
+
 候选 `41969505983`（`d9f29d70bebb31caf09761f460a362ccb8d2c1de`、`sha256:e60071ce63c39dacbf47260690386bbb82c4fecba9fc53d68388b309e98c9be7`）通过自动门禁和兼容 `41969505899`；真实 SDK253、073→081 Web、运行中保存后确认、实际 140/Auth/邀请和恢复也通过。标准 080 承载已运行 140 的 Web 更新本身成功并重连，但三次只读核验均拒绝自动跳过迁移；该候选不正式提升。实际现有游戏卷中 227 项核心仅 `libGalaxy64.so`、`libGalaxyCSharpGlue.so` 两个 hash 不同，完整读取无缺失、链接或不稳定项。两个独立安装的精确归档及实机表明：启动前两库匹配原游戏清单；现有 080/140 与通过真实 073 迁移/回档的 140 启动后得到同一对替换内容。私有证据 `actual-C12-core-file-readback.safe.json` SHA `b17e1b51671f320b78a319c7b7338fa866c8c82ea095c6345a7dea012bcdb7be`、`c12-after-140-galaxy-proof.safe.json` SHA `0275a064741bca0a65a00f3625955fecf858864181e7bbe287b1a7602b4cc15e`。
 
 两库离线二进制比较分别仅在偏移 348 / 292 将唯一 ELF `PT_GNU_STACK` 的 `p_flags` 从 `0x07` 改为 `0x06`；只清除执行位即可从原始归档重构两份实际完整 SHA，其余字节严格一致。原始对、运行时对和两组独立现存安装的证明在 `galaxy-pt-gnu-stack-c12.safe.json`，SHA `889d1f29c765590434adfaff86efcd7460b6c3b4f3dd93ee5f098632b452a33b`。
@@ -59,7 +73,7 @@
 
 现有080生产恢复已完成：先取得同commandId的GameLoop.Saved回执，保留SQLite/停服存档/原SDK目录与tar，恢复已验收的SDK原始ACF和两库，再从健康运行125创建新范围并确认一次；同operation最终succeeded，固定140健康、实例running、存档及角色身份集合保持。临时下载helper已按归属删除，短期维护session已撤销，备份保留。该恢复与081候选证明各自绑定。
 
-最老代表来源已准备就绪：原072正式源码的全新离线检查在仅替换SDK253五文件、保留125游戏/SMAPI的来源上判定up_to_date，临时helper/两cache清理完成；唯一真实Start随后得到健康125/Auth、有效邀请、fresh save和Control038。通过原072 Web check、同ID dry-run、唯一apply升级正式073，再等待required039和实际Control039就绪；SDK253五文件在两次真实boot后保持。最终073 ready为 `release072-observe-v2-start2727-observe073-sdk24-ready073-1105-01/source-ready.safe.json`，SHA `8757740d3520a1e7fcc523d7b9c359329a5e19701674b2296ef7a89549e4f6fa`。现停在该来源等待最终081候选，尚未执行073→081或140范围；此准备证据不代表最终候选长链通过。
+最老代表来源已准备就绪：原072正式源码的全新离线检查在仅替换SDK253五文件、保留125游戏/SMAPI的来源上判定up_to_date，临时helper/两cache清理完成；唯一真实Start随后得到健康125/Auth、有效邀请、fresh save和Control038。通过原072 Web check、同ID dry-run、唯一apply升级正式073，再等待required039和实际Control039就绪；SDK253五文件在两次真实boot后保持。最终073 ready为 `release072-observe-v2-start2727-observe073-sdk24-ready073-1105-01/source-ready.safe.json`，SHA `8757740d3520a1e7fcc523d7b9c359329a5e19701674b2296ef7a89549e4f6fa`。该记录为早期来源准备。最终候选使用独立重建来源的实际长链证据见本节开头。
 
 候选前已通过：Linux聚焦SDK/预检/政策、真实Chrome生命周期17场景与更新入口18场景；独立DinD真实SDK253 staging及坏游戏/截断SDK负例通过。SDK根日志为`E:/task-evidence/runtime-sdk-repair-20261104-cf7d2ccb/sdk-real-docker.jsonl`；私有SDK原tar SHA为`85303acb5466d5610dd5f8ca96ea9d986a43542fb494e4bf9f51d37e00f26d45`。不输出账号、token或存档标识。
 

@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.8.0
+release: v0.8.1
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前正式版 v0.8.0。新装默认 Junimo .140 与正式 Auth；v0.7.2 及更早版本先升 v0.7.3，再从更新中心确认 v0.8.0 全栈升级。
+    details: 当前正式版 v0.8.1。新装默认 Junimo .140 与正式 Auth；旧版先完成 v0.7.3 准备，再更新面板并检查需要迁移的游戏组。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -46,7 +46,7 @@ features:
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
     <strong>{{ $frontmatter.release }}</strong>
-    <p>新装使用 v0.8.0，默认 Junimo .140 与正式 Auth 1.5.0-preview.140-anxi.1。v0.7.2 及更早版本先升到 v0.7.3，再从更新中心确认范围，完成 Panel 与游戏组升级。</p>
+  <p>新装使用 v0.8.1，默认 Junimo .140 与正式 Auth 1.5.0-preview.140-anxi.1。v0.7.2 及更早版本先升到 v0.7.3，再更新面板；页面刷新后检查并确认需要迁移的游戏组。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
