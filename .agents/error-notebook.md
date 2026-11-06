@@ -15,6 +15,20 @@
 
   同日补充（正式公开补丁守卫）：本地未取到 `v0.8.1` 时，按精确远端 annotated 对象、peeled 提交及正式 Release 元数据核对。原 20,964 字节封存补丁使用工作区绝对路径，旧相对路径守卫在应用前拒绝。只核封存 SHA、精确根与九个允许成员，保留原补丁字节。同一正式提升 run 的首个只读查询遇 TLS 握手超时，按同 ID 有界查询原公开 API 得到 success，未重发任何工作流。证据 `cdcb3816…`。
 
+  最近复发（2026-11-06，pwsh7 / GitHub CLI）：查询 0.8.2 候选 `42193533264` 状态遇 `EOF`（退出 1）。只读重查同一 run 成功，最终结论为 success。候选仍在等待专项验收时，诊断笔记保留在本地，避免单独推送使当前候选 SHA 被取代。
+
+  同次发布封存：`gh workflow run` 的 workflow 元数据 GET 遇 TLS 握手超时，退出 1，未到 POST。先按 exact workflow 和候选 SHA 核对运行数为零，再通过保存的 JSON 对 `/dispatches` 提交一次。接受后仅按同一 run `42208752280` 查询直至成功。请求结果不确定时先核实远端，避免重复 dispatch。
+
+  2026-11-06 0.8.2 专项夹具补充（Windows pwsh7、隔离 Alpine DinD）：归档管理员是 Argon2id，bcrypt 前置判断退出 1。先按源码 `backend/internal/auth/password.go` 和只读 DB 类型计数确认，再用临时 Argon2id 口令续接已解包测试库。`apk search` 的无缓存索引查询退出 1，直接按确切依赖 `apk add --no-cache py3-argon2-cffi` 成功。JavaScript 字符串替换中的 `$'` 曾展开余下源码并使 Python 解析失败，改函数式替换，保留原失败脚本且未重放已成功阶段。
+
+  同次续接：卷归档含确切的 `steamclient.so` 容器绝对链接，泛拒绝导致后续卷恢复前退出。只允许该已观察链接并验证归档成员从不穿过它，按 task owner 和文件 SHA 验证先前卷。实例绑定探针发现归档 `INSTANCE_HOST_DATA_DIR` 指向旧根，按原值精确改至本次隔离目录并重新渲染，确认后才创建游戏容器。宽文件库存与可空字段投影先限条数、判空。不存在的 `storage/users.go` 查询按当前符号库存纠正，前述故障均在业务写请求前。
+
+  同次旧版本夹具续接（2026-11-06，pwsh7、隔离 Alpine DinD）：前一轮 updater 清理了内层 0.7.3 别名，Compose `--pull never` 在创建 Panel 前退出。缓存 OCI index 有重名 descriptor，按已核的正式 manifest digest 唯一选择并生成独立 index，保留原归档，确认 digest 后才拉取和续接。0.7.2 库直接启动 0.7.3 不能生成正式桥接回执，改走旧版实际 Web apply 后读取其真实回执。
+
+  同次卷修正：归档根 `./volumes/<name>/_data` 按三段剥离时保留了 `_data`，复用前置校验退出 1。诊断入口须传夹具家族 `073`。逐项核外层任务归属、无 holder、唯一嵌套目录和全部文件 SHA 后才在精确卷内提升一层。后续先用真实 tar 成员确认剥离结果。源码库存检索先对当前根执行 `rg --files`，不要先列推测存在的 `steam-auth` 和 `docker` 子目录。
+
+  同次 Web 验收观测续接：迁移试启动会更新测试 Mod 的 `Loads`、SMAPI 自带程序集和 Steam 短期票据，全部文件同哈希的断言退出 1。分开核实际存档字节、用户 Mod 数据、缓存授权文件和同账号新票据。邀请码监视原匹配的是旧状态和带连字符的格式，精确结束原只读 PID 后，从已受理 Start 和备份/回档回执续接，采用 `junimo140_connectivity.go` 的 `connection_ready`、`ready` 与 `^S[0-9A-Z]{1,32}$`。不得重发 Start 或回档。
+
   最近复发/补充（2026-11-05，C13 标准 080）：冷态 Compose 两个历史 owner label 在业务容器创建前仅按批准值窄替换。normalizer 的注入回调误与本地同名触发 `UnboundLocalError`，预防用单独命名与符号表断言。读实际 `ipam:{}` 允许声明省略 config，继续绑定同一真实完整网络，单对象数组解析保留 `-NoEnumerate`。原 Stop/rename/up 均 native0 后旧 owner 比较器失败，仅只读续接，核退出的执行 helper 与实际新 app 两份独立 ID，原生命周期不重放。
 
   最近复发/补充（2026-10-29，pwsh7/Python，全部先于未发动作）：复制接收器仍从 HERE.parent 推导冷源、按旧 basename 拼稀疏续接目录，或未核 ancillary fixture，分别在 prestart、只读诊断和维护导出后失败。正确做法是从 entry、prepared.dependencies 与每条 ref 的显式 base 解析全部传递依赖，逐角色核真实 name/attempt/port/path，并在第一写请求前运行实际输入的只读前置；同源输入只有字节/SHA相同才可独占 materialize，记录来源。保留原失败与已接受操作，只续未发动作；不能靠重建目录、复制当前输出为 expected 或重放业务解决。

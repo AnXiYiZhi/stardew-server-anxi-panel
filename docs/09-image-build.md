@@ -18,6 +18,14 @@
 
 第二轮本地热修 `291bf9e31ec9` 上线后，实际新进程在 17:12 完成只读核验，持久状态为 `not_needed/runtimeRequired=false`。Panel 健康、版本和新前端入口通过，游戏与 Steam Auth 容器身份、运行状态及有效挂载一致，原程序与 SQLite 回退点保留。历史任务未改写。
 
+### 2026-11-06 0.8.2 正式发布回执
+
+- 候选 `42193533264` 绑定提交 `4ad902f553782f0dfda7b4bd1b92823e809bea32`、UTC 构建 `2026-11-06T09:14:29Z` 和唯一 digest `sha256:b91a509ddfe34a0594097e5014f3f0436ccf01552e728a0ad4f0d0bfb93520bd`，从启动到终态耗时 34 分 31 秒。[候选工作流](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/42193533264)
+- CI 选择兼容清单、部署脚本与 ShellCheck、后端 test/vet/build、updater/Docker、真实 SMAPI 下载及 Junimo 集成、前端状态回归与生产构建、官网构建。候选新装、健康、未初始化、重启、0.8.1 真实 Web 升级、unhealthy 回滚和数据保全均通过。脚本因远程制品清单输入未变跳过该组校验。
+- 专项在隔离 Docker 中耗时 41 分 21 秒。0.8.1 经 Web 升级后，已停服的 `.140` 共享组同版本预检完成且保留原容器与挂载。旧测试库经正式桥接形成 0.7.3 回执，再走 Web 升级、管理员确认和 `.125 → .140` 迁移。正式 Auth、真实邀请码、存档与角色数据、Mod 数据、备份还原、归档导出和原授权续用通过。运行中再次预检直接完成。缺桥接的测试库被拒绝，数据库文件一致。
+- 夹具准备时按精确 digest 恢复旧 OCI 引用，修正旧卷归档多出的一层目录。续接验收按源码核对 Mod 加载计数、Steam 短期票据及实时邀请码状态，沿用已受理的操作。关闭两项测试游戏服务并回收专属 DinD、两个宿主卷与测试端口。证据清单 SHA-256 为 `49469284beb8547d6014f491e6261431c66fb5e0b64529a091795608478a7339`，26 项证明封存耗时 21 秒。[专项验收工作流](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/42208752280)
+- 自动标签工作流 `42208800824` 创建 annotated `v0.8.2`。正式提升 `42208829261` 耗时 1 分 26 秒，三仓的 `0.8.2` 和 `latest` 六个引用均为同一候选 digest。正式镜像 health/version 冒烟通过，六个引用于 `2026-11-06T11:16:17Z` 完成核对，GitHub Release 于 `2026-11-06T11:16:22Z` 发布。[正式提升工作流](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/42208829261) · [正式发布页](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.2)
+
 ## 2026-11-04 0.8.1 修复候选与发布矩阵
 
 ### 2026-11-05 0.8.1 最终候选与验收
