@@ -928,6 +928,10 @@
 - 预防检查：生产 Docker 诊断开头明确区分 SSH、Docker socket 与 sudo 三层权限；首条失败后保存原错误并切换已验证的受控 sudo 形态，不重复普通账号 Docker 命令。
 - 适用范围：生产容器、镜像、Compose、日志、事件和 volume 的只读 SSH 诊断。
 
+  最近补充（2026-11-06，Windows PowerShell 7 / Posh-SSH 3.2.7，NAS 只读诊断）：仅取 `PANEL_DB_PATH` 并回退到 `/data/panel.db`，在自定义 `PANEL_DATA_DIR` 部署上导致 SQLite `unable to open database file`（退出 1）。按当前源码从 `PANEL_DB_PATH` 或 `PANEL_DATA_DIR/panel.db` 解析容器路径，匹配最具体的 Mount Destination，确认宿主文件存在后用 `mode=ro`、`query_only` 和 `finally` 关闭连接。
+
+  同次补充：大段 base64 载荷单行送入 SSH TTY 后未收到终态标记（本地退出 1）。改为先确认禁回显及同一 TTY 的 sudo 授权，再分块传输，在只读命令外独立输出退出码标记。诊断只投影标记内的有限字段，最后关闭 stream/session。比对部署清单前先读取运行镜像 OCI revision 并用 `git show <commit>:<path>` 取对应文件。本地可能缺发布 tag，需用 `git rev-parse --verify --quiet` 探测，避免把缺引用报成源码丢失。
+
 ## 2026-08-23：Posh-SSH 3.2.7 的 ShellStream 尺寸参数是 Columns/Rows
 
 - 环境：PowerShell 7、Posh-SSH 3.2.7，创建生产 `New-SSHShellStream` 以受控输入 sudo 密码。
