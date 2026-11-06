@@ -43,6 +43,11 @@ type junimo140GroupDocker interface {
 var _ junimo140GroupDocker = (*paneldocker.Client)(nil)
 var _ junimo140InstanceLister = (*storage.Store)(nil)
 
+var errJunimo140GroupAlreadyCurrent = &RuntimeUpdateValidationError{
+	Code:    "already_up_to_date",
+	Message: "此共享组的运行组件已是目标版本，无需再次迁移。",
+}
+
 func junimo140WorldScopes(plan junimo140GroupPlan, hostPath func(string) (string, error)) ([]paneldocker.RuntimeJunimo140WorldScope, error) {
 	var scopes []paneldocker.RuntimeJunimo140WorldScope
 	for _, member := range plan.Members {
@@ -112,6 +117,7 @@ func (d *Driver) captureJunimo140Group(ctx context.Context, docker junimo140Grou
 		return txn, err
 	}
 	usedSessions := map[string]bool{}
+	allCurrent := len(plan.Members) > 0
 	for _, member := range plan.Members {
 		var stored storage.Instance
 		for _, candidate := range instances {
@@ -206,6 +212,8 @@ func (d *Driver) captureJunimo140Group(ctx context.Context, docker junimo140Grou
 		if err := captureJunimo140InactiveServerImage(ctx, docker, member.DataDir, config.Images["server"], &original); err != nil {
 			return txn, err
 		}
+		allCurrent = allCurrent && current.Status == sjconfig.RuntimeStackStatusUpToDate &&
+			original.ServerPresent && original.Server.ImageID == txn.Target.Server.ImageID
 		if invite && original.SessionVolume == "" {
 			original.SessionVolume = config.SteamSessionVolume
 		}
@@ -246,6 +254,27 @@ func (d *Driver) captureJunimo140Group(ctx context.Context, docker junimo140Grou
 			}
 			break
 		}
+	}
+	if allCurrent {
+		for _, world := range txn.Worlds {
+			original := world.Original
+			if original.SteamInviteEnabled && (!original.AuthPresent || original.Auth.ImageID != txn.Target.SteamAuth.ImageID) {
+				allCurrent = false
+				break
+			}
+		}
+	}
+	if allCurrent {
+		for _, world := range txn.Worlds {
+			if err := rejectJunimo140GroupLease(world.Original.Instance.DataDir); err != nil {
+				return txn, err
+			}
+			previous, err := readRuntimeUpdateApplyStatus(world.Original.Instance.DataDir)
+			if !errors.Is(err, os.ErrNotExist) && (err != nil || previous.Phase != RuntimeUpdateApplySucceeded && previous.Phase != RuntimeUpdateApplyFailedRolledBack) {
+				return txn, &RuntimeUpdateValidationError{Code: "shared_runtime_recovery_required", Message: "共享组存在尚未处理的运行组件恢复记录，请先恢复。"}
+			}
+		}
+		return txn, errJunimo140GroupAlreadyCurrent
 	}
 	txn.InputSHA256 = txn.inputDigest()
 	return txn, nil

@@ -114,6 +114,7 @@ func (d *Driver) PrepareFullStackUpgrade(ctx context.Context, actor int64, panel
 }
 
 func (d *Driver) prepareFullStackGroups(ctx context.Context, job *jobs.Context, op fullStackOperation) (resultErr error) {
+	skippedCurrent := false
 	defer func() {
 		d.fullStackMu.Lock()
 		defer d.fullStackMu.Unlock()
@@ -123,6 +124,8 @@ func (d *Driver) prepareFullStackGroups(ctx context.Context, job *jobs.Context, 
 			if errors.As(resultErr, &validation) {
 				op.Public.ErrorCode, op.Public.Error = validation.Code, validation.Message
 			}
+		} else if op.Public.Continuation && skippedCurrent && len(op.Groups) == 0 {
+			op.Public.Phase = "succeeded"
 		} else {
 			op.Public.Phase = "awaiting_confirmation"
 			op.Public.PlanSHA256 = op.digest()
@@ -175,6 +178,11 @@ func (d *Driver) prepareFullStackGroups(ctx context.Context, job *jobs.Context, 
 			return errors.New("full-stack group preflight did not prove the original scope")
 		}
 		captured, err := d.captureJunimo140Group(ctx, docker, instances, plan, RuntimeUpdateApplyStatus{CreatedBy: op.Public.ActorID, ApplyID: plan.ApplyID, JobID: job.ID, Target: op.Target})
+		if errors.Is(err, errJunimo140GroupAlreadyCurrent) {
+			skippedCurrent = true
+			_, _ = job.Info(ctx, fmt.Sprintf("共享组的 %d 个世界均已使用目标运行组件，跳过迁移。", len(plan.Members)))
+			continue
+		}
 		if err != nil {
 			return err
 		}

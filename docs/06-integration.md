@@ -1,3 +1,7 @@
+## 2026-11-06 0.8.2 同版本范围预检
+
+- `POST /api/system/update/full-stack` 的 `prepare` 仍返回 `202`，随后按同 `operationId` 读取状态。当前 Panel 的预检全部命中已达目标的共享组时，终态为 `succeeded`，`groups` 为空且无需确认。存在待迁移组时仍以 `awaiting_confirmation` 展示其范围。陈旧预检确认时，后端重新捕获实际身份并用 `already_up_to_date` 拒绝重复迁移。
+
 ## 2026-11-04 0.8.1 候选联调契约
 
 - 2026-11-05 最终联调通过两条实际链。健康完整的 080/140 在 Panel 重连后，同 `updateId` 按固定 OCI 身份写入 `fullStack.not_needed` 和 `currentRuntimeVerified`，Game/Auth PID 与挂载保持。073/125 先完成普通 Panel 更新，新 081 才发起实际组预检。一次保存按同 commandId 完成后，使用同 operation/hash 确认并观察固定 140/Auth。候选 unhealthy 回滚与缺 073 桥拒绝各有独立证据。当前与历史显示、回档及容器保留均关联该唯一 digest，详见 docs09。
