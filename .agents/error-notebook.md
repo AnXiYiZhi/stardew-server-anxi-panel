@@ -938,6 +938,8 @@
 
   同次复发：热修回执按原序比较 `docker inspect` 的 Mounts，返回了不相等。两次独立只读 inspect 在同一存活容器上复现原序变化，Destination 唯一且完整对象排序后相同；Docker 事件复核也无游戏生命周期变更。后续按既有规则先核数量和 Destination 唯一性，再比较完整有效挂载，保留原回执。
 
+  同次补充：NAS Python 的 `datetime.fromisoformat` 拒绝 Docker 纳秒 `StartedAt`（退出 1）。仅在比较先后时把 ISO 小数截到解释器支持的微秒，原时间文本保留，续读同一核验，结果为重启后的 `not_needed`。Edge 窗口恢复后仍无法取得可验证的当前 URL，电脑操作按工具返回停止，继续使用现有服务器只读证据。
+
 ## 2026-08-23：Posh-SSH 3.2.7 的 ShellStream 尺寸参数是 Columns/Rows
 
 - 环境：PowerShell 7、Posh-SSH 3.2.7，创建生产 `New-SSHShellStream` 以受控输入 sudo 密码。
