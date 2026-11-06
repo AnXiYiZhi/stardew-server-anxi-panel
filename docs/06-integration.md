@@ -1,6 +1,7 @@
 ## 2026-11-06 0.8.2 同版本范围预检
 
 - `POST /api/system/update/full-stack` 的 `prepare` 仍返回 `202`，随后按同 `operationId` 读取状态。当前 Panel 的预检全部命中已达目标的共享组时，终态为 `succeeded`，`groups` 为空且无需确认。存在待迁移组时仍以 `awaiting_confirmation` 展示其范围。陈旧预检确认时，后端重新捕获实际身份并用 `already_up_to_date` 拒绝重复迁移。
+- 前端以 `continuation`、同一当前版本、`succeeded`、空范围和无授权识别这类游戏检查完成。原 Panel 的 `fromVersion` 和 `toVersion` 只用于历史。`administrator_cancelled` 归入取消历史，真正失败及待恢复操作保留各自状态。
 
 ## 2026-11-04 0.8.1 候选联调契约
 

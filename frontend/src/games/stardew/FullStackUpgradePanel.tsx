@@ -28,11 +28,11 @@ export function FullStackUpgradePanel({ noticeDigest, noticesAccepted = true, re
   const expired=fullStackConfirmationExpired(op)
   if (!hasGameUpgradeFlow(data.versionInfo, op, data.updateStatus)) return null
   return <section className="sd-update-dry-run" aria-label="Panel 与 Junimo 统一升级" aria-live="polite">
-    <strong>{compact ? '升级范围' : 'Panel 与 Junimo .140 统一升级'}</strong>
+    <strong>{op?.continuation ? '游戏组件升级范围' : compact ? '升级范围' : 'Panel 与 Junimo .140 统一升级'}</strong>
     {!compact ? <p>下载与预检先完成。确认后会备份 Panel 数据、更新 Panel，再逐组保存并停服、完整备份、迁移和验收；原来运行的世界恢复运行，停止世界与空模板保持原选择。</p> : !op ? <p>先检查需要更新的世界，确认范围后再升级。</p> : null}
     {!future && !compact ? <p>当前 Panel 已就绪；这里将继续完成游戏运行栈的范围预检与明确确认。</p> : null}
     {op ? <>
-      <p><strong>{expired ? '本次预检已过期，请重新检查升级范围' : compact && op.phase==='awaiting_confirmation' ? '确认以下世界后开始更新' : fullStackPhaseLabel(op.phase)}</strong></p>
+      <p><strong>{expired ? '本次预检已过期，请重新检查升级范围' : compact && op.phase==='awaiting_confirmation' ? '确认以下世界后开始更新' : op.continuation && op.phase === 'failed_safe' ? '上次游戏组件更新未完成' : fullStackPhaseLabel(op.phase)}</strong></p>
       {!compact ? <dl className="sd-update-details">
         <div><dt>目标 Panel</dt><dd>{op.panel.version}</dd></div>
         <div><dt>游戏运行栈</dt><dd>{op.runtimeVersion} · Control {op.controlVersion}</dd></div>

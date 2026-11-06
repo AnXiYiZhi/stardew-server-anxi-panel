@@ -29,7 +29,7 @@ const entry = [
   "if(f.scopePrepared){data.fullStackUpgrade={operationId:'stack_prepared',phase:'awaiting_confirmation',panel:{version:'0.8.0'},groups:[]};data.confirmFullStack=digest=>{f.confirmed++;f.confirmDigest=digest};data.cancelFullStack=()=>f.cancelled++}",
   "if(f.staleScope){data.updateApply={updateId:'actual-panel-081',fromVersion:'0.8.0',toVersion:'0.8.1',phase:'succeeded',progress:100,startedAt:'2026-11-05T00:00:00Z',logs:[],fullStack:{phase:'manual_action',progress:100,runtimeRequired:true,errorCode:'legacy_full_stack_confirmation_required'}};data.rawFullStackUpgrade={operationId:'old-scope',planSha256:'6'.repeat(64),actorId:f.oldActor||41,phase:f.oldPhase||'succeeded',authorizedAt:'2026-10-28T00:01:00Z',createdAt:'2026-10-28T00:00:00Z',panelUpdateId:'old-panel',panel:{version:f.oldTarget||'0.8.0'},groups:[]};data.fullStackUpgrade=selectCurrentFullStackUpgrade(data.updateApply,data.rawFullStackUpgrade,data.versionInfo.version);data.historicalFullStackRecovery=selectHistoricalFullStackRecovery(data.rawFullStackUpgrade,data.fullStackUpgrade);data.updateApply=projectFullStackApply(data.updateApply,data.fullStackUpgrade,data.versionInfo.version)}",
   "if(f.currentNoop){data.updateApply.selectedDigest='sha256:'+'a'.repeat(64);data.updateApply.fullStack={phase:'not_needed',progress:100,runtimeRequired:false,result:'全部现有游戏组已通过只读完整核验，无需重复保存、停服或迁移。',currentRuntimeVerified:{updateId:data.updateApply.updateId,panel:{version:'0.8.1',imageId:data.updateApply.selectedDigest},scopeSha256:'b'.repeat(64),localSha256:'c'.repeat(64),verifiedAt:'2026-11-05T00:05:00Z'}};if(f.noopPrepared){data.fullStackUpgrade={operationId:'new-scope',planSha256:'7'.repeat(64),actorId:41,phase:'awaiting_confirmation',confirmationExpired:false,createdAt:'2026-11-05T00:06:00Z',panel:{version:'0.8.1'},groups:[]};data.confirmFullStack=()=>f.confirmed++;data.cancelFullStack=()=>f.cancelled++}}",
-  "createRoot(document.getElementById('root')).render(React.createElement(FixtureProvider,{value:data},React.createElement(UpdateDetailsDialog,{user:{id:41,role:'admin',username:'admin'},dashboardData})))",
+  "data.panelApplyRecord=data.updateApply;createRoot(document.getElementById('root')).render(React.createElement(FixtureProvider,{value:data},React.createElement(UpdateDetailsDialog,{user:{id:41,role:'admin',username:'admin'},dashboardData})))",
 ].join('\n')
 
 const server = await createServer({
@@ -108,12 +108,13 @@ try {
     if (scenario.history) assert.equal(await page.locator('.sd-update-history').getAttribute('open'), null)
     if (scenario.staleScope && !scenario.currentNoop) {
       const progress = await page.locator('.sd-update-apply').textContent()
-      assert.ok(progress.includes('v0.8.0 → v0.8.1'))
+      assert.ok(progress.includes('当前面板 v0.8.1'))
+      assert.ok(!progress.includes('v0.8.0 → v0.8.1'))
       assert.ok(progress.includes('等待游戏迁移确认'))
       assert.ok(!progress.includes('运行栈需要人工恢复'),'a new-scope prerequisite is not a failed recovery')
       assert.ok(!progress.includes('Panel 与全部目标游戏组验收完成'))
       assert.equal(await page.getByRole('button',{name:'检查升级范围',exact:true}).isEnabled(),scenario.oldPhase!=='manual_action','old recovery preserves the current scope entry but blocks another preparation until recovery finishes')
-      assert.equal(await page.locator('.sd-update-history').count(),0,'unrelated historical success must not become the current successful apply')
+      assert.equal(await page.locator('.sd-update-history').getAttribute('open'),null,'the successful Panel update is separate, collapsed history')
     }
     if (scenario.currentNoop) {
       assert.ok((await page.locator('.sd-update-version-path').textContent()).includes('v0.8.1'))
@@ -123,7 +124,7 @@ try {
         assert.equal(await page.getByRole('button',{name:'检查升级范围',exact:true}).count(),0)
         assert.equal(await page.getByRole('button',{name:'确认范围并升级',exact:true}).count(),0)
         await page.locator('.sd-update-history > summary').click()
-        assert.ok((await page.locator('.sd-update-apply').textContent()).includes('无需重复保存、停服或迁移'))
+        assert.ok((await page.getByRole('status').textContent()).includes('无需重复保存、停服或迁移'))
         await page.getByRole('button',{name:'重新检查游戏组件更新',exact:true}).click()
         assert.equal(await page.evaluate(()=>window.fixture.prepared),1)
       }

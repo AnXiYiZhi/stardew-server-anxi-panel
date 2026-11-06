@@ -211,5 +211,11 @@ assert.equal(currentGameUpgradeComplete({...currentNoop,updateId:'another-apply'
 assert.equal(currentGameUpgradeComplete({...currentNoop,selectedDigest:'sha256:'+'9'.repeat(64)},null,'0.8.1'),false)
 assert.equal(currentGameUpgradeComplete(current081,currentScope,'0.8.1'),true)
 assert.equal(currentGameUpgradeComplete(currentNoop,{...currentScope,phase:'manual_action'},'0.8.1'),false)
+const cancelledScope = {...currentPrepared,phase:'failed_safe',errorCode:'administrator_cancelled'}
+assert.equal(currentGameUpgradeComplete(currentNoop,cancelledScope,'0.8.1'),true,'a cancelled preparation does not supersede an existing completion')
+const checkedScope = {...currentPrepared,phase:'succeeded',groups:[]}
+assert.equal(currentGameUpgradeComplete(current081,checkedScope,'0.8.1'),true)
+assert.equal(projectFullStackApply(current081,checkedScope,'0.8.1')?.fullStack?.phase,'not_needed')
+assert.equal(currentGameUpgradeComplete(current081,checkedScope,'0.8.2'),false,'completion is scoped to the installed Panel')
 
 console.log('panel update state machine tests passed')

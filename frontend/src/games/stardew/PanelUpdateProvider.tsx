@@ -27,6 +27,7 @@ export type PanelUpdateContextValue = ReturnType<typeof useFullStackUpgrade> & {
   updateStatus: PanelUpdateStatus | null
   updateDryRun: PanelUpdateDryRunStatus | null
   updateApply: PanelUpdateApplyStatus | null
+  panelApplyRecord: PanelUpdateApplyStatus | null
   rawFullStackUpgrade: FullStackUpgradeStatus | null
   historicalFullStackRecovery: FullStackUpgradeStatus | null
   updateError: string | null
@@ -284,7 +285,7 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     ...fullStack,
     fullStackUpgrade:currentFullStackUpgrade,rawFullStackUpgrade:fullStack.fullStackUpgrade,
     historicalFullStackRecovery,
-    versionInfo, updateStatus, updateDryRun, updateApply:projectedApply,
+    versionInfo, updateStatus, updateDryRun, updateApply:projectedApply,panelApplyRecord:updateApply,
     updateError, updateDryRunError, updateApplyError,
     updateChecking, updateDryRunChecking, updateApplyStarting,
     updateDialogOpen, updateTheme, setUpdateTheme, reconnectMode, reconnectAttempts,
@@ -293,7 +294,7 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     closeUpdateDialog,
     continueReconnect,
   }), [
-    versionInfo, updateStatus, updateDryRun, projectedApply,fullStack,currentFullStackUpgrade,historicalFullStackRecovery,
+    versionInfo, updateStatus, updateDryRun, updateApply,projectedApply,fullStack,currentFullStackUpgrade,historicalFullStackRecovery,
     updateError, updateDryRunError, updateApplyError,
     updateChecking, updateDryRunChecking, updateApplyStarting,
     updateDialogOpen, updateTheme, reconnectMode, reconnectAttempts,

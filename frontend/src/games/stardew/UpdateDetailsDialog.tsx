@@ -34,13 +34,18 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
   const canApply = ready && noticesAccepted && canStartPanelUpdate(user, status, dryRun, apply)
   const phase = apply?.fullStack?.phase || apply?.phase || ''
   const progress = apply?.fullStack?.progress ?? apply?.progress ?? 0
-  const successfulHistory = apply && ['succeeded', 'not_needed'].includes(phase)
+  const panelRecord = data.panelApplyRecord?.phase === 'succeeded' ? data.panelApplyRecord : null
+  const runtimeStage = apply?.phase === 'succeeded' ? apply.fullStack : undefined
+  const waitingForScope = runtimeStage?.errorCode === 'legacy_full_stack_confirmation_required'
+  const finishedGameCheck = runtimeStage?.phase === 'not_needed'
   const historicalRecovery = data.historicalFullStackRecovery
   const completedGameUpgrade = currentGameUpgradeComplete(apply,data.fullStackUpgrade,data.versionInfo?.version || '',historicalRecovery)
   const authorizedGameUpgrade = Boolean(data.fullStackUpgrade?.authorizedAt && !['succeeded', 'failed_safe', 'panel_failed_rolled_back'].includes(data.fullStackUpgrade.phase))
   const newAuthorization = !authorizedGameUpgrade && Boolean(status?.updateAvailable || scopedUpgrade && !completedGameUpgrade)
   const visibleNotices = content?.notices?.filter(notice => newAuthorization || content?.blocked || notice.level === 'danger' || notice.level === 'warning' && !notice.requiresConfirmation) || []
   const showScope = admin && scopedUpgrade && !completedGameUpgrade && (authorizedGameUpgrade || !content?.blocked && (!status?.updateAvailable || environmentReady))
+  const hasGameScope = showScope && Boolean(data.fullStackUpgrade)
+  const showProgress = active || apply && !['succeeded', 'not_needed'].includes(phase) && !(hasGameScope && runtimeStage?.phase === 'failed_safe')
   const showPanelAction = admin && status?.updateAvailable && !active && !content?.blocked && (!scopedUpgrade || !environmentReady)
   const releaseTitle = content?.title?.replace(/^v?\d+\.\d+\.\d+\s*[·：:-]\s*/, '')
   const close = data.closeUpdateDialog
@@ -64,10 +69,10 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
   }, [close])
 
   const progressCard = apply ? <section className={'sd-update-apply sd-update-apply--' + apply.phase} aria-live="polite">
-    <div><strong>{panelUpdatePhaseLabel(phase,apply.fullStack?.errorCode)}</strong><span>{progress}%</span></div>
-    <p>{withVersionPrefix(apply.fromVersion)} → {withVersionPrefix(apply.toVersion)}</p>
-    <progress max="100" value={progress} />
-    {apply.fullStack?.result || apply.result ? <p>{apply.fullStack?.result || apply.result}</p> : null}
+    <div><strong>{runtimeStage?.phase === 'failed_safe' ? '上次游戏组件更新未完成' : panelUpdatePhaseLabel(phase, apply.fullStack?.errorCode)}</strong>{active ? <span>{progress}%</span> : null}</div>
+    {runtimeStage ? <p>当前面板 {withVersionPrefix(surface.currentVersion)}</p> : <p>{withVersionPrefix(apply.fromVersion)} → {withVersionPrefix(apply.toVersion)}</p>}
+    {active ? <progress max="100" value={progress} /> : null}
+    {waitingForScope ? <p>面板更新已完成。游戏组件的检查和确认在下方单独进行。</p> : apply.fullStack?.result || apply.result ? <p>{apply.fullStack?.result || apply.result}</p> : null}
     {apply.fullStack?.error || apply.error ? <p className="sd-update-error">{apply.fullStack?.error || apply.error}</p> : null}
   </section> : null
 
@@ -96,15 +101,21 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
       </section> : null}
       {content?.blocked ? <p className="sd-update-error" role="alert">此版本暂缓升级，请按照重要提示处理并等待后续通知。</p> : null}
       {status?.checkError || data.updateError ? <p className="sd-update-error" role="alert">{status?.checkError || data.updateError}</p> : null}
-      {active || apply && !successfulHistory ? progressCard : null}
+      {showProgress ? progressCard : null}
       {historicalRecovery ? <section className="sd-update-dry-run" aria-label="历史全栈恢复"><strong>历史目标 {withVersionPrefix(historicalRecovery.panel.version)} 需要恢复</strong><p>先恢复该次已授权事务，再检查当前版本的升级范围。</p><button type="button" className="sd-update-apply-button" disabled={data.fullStackBusy || historicalRecovery.actorId !== user.id} onClick={() => void data.recoverFullStack(historicalRecovery)}>继续恢复历史事务</button>{historicalRecovery.actorId !== user.id ? <p>请由原授权管理员继续恢复。</p> : null}</section> : null}
       {showScope ? <FullStackUpgradePanel compact hideActions /> : null}
       {environmentReady && status?.updateAvailable && !active ? <p className="sd-update-environment-result">升级环境检查通过</p> : null}
       {data.updateDryRunError || data.updateApplyError ? <p className="sd-update-error" role="alert">{data.updateDryRunError || data.updateApplyError}</p> : null}
-      {successfulHistory ? <details className="sd-update-history"><summary>上次升级已完成 · {withVersionPrefix(apply.toVersion)}</summary>{progressCard}{completedGameUpgrade ? <>{data.fullStackUpgrade?.phase === 'succeeded' ? <FullStackUpgradePanel readOnly compact /> : null}{admin && !status?.updateAvailable && data.versionInfo?.runtimeUpgrade?.requiresScopeConfirmation ? <button type="button" className="sd-update-environment" disabled={data.fullStackBusy} onClick={() => void data.prepareFullStack(data.versionInfo?.version || '')}>重新检查游戏组件更新</button> : null}</> : null}</details> : null}
+      {completedGameUpgrade && (finishedGameCheck || !data.fullStackUpgrade?.authorizedAt) ? <p className="sd-update-environment-result" role="status">{runtimeStage?.result || '当前游戏组件已是目标版本，无需迁移。'}</p> : null}
+      {panelRecord ? <details className="sd-update-history"><summary>上次面板升级已完成 · {withVersionPrefix(panelRecord.toVersion)}</summary>
+        <p>{withVersionPrefix(panelRecord.fromVersion)} → {withVersionPrefix(panelRecord.toVersion)}</p>
+        {panelRecord.result ? <p>{panelRecord.result}</p> : null}
+        {completedGameUpgrade && data.fullStackUpgrade?.authorizedAt ? <FullStackUpgradePanel readOnly compact /> : null}
+        {completedGameUpgrade && admin && !status?.updateAvailable && data.versionInfo?.runtimeUpgrade?.requiresScopeConfirmation ? <button type="button" className="sd-update-environment" disabled={data.fullStackBusy} onClick={() => void data.prepareFullStack(data.versionInfo?.version || '')}>重新检查游戏组件更新</button> : null}
+      </details> : null}
       <details className="sd-update-technical"><summary>版本与诊断详情</summary>
         <dl className="sd-update-details"><div><dt>发布时间</dt><dd>{date(status?.publishedAt)}</dd></div><div><dt>最近检查</dt><dd>{date(status?.checkedAt)}</dd></div><div><dt>构建提交</dt><dd>{status?.currentCommit || data.versionInfo?.commit || '—'}</dd></div><div><dt>升级环境</dt><dd>{dryRun?.capability.reason || '尚未检查'}</dd></div></dl>
-        {data.rawFullStackUpgrade && data.rawFullStackUpgrade !== data.fullStackUpgrade ? <dl className="sd-update-details"><div><dt>历史全栈目标</dt><dd>{withVersionPrefix(data.rawFullStackUpgrade.panel.version)}</dd></div><div><dt>历史操作状态</dt><dd>{data.rawFullStackUpgrade.phase}</dd></div></dl> : null}
+        {data.rawFullStackUpgrade && data.rawFullStackUpgrade !== data.fullStackUpgrade ? <dl className="sd-update-details"><div><dt>历史全栈目标</dt><dd>{withVersionPrefix(data.rawFullStackUpgrade.panel.version)}</dd></div><div><dt>历史操作状态</dt><dd>{data.rawFullStackUpgrade.errorCode === 'administrator_cancelled' ? '准备已取消' : data.rawFullStackUpgrade.phase}</dd></div></dl> : null}
         {dryRun?.error ? <p>{dryRun.error}</p> : null}
         {dryRun?.logs.map((log, index) => <p key={index}>{log.message}</p>)}
         {apply?.logs.map((log, index) => <p key={index}>{log.message}</p>)}

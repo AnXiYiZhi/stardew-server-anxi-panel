@@ -7,7 +7,7 @@ function explicitlyLinkedApply(base: PanelUpdateApplyStatus | null, op: FullStac
 }
 
 export function selectCurrentFullStackUpgrade(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string): FullStackUpgradeStatus | null {
-  if (!op) return null
+  if (!op || op.phase === 'failed_safe' && op.errorCode === 'administrator_cancelled') return null
   if (explicitlyLinkedApply(base, op)) return op
   // A current preparation or recovery remains actionable independently of when
   // the browser loaded the Panel status. Only unrelated terminal history ages out.
@@ -26,11 +26,16 @@ export function selectHistoricalFullStackRecovery(raw: FullStackUpgradeStatus | 
   return raw && raw !== current && raw.authorizedAt && raw.phase === 'manual_action' ? raw : null
 }
 
+function currentRuntimeCheckComplete(op: FullStackUpgradeStatus, currentVersion: string): boolean {
+  return op.phase === 'succeeded' && op.continuation && !op.authorizedAt && op.groups.length === 0
+    && op.panel.version.replace(/^[vV]/, '') === currentVersion.replace(/^[vV]/, '')
+}
+
 export function currentGameUpgradeComplete(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string, historicalRecovery?: FullStackUpgradeStatus | null): boolean {
   if (historicalRecovery) return false
   const current = selectCurrentFullStackUpgrade(base, op, currentVersion)
   const normalize = (value: string) => value.replace(/^[vV]/, '')
-  if (current) return current.phase === 'succeeded' && Boolean(current.authorizedAt) && normalize(current.panel.version) === normalize(currentVersion)
+  if (current) return currentRuntimeCheckComplete(current, currentVersion) || current.phase === 'succeeded' && Boolean(current.authorizedAt) && normalize(current.panel.version) === normalize(currentVersion)
   if (!base || base.phase !== 'succeeded' || normalize(base.toVersion) !== normalize(currentVersion) || base.fullStack?.phase !== 'not_needed' || base.fullStack.runtimeRequired) return false
   const proof = base.fullStack.currentRuntimeVerified
   // Legacy not_needed also represents an authoritative empty installed scope.
@@ -72,6 +77,9 @@ export const fullStackPhaseLabel = (phase: string) => ({
 
 export function projectFullStackApply(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string): PanelUpdateApplyStatus | null {
   op = selectCurrentFullStackUpgrade(base, op, currentVersion)
+  if (op && currentRuntimeCheckComplete(op, currentVersion) && base?.phase === 'succeeded' && base.toVersion.replace(/^[vV]/, '') === op.panel.version.replace(/^[vV]/, '')) {
+    return { ...base, fullStack: { phase: 'not_needed', progress: 100, runtimeRequired: false, result: '当前游戏组件已是目标版本，无需迁移。' } }
+  }
   if (!op?.authorizedAt) return base
   const matching = base && (explicitlyLinkedApply(base, op) || op.continuation && base.toVersion.replace(/^v/,'') === op.panel.version)
   const panel = matching ? base : {
