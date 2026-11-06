@@ -934,6 +934,10 @@
 
   同次补充：大段 base64 载荷单行送入 SSH TTY 后未收到终态标记（本地退出 1）。改为先确认禁回显及同一 TTY 的 sudo 授权，再分块传输，在只读命令外独立输出退出码标记。诊断只投影标记内的有限字段，最后关闭 stream/session。比对部署清单前先读取运行镜像 OCI revision 并用 `git show <commit>:<path>` 取对应文件。本地可能缺发布 tag，需用 `git rev-parse --verify --quiet` 探测，避免把缺引用报成源码丢失。
 
+  最近复发（2026-11-06，Posh-SSH 3.2.7 / NAS 面板热修）：SSH 可登录，`New-SFTPSession` 仍以 `Subsystem 'sftp' could not be executed` 退出 1。已验证的 SSH.NET `SshCommand.CreateInputStream()` 可向无 TTY 的 `cat` 流式传输原始字节，独占临时文件，关闭输入后核对退出码和 SHA-256。沿用现有指纹信任与会话回收，远端 SFTP 配置无需调整。
+
+  同次复发：热修回执按原序比较 `docker inspect` 的 Mounts，返回了不相等。两次独立只读 inspect 在同一存活容器上复现原序变化，Destination 唯一且完整对象排序后相同；Docker 事件复核也无游戏生命周期变更。后续按既有规则先核数量和 Destination 唯一性，再比较完整有效挂载，保留原回执。
+
 ## 2026-08-23：Posh-SSH 3.2.7 的 ShellStream 尺寸参数是 Columns/Rows
 
 - 环境：PowerShell 7、Posh-SSH 3.2.7，创建生产 `New-SSHShellStream` 以受控输入 sudo 密码。

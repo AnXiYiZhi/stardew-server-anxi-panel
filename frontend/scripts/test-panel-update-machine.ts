@@ -217,5 +217,9 @@ const checkedScope = {...currentPrepared,phase:'succeeded',groups:[]}
 assert.equal(currentGameUpgradeComplete(current081,checkedScope,'0.8.1'),true)
 assert.equal(projectFullStackApply(current081,checkedScope,'0.8.1')?.fullStack?.phase,'not_needed')
 assert.equal(currentGameUpgradeComplete(current081,checkedScope,'0.8.2'),false,'completion is scoped to the installed Panel')
+const recoveredScope = {...currentScope,phase:'failed_safe',errorCode:'shared_runtime_rolled_back'}
+assert.equal(selectCurrentFullStackUpgrade(currentNoop,recoveredScope,'0.8.1'),null,'a newer current runtime proof moves a recovered attempt to history')
+assert.equal(currentGameUpgradeComplete(currentNoop,recoveredScope,'0.8.1'),true)
+assert.equal(selectCurrentFullStackUpgrade(currentNoop,{...recoveredScope,authorizedAt:'2026-11-05T00:07:00Z'},'0.8.1')?.phase,'failed_safe','an older proof cannot suppress a newer failure')
 
 console.log('panel update state machine tests passed')

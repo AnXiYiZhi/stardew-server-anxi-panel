@@ -149,7 +149,7 @@ func (s *server) enrichFullStackUpdateStatus(ctx context.Context, status *update
 	if status == nil {
 		return
 	}
-	if s.enrichAuthorizedFullStackStatus(status) {
+	if s.enrichAuthorizedFullStackStatus(ctx, status) {
 		return
 	}
 	if driver, ok := s.fullStackDriver(); ok && driver.HasCurrentRuntimeNoop(ctx, *status) {

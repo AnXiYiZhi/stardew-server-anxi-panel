@@ -102,6 +102,15 @@ func (d *Driver) currentRuntimeScopeIdle() bool {
 	return errors.Is(err, os.ErrNotExist) || err == nil && fullStackTerminal(op.Public.Phase) && op.Public.Phase != "manual_action"
 }
 
+func (d *Driver) latestFailedRuntimeContinuation(panel updater.PanelTarget) (string, time.Time) {
+	op, err := d.readFullStackOperation()
+	if err == nil && op.Public.Continuation && op.Public.Phase == "failed_safe" && op.Public.AuthorizedAt != nil &&
+		op.Public.ErrorCode != "administrator_cancelled" && op.Public.Panel.SameContent(panel) {
+		return op.Public.OperationID, *op.Public.AuthorizedAt
+	}
+	return "", time.Time{}
+}
+
 // Local fingerprints are cheap to re-read for a completed receipt. The full
 // game/SDK helpers run only in the bounded background coordinator, never GET.
 func (d *Driver) currentRuntimeMembers(ctx context.Context) ([]storage.Instance, []currentRuntimeMember, error) {
@@ -199,6 +208,9 @@ func (d *Driver) HasCurrentRuntimeNoop(ctx context.Context, status updater.Apply
 	identity := d.panelIdentity.Load()
 	if identity == nil || !identity.SameContent(proof.Panel) || status.Phase != updater.PhaseSucceeded ||
 		status.UpdateID != proof.UpdateID || status.ToVersion != proof.Panel.Version || status.SelectedDigest != proof.Panel.ImageID {
+		return false
+	}
+	if _, authorizedAt := d.latestFailedRuntimeContinuation(proof.Panel); !proof.VerifiedAt.After(authorizedAt) {
 		return false
 	}
 	_, members, err := d.currentRuntimeMembers(ctx)
@@ -370,7 +382,8 @@ func (d *Driver) reconcileCurrentRuntimeNoop(ctx context.Context, panel FullStac
 	if err != nil {
 		return
 	}
-	key := status.UpdateID + "/" + identity.ImageID + "/" + currentRuntimeHash(members)
+	failedOperation, _ := d.latestFailedRuntimeContinuation(*identity)
+	key := status.UpdateID + "/" + identity.ImageID + "/" + currentRuntimeHash(members) + "/" + failedOperation
 	if attempts.key != key {
 		*attempts = currentRuntimeNoopAttempts{key: key}
 	}

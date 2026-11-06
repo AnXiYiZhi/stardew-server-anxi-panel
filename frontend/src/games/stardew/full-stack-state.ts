@@ -6,8 +6,20 @@ function explicitlyLinkedApply(base: PanelUpdateApplyStatus | null, op: FullStac
   return Boolean(base && (base.operationId && base.operationId === op.operationId || op.panelUpdateId && op.panelUpdateId === base.updateId))
 }
 
+function panelRuntimeCheckComplete(base: PanelUpdateApplyStatus | null, currentVersion: string): boolean {
+  const normalize = (value: string) => value.replace(/^[vV]/, '')
+  if (!base || base.phase !== 'succeeded' || normalize(base.toVersion) !== normalize(currentVersion) || base.fullStack?.phase !== 'not_needed' || base.fullStack.runtimeRequired) return false
+  const proof = base.fullStack.currentRuntimeVerified
+  // Legacy not_needed also represents an authoritative empty installed scope.
+  return !proof || proof.updateId === base.updateId && normalize(proof.panel.version) === normalize(currentVersion) && proof.panel.imageId === base.selectedDigest
+}
+
 export function selectCurrentFullStackUpgrade(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string): FullStackUpgradeStatus | null {
   if (!op || op.phase === 'failed_safe' && op.errorCode === 'administrator_cancelled') return null
+  const proof = base?.fullStack?.currentRuntimeVerified
+  if (op.continuation && op.phase === 'failed_safe' && op.authorizedAt && proof && panelRuntimeCheckComplete(base, currentVersion)
+    && proof.panel.version.replace(/^[vV]/, '') === op.panel.version.replace(/^[vV]/, '')
+    && proof.panel.imageId === op.panel.imageId && Date.parse(proof.verifiedAt) > Date.parse(op.authorizedAt)) return null
   if (explicitlyLinkedApply(base, op)) return op
   // A current preparation or recovery remains actionable independently of when
   // the browser loaded the Panel status. Only unrelated terminal history ages out.
@@ -36,10 +48,7 @@ export function currentGameUpgradeComplete(base: PanelUpdateApplyStatus | null, 
   const current = selectCurrentFullStackUpgrade(base, op, currentVersion)
   const normalize = (value: string) => value.replace(/^[vV]/, '')
   if (current) return currentRuntimeCheckComplete(current, currentVersion) || current.phase === 'succeeded' && Boolean(current.authorizedAt) && normalize(current.panel.version) === normalize(currentVersion)
-  if (!base || base.phase !== 'succeeded' || normalize(base.toVersion) !== normalize(currentVersion) || base.fullStack?.phase !== 'not_needed' || base.fullStack.runtimeRequired) return false
-  const proof = base.fullStack.currentRuntimeVerified
-  // Legacy not_needed also represents an authoritative empty installed scope.
-  return !proof || proof.updateId === base.updateId && normalize(proof.panel.version) === normalize(currentVersion) && proof.panel.imageId === base.selectedDigest
+  return panelRuntimeCheckComplete(base, currentVersion)
 }
 
 export function fullStackConfirmationExpired(op: FullStackUpgradeStatus | null): boolean {

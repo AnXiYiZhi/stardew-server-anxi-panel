@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -96,7 +97,7 @@ func (s *server) fullStackDriver() (*sj.Driver, bool) {
 	return stardew, ok
 }
 
-func (s *server) enrichAuthorizedFullStackStatus(status *updater.ApplyStatus) bool {
+func (s *server) enrichAuthorizedFullStackStatus(ctx context.Context, status *updater.ApplyStatus) bool {
 	driver, ok := s.fullStackDriver()
 	if !ok {
 		return false
@@ -107,6 +108,9 @@ func (s *server) enrichAuthorizedFullStackStatus(status *updater.ApplyStatus) bo
 	}
 	if op.Panel.Version != normalizeUpdateVersion(status.ToVersion) {
 		return false
+	}
+	if op.Continuation && op.Phase == "failed_safe" && driver.HasCurrentRuntimeNoop(ctx, *status) {
+		return true
 	}
 	phase := "checking_runtime"
 	switch op.Phase {

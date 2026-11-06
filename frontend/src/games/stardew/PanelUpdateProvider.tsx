@@ -117,7 +117,11 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     if (manual) setUpdateChecking(true)
     setUpdateError(null)
     try {
-      setUpdateStatus(manual ? await checkPanelUpdate() : await getPanelUpdateStatus())
+      const [status] = await Promise.all([
+        manual ? checkPanelUpdate() : getPanelUpdateStatus(),
+        manual ? getPanelUpdateApplyStatus().then(setUpdateApply).catch(() => undefined) : undefined,
+      ])
+      setUpdateStatus(status)
     } catch (error) {
       setUpdateError(errorMessage(error))
     } finally {
