@@ -1,20 +1,36 @@
 # 版本更新日志
 
-Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下是主要版本的用户可见变更摘要。
+Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下按版本记录用户可见变更。
 
 ::: tip GitHub Release
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.8.1（最新版本）
+## v0.8.3（最新版本）
+
+**修复全新安装时的 SMAPI 失败。** SteamCMD 下载游戏和 SDK 后，面板能识别原版 `StardewValley` 启动器，并运行 Junimo `.140` 镜像内置的 SMAPI 安装器。游戏和 SDK 通过安装后的完整性检查，任务才会显示完成。
+
+**Steam 校验恢复原版启动器后可重试。** 重试会重新安装 SMAPI，完整安装且通过校验的游戏文件可以继续复用。
+
+Docker Hub、阿里云 ACR、GHCR 的 `0.8.3` 和 `latest` 指向同一正式镜像。完整说明见 [GitHub Release v0.8.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.3)，升级步骤见 [更新面板与游戏实例](/maintain/update)。
+
+## v0.8.2
+
+**已达目标版本的游戏组可跳过迁移。** 更新中心核对实际运行栈，只列出需要迁移的游戏组。已符合目标的 Junimo `.140` 游戏组，无论运行中还是已停服，都可跳过重复迁移。
+
+**升级状态更清楚。** 更新中心分别展示面板升级历史和当前游戏组件状态。安全回滚后的重新检查以当前核验结果更新世界总览，原回滚记录仍可在历史中查看。
+
+完整说明见 [GitHub Release v0.8.2](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.2)。
+
+## v0.8.1
 
 **SDK 独立更新更可靠**：修复 Steam SDK 版本变化导致游戏运行栈升级失败的问题。SDK 按实际 Linux 安装与运行文件独立检查，保留实际安装身份；游戏 build、depot 和内容哈希继续严格核验。
 
 **预检状态更准确**：区分预检执行中、预检失败和真正过期，过期后可直接重新检查范围。运行中的自动存档短暂替换文件时，预检会等待稳定读取；范围确认、取消、权限与失败恢复继续关联原操作。
 
-**先更新面板，再确认需要迁移的游戏组**：v0.7.2 及更早版本先完成 v0.7.3 准备；v0.7.3 及以后从正式发行列表选择适用的最高稳定版本，先更新面板至 v0.8.1。页面刷新后，再在新版本更新中心检查并确认游戏运行栈范围。新装直接使用 v0.8.1，默认运行栈保持 Junimo `.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。
+**先更新面板，再确认需要迁移的游戏组。** v0.7.2 及更早版本先完成 v0.7.3 准备。升级到本版后，在更新中心检查并确认游戏运行栈范围。本版新装默认使用 Junimo `.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。
 
-Docker Hub、阿里云 ACR、GHCR 的 `0.8.1/latest` 对应同一正式镜像；GitHub latest Release 保留 v0.7.3，供旧版先取得准备版本。完整说明见 [GitHub Release v0.8.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.1)，操作顺序见 [更新面板与游戏实例](/maintain/update)。
+完整说明见 [GitHub Release v0.8.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.1)，操作顺序见 [更新面板与游戏实例](/maintain/update)。
 
 ## v0.8.0
 

@@ -19,14 +19,14 @@ http://服务器IP:8090
 官方 GitHub Release 安装（推荐）：
 
 ```bash
-curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.1/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.1 bash run.sh
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.3/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.3 bash run.sh
 ```
 
 ::: tip 国内加速脚本（HTTP）
 GitHub Release 下载较慢时，可以使用国内加速地址：
 
 ```bash
-curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.1 bash run.sh
+curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && PANEL_VERSION=0.8.3 bash run.sh
 ```
 :::
 
@@ -37,10 +37,10 @@ Windows 用户完成后访问 `http://localhost:8090`。建议把 `~/.anxi-panel
 需要指定面板端口时：
 
 ```bash
-PANEL_VERSION=0.8.1 PANEL_PORT=8090 bash run.sh install
+PANEL_VERSION=0.8.3 PANEL_PORT=8090 bash run.sh install
 ```
 
-当前正式版为 `v0.8.1`。上方命令固定下载 v0.8.1 脚本并安装 Panel `0.8.1`，新装游戏默认采用 Junimo `.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。Docker Hub、阿里云 ACR、GHCR 的 Docker `latest` 同样指向 v0.8.1；GitHub latest Release 保留 v0.7.3，供旧版先取得准备版本。
+当前正式版为 `v0.8.3`。上方命令固定下载 v0.8.3 脚本并安装 Panel `0.8.3`，新装游戏默认采用 Junimo `.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。Docker Hub、阿里云 ACR、GHCR 的 Docker `latest` 同样指向 v0.8.3；GitHub latest Release 保留 v0.7.3，供旧版先取得准备版本。
 
 ## 脚本菜单功能
 
@@ -48,7 +48,7 @@ PANEL_VERSION=0.8.1 PANEL_PORT=8090 bash run.sh install
 
 ## 更新面板
 
-已有服务器优先从 Web 检查更新。`v0.7.2` 及更早版本先完成 `v0.7.3` 升级准备；达到 v0.7.3 后，在游戏库、世界列表或实例版本入口打开“更新中心”，先更新面板至 `v0.8.1`。页面刷新后，再阅读停服和 Mod 提示、检查世界范围并确认需要迁移的游戏组。
+已有服务器优先从 Web 检查更新。`v0.7.2` 及更早版本先完成 `v0.7.3` 升级准备；达到 v0.7.3 后，在游戏库、世界列表或实例版本入口打开“更新中心”，先更新面板至 `v0.8.3`。页面刷新后，再阅读停服和 Mod 提示、检查世界范围并确认需要迁移的游戏组。
 
 旧版本需要从命令行更新时，先更新脚本，再明确选择准备版本：
 
