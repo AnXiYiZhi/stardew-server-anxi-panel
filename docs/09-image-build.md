@@ -15,6 +15,14 @@
 
 本地预验证已通过 Linux 后端 test、vet、build 和固定 .140 Docker 的 10 项启动器校验。使用隔离卷和已下载的游戏及 SDK 文件运行实际镜像安装器，首次安装、完整缓存复验、模拟 Steam validate 后重装三项通过，耗时 86 秒。正式候选仍按上表验收实际安装接口与 Web 升级。
 
+### 维护者人工签核入口
+
+在 GitHub Actions 的 `Promote validated panel candidate` 选择 `main`，由仓库所有者提交 `manual_signoff`，`tag` 留空。输入是一份 JSON，包含 `version`、`commit`、`candidateWorkflowRunId`、`digest`、`evidenceSha256` 和 `checksWithoutCandidateEvidence`。`evidenceSha256` 绑定已审阅的脱敏验收摘要，最后一项列出缺少当前候选回执的检查名。GitHub 运行会记录所有者账号，保存与候选原始证明 SHA256 绑定的 `manual-signoff-*` artifact。自动入口继续使用独立真实 Docker 回执。
+
+人工入口仅接收同仓 `main` 上成功的候选。若发布控制提交已推进 `main`，候选必须是当前提交的祖先，且两棵 Git 树的差异仅涉及 `scripts/manual_release_signoff.py` 列出的发布控制文件。此类提交使用 `[manual-release-candidate]`，沿用候选和已完成的 CI。工作流验证当前 main、上一正式版、候选 OCI 与精确 digest，封存候选并创建指向原 commit 的 annotated tag，然后沿用三仓提升、正式 health/version 和 Release 资产流程。失败续接使用原运行，已创建的 tag 绑定原签核运行。
+
+本次候选 `43181534350` 为 `7f78be4606a5ccbc792ea3544bc27d971424a192`，UTC 构建时间 `2026-11-12T08:16:04Z`，digest `sha256:737407c02951a15ac7efd86272b979587d0c910ea2f49efc96f5433a64f0659e`。候选 CI 已通过真实 `0.8.2` Web 升级、unhealthy 回滚和状态保持。本机使用同一镜像在隔离 DinD 完成 11 个安装场景，包括升级后的冷安装，共 4 项成功与 7 项预期拒绝。SteamCMD 使用固定游戏及 SDK 文件夹具，实际运行 `.140` 内置 SMAPI 安装器，任务容器、网络、卷和监听均清理。脱敏证据 SHA256 为 `670ba7f8e139a945dbe0301865eb320577b67a302c5ef323ad356d39e88f395d`。维护者确认人工放行，旧运行栈迁移和真实 Steam Auth/邀请码等 11 个缺少候选回执的检查随人工签核记录。
+
 ## 2026-11-06 0.8.2 变更与专项矩阵
 
 本版修复更新中心对已运行 `.140` 的共享组重复迁移。改动集中在组身份捕获、范围预检与执行准入，沿用原镜像、安装文件清单与部署格式。

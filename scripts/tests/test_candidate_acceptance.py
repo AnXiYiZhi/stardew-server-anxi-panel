@@ -7,6 +7,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from scripts import manual_release_signoff as SIGNOFF
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -239,6 +242,66 @@ class CandidateAcceptanceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 ACCEPTANCE.main(args + ["--output", str(output)])
             self.assertFalse(output.exists())
+
+
+class ManualReleaseSignoffTests(unittest.TestCase):
+    def setUp(self):
+        self.candidate = {
+            "schemaVersion": 1, "version": "0.8.3", "commit": "a" * 40,
+            "digest": "sha256:" + "b" * 64, "workflowRunId": "123456",
+            "buildDate": "2026-11-12T08:16:04Z",
+        }
+        self.signoff = {field: self.candidate[source] for field, source in SIGNOFF.IDENTITY_FIELDS.items()}
+        self.signoff.update(evidenceSha256="c" * 64, checksWithoutCandidateEvidence=["validInviteCode"])
+
+    def seal(self):
+        return SIGNOFF.validate_signoff(self.candidate, self.signoff, "d" * 64,
+                                        "owner", "123457", "e" * 40)
+
+    def test_manual_signoff_keeps_unverified_checks_distinct_from_docker_acceptance(self):
+        sealed = self.seal()
+        self.assertEqual(sealed["mode"], "manual_signoff")
+        self.assertEqual(sealed["candidateProofSha256"], "d" * 64)
+        self.assertEqual(sealed["releaseControlCommit"], "e" * 40)
+        self.assertEqual(sealed["approvedBy"], "owner")
+        self.assertEqual(sealed["releaseWorkflowRunId"], "123457")
+        self.assertEqual(sealed["checksWithoutCandidateEvidence"], ["validInviteCode"])
+        self.assertNotIn("checks", sealed)
+        with self.assertRaisesRegex(ValueError, "unknown acceptance root field"):
+            ACCEPTANCE.validate_acceptance(self.candidate, sealed, "d" * 64, "123457")
+
+    def test_signoff_rejects_mismatched_identity_private_fields_and_invalid_check_lists(self):
+        for field, invalid in (
+            ("version", "0.8.4"), ("commit", "e" * 40), ("digest", "sha256:" + "d" * 64),
+            ("candidateWorkflowRunId", "123457"), ("evidenceSha256", "invalid"),
+            ("checksWithoutCandidateEvidence", ["notACheck"]),
+            ("checksWithoutCandidateEvidence", ["validInviteCode", "validInviteCode"]),
+        ):
+            with self.subTest(field=field, invalid=invalid):
+                previous = self.signoff[field]
+                self.signoff[field] = invalid
+                with self.assertRaises(ValueError):
+                    self.seal()
+                self.signoff[field] = previous
+        self.signoff["checks"] = {"validInviteCode": True}
+        with self.assertRaisesRegex(ValueError, "fields do not match"):
+            self.seal()
+
+    def test_release_source_accepts_control_only_changes_to_an_ancestor(self):
+        commit, head = self.candidate["commit"], "e" * 40
+        with mock.patch.object(SIGNOFF.subprocess, "run") as ancestry, \
+                mock.patch.object(SIGNOFF.subprocess, "check_output") as changed:
+            SIGNOFF.verify_release_source(commit, commit)
+            ancestry.assert_not_called()
+            ancestry.return_value.returncode = 0
+            changed.return_value = b".github/workflows/release.yml\0docs/09-image-build.md\0"
+            SIGNOFF.verify_release_source(commit, head)
+            changed.return_value += b"deploy/run.sh\0"
+            with self.assertRaisesRegex(ValueError, "outside the release-control files"):
+                SIGNOFF.verify_release_source(commit, head)
+            ancestry.return_value.returncode = 1
+            with self.assertRaisesRegex(ValueError, "must be an ancestor"):
+                SIGNOFF.verify_release_source(commit, head)
 
 
 if __name__ == "__main__":

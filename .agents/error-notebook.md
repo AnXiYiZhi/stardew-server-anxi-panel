@@ -5,6 +5,10 @@
 - Windows pwsh7 与 Codex Browser。QQ 闪传的公开分享页在网页读取工具中返回不可访问，直接 HTTPS 请求得到正常分享页。应用内 Browser 新建标签到 30 秒超时并重置会话。用户随后提供原 ZIP，从 ZIP 目录核对成员大小后读取 TXT 和补丁，定位了问题。以后已有本地原件时直接读取所需条目。网页可访问和实际下载是两个结果，分享参数不写入仓库。
 - Windows pwsh7。格式化前错误地把预期 Go 文件数写成 9，实际范围包含 10 个文件，守卫在执行 `gofmt` 前退出 1。以 `git diff --name-only -- '*.go'` 确认实际范围，复核十个路径并用明确名单运行 `gofmt`。预防时按路径集合核对格式化范围。
 - Windows pwsh7/Docker Desktop。一次观察命令把 `docker top` 的非零结果直接解释为容器不可见，当时日志文件仍在缓冲，结论失准。按名称精确查询 `docker ps` 和该容器的 `docker logs` 确认测试在运行，最终以原执行 session 的退出码收口。进程投影失败时保留具体诊断，容器是否存在由容器查询确认。
+- Windows pwsh7。0.8.3 路径差异查询使用了本机未抓取的 `v0.8.2`，`git diff` 退出 128。以正式 Release 已核验的 peeled commit `4ad902f553782f0dfda7b4bd1b92823e809bea32` 核对同一范围。发布差异查询前先确认旧引用已解析，缺本地 tag 时使用经远端核验的完整提交。
+- Windows pwsh7/Docker Desktop。0.8.3 只读 Steam 游戏夹具导出首轮比较了清单的大写 MD5 与 Python `hexdigest()` 的小写输出，核验退出 1。对照生产校验契约统一为小写，保留首轮产物并仅重导同一固定清单，复核全部游戏文件和 SDK，原测试卷保持只读。适用于从 Steam 构建清单生成的夹具校验。
+- Windows pwsh7/DinD。0.8.3 冷安装在任务终态后查 Docker 历史 start 事件返回空，夹具又误将坏备份文件路径当成 `/api/jobs` 摘要字段。读取同一已受理 job 的阶段日志，结合实际卷内哈希、stamp 和安装标记核对冷安装与拒绝位置。安装阶段应以同一任务日志及文件结果交叉验证，原安装请求未重放。
+- Windows Codex Shell。将已归档的 0.8.3 夹具按计算后的 `Remove-Item` 目标清理时，命令在启动前被策略拒绝。以归档和工作副本 SHA256 相等的六个确切文件路径执行 `apply_patch` 删除，保留归档。精确文件清理优先提交字面路径，遇启动拦截先核对是否实际执行。
 
 ## 2026-10-27 正式发布工具记录
 
@@ -22,6 +26,10 @@
   同日补充（正式公开补丁守卫）：本地未取到 `v0.8.1` 时，按精确远端 annotated 对象、peeled 提交及正式 Release 元数据核对。原 20,964 字节封存补丁使用工作区绝对路径，旧相对路径守卫在应用前拒绝。只核封存 SHA、精确根与九个允许成员，保留原补丁字节。同一正式提升 run 的首个只读查询遇 TLS 握手超时，按同 ID 有界查询原公开 API 得到 success，未重发任何工作流。证据 `cdcb3816…`。
 
   最近复发（2026-11-06，pwsh7 / GitHub CLI）：查询 0.8.2 候选 `42193533264` 状态遇 `EOF`（退出 1）。只读重查同一 run 成功，最终结论为 success。候选仍在等待专项验收时，诊断笔记保留在本地，避免单独推送使当前候选 SHA 被取代。
+
+  最近复发（2026-11-12，pwsh7 / GitHub CLI）：读取 0.8.3 候选 `43181534350` 的 jobs 接口连续三次遇到 `EOF`（退出 1）。停止重读该入口后，GitHub 连接器返回同一作业正在构建和验证镜像，随后确认候选成功。按工作流查询后续运行也遇到 `EOF`，改用已认证的仓库级 Actions runs 接口按同一完整 commit 筛选，确认自动 tag 作业已完成且打 tag 步骤跳过。后续仓库级 CLI 读回再次遇到 EOF，`git ls-remote` 同时遇到 TLS 握手错误。以同一 commit 和精确 ref 改用 PowerShell 已认证 GitHub REST 请求，凭据只在请求进程内存中，确认 main 一致、tag 与后续发布运行均尚未生成。
+
+  同次镜像核对：GitHub Packages versions 查询因当前凭据缺少 `read:packages` 返回 HTTP 403、退出 1。镜像在公开 GHCR，改用内存中的限 pull token 对确切 validation 引用发出 manifest HEAD，HTTP 200，`Docker-Content-Digest` 与候选证明一致。公开镜像的精确 digest 优先从 registry 读取。
 
   同次发布封存：`gh workflow run` 的 workflow 元数据 GET 遇 TLS 握手超时，退出 1，未到 POST。先按 exact workflow 和候选 SHA 核对运行数为零，再通过保存的 JSON 对 `/dispatches` 提交一次。接受后仅按同一 run `42208752280` 查询直至成功。请求结果不确定时先核实远端，避免重复 dispatch。
 
@@ -3700,6 +3708,7 @@
 
 ## 2026-08-06：未优先复用本地精确接口资料而命中 GitHub API 限流
 
+- 最近复发/补充（2026-11-12，pwsh7）：匿名读取 GitHub Actions 候选 run `43181534350` 命中共享 API 配额，查询退出 1。改用已认证的 `gh api` 读取同一 run 后正常得到候选状态。Actions 的状态和制品查询优先用已认证入口，观察失败时保留原 run。此补记随正式发布回执同步，避免单独推进 `origin/main` 使当前候选失效。
 - 最近复发/补充：2026-08-20 核对锁定的 Junimo `.125` 源码时，已知共享出口可能限流，仍先调用匿名 recursive tree API，立即返回 rate limit exceeded；没有修改仓库或远端。随即固定已由 `git ls-remote` 核验的 tag commit，改读 `raw.githubusercontent.com/<commit>/<exact-path>`，并在任务专属浅 clone 中只读检索其余路径。精确 raw/tag 可用时不得先消耗匿名 API。
 - 最近复发/补充：2026-08-09 调查 Junimo `.125`→`.126` 时，匿名 compare API 首次成功后又批量请求 7 个 Pull Request，GitHub 返回 rate limit；脚本只投影预期字段，导致七条全为 `null`，没有立即暴露 `message`。外部 JSON 必须先断言成功字段或显式检查错误 schema，再做投影；匿名配额耗尽后改用 GitHub 官方 commit/PR HTML（必要时加 `?plain=1`）与精确 `raw.githubusercontent.com/<revision>/<path>`，不继续消耗 API。
 - 环境：PowerShell 7，只读核对 SMAPI 4.x `IMultiplayerPeer`/peer event 契约。

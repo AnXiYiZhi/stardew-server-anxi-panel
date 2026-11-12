@@ -8,7 +8,11 @@ on:
     inputs:
       tag:
         description: Existing validated annotated tag to promote
-        required: true
+        required: false
+        type: string
+      manual_signoff:
+        description: Owner sign-off JSON for an exact candidate. Leave tag empty.
+        required: false
         type: string
 
 concurrency:
@@ -33,55 +37,97 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-          fetch-depth: 0
-
-      - name: Verify immutable tag and synchronized main
-        id: identity
+      - name: Resolve release entry
+        id: entry
         shell: bash
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          MANUAL_SIGNOFF: ${{ inputs.manual_signoff }}
+          REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
         run: |
           set -euo pipefail
-          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
-          version="${tag#v}"
-          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "release tag must be v followed by an exact stable semantic version" >&2
-            exit 1
-          fi
-          if [[ "$(git cat-file -t "refs/tags/$tag")" != tag ]]; then
-            echo "release tag must be annotated" >&2
-            exit 1
-          fi
-          commit="$(git rev-parse "$tag^{}")"
-          tag_contents="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
-          tag_candidate_run_id=""
-          tag_candidate_digest=""
-          tag_acceptance_run_id=""
-          tag_candidate_run_count=0
-          tag_candidate_digest_count=0
-          while IFS= read -r line; do
-            if [[ "$line" =~ ^Candidate\ workflow:\ ([0-9]+)$ ]]; then
-              tag_candidate_run_id="${BASH_REMATCH[1]}"
-              tag_candidate_run_count=$((tag_candidate_run_count + 1))
-            elif [[ "$line" =~ ^Digest:\ (sha256:[0-9a-f]{64})$ ]]; then
-              tag_candidate_digest="${BASH_REMATCH[1]}"
-              tag_candidate_digest_count=$((tag_candidate_digest_count + 1))
-            elif [[ "$line" =~ ^Acceptance\ workflow:\ ([0-9]+)$ ]]; then
-              [[ -z "$tag_acceptance_run_id" ]]
-              tag_acceptance_run_id="${BASH_REMATCH[1]}"
+          if [[ -n "$MANUAL_SIGNOFF" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch || "$GITHUB_REF" != refs/heads/main ||
+                  -n "$INPUT_TAG" || "$GITHUB_ACTOR_ID" != "$REPOSITORY_OWNER_ID" ]]; then
+              echo 'manual sign-off requires a repository owner dispatch on main with no tag input' >&2
+              exit 1
             fi
-          done <<<"$tag_contents"
-          if ((tag_candidate_run_count != 1 || tag_candidate_digest_count != 1)); then
-            echo "release tag must contain exactly one candidate workflow and digest binding" >&2
-            exit 1
+            printf '%s\n' "$MANUAL_SIGNOFF" >"$RUNNER_TEMP/manual-signoff-input.json"
+            echo 'manual=true' >>"$GITHUB_OUTPUT"
+            echo "ref=$GITHUB_SHA" >>"$GITHUB_OUTPUT"
+          else
+            tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+            if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo 'release tag must be v followed by an exact stable semantic version' >&2
+              exit 1
+            fi
+            echo "ref=refs/tags/$tag" >>"$GITHUB_OUTPUT"
+            echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.entry.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Verify release identity and synchronized main
+        id: identity
+        shell: bash
+        env:
+          INPUT_TAG: ${{ steps.entry.outputs.tag }}
+          MANUAL_SIGNOFF: ${{ steps.entry.outputs.manual }}
+        run: |
+          set -euo pipefail
+          tag_acceptance_run_id=""
+          if [[ "$MANUAL_SIGNOFF" == true ]]; then
+            signoff="$RUNNER_TEMP/manual-signoff-input.json"
+            version="$(jq -er '.version | strings' "$signoff")"
+            commit="$(jq -er '.commit | strings' "$signoff")"
+            tag_candidate_run_id="$(jq -er '.candidateWorkflowRunId | strings' "$signoff")"
+            tag_candidate_digest="$(jq -er '.digest | strings' "$signoff")"
+            if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ||
+                  ! "$commit" =~ ^[0-9a-f]{40}$ || ! "$tag_candidate_run_id" =~ ^[1-9][0-9]*$ ||
+                  ! "$tag_candidate_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo 'manual sign-off requires exact version, commit, candidate run and digest' >&2
+              exit 1
+            fi
+            tag="v$version"
+            release_head="$GITHUB_SHA"
+          else
+            tag="$INPUT_TAG"
+            version="${tag#v}"
+            if [[ "$(git cat-file -t "refs/tags/$tag")" != tag ]]; then
+              echo 'release tag must be annotated' >&2
+              exit 1
+            fi
+            commit="$(git rev-parse "$tag^{}")"
+            release_head="$commit"
+            tag_contents="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
+            tag_candidate_run_id=""
+            tag_candidate_digest=""
+            tag_candidate_run_count=0
+            tag_candidate_digest_count=0
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^Candidate\ workflow:\ ([0-9]+)$ ]]; then
+                tag_candidate_run_id="${BASH_REMATCH[1]}"
+                tag_candidate_run_count=$((tag_candidate_run_count + 1))
+              elif [[ "$line" =~ ^Digest:\ (sha256:[0-9a-f]{64})$ ]]; then
+                tag_candidate_digest="${BASH_REMATCH[1]}"
+                tag_candidate_digest_count=$((tag_candidate_digest_count + 1))
+              elif [[ "$line" =~ ^Acceptance\ workflow:\ ([0-9]+)$ ]]; then
+                [[ -z "$tag_acceptance_run_id" ]]
+                tag_acceptance_run_id="${BASH_REMATCH[1]}"
+              fi
+            done <<<"$tag_contents"
+            if ((tag_candidate_run_count != 1 || tag_candidate_digest_count != 1)); then
+              echo 'release tag must contain exactly one candidate workflow and digest binding' >&2
+              exit 1
+            fi
           fi
           git fetch --no-tags origin main:refs/remotes/origin/main
-          if [[ "$(git rev-parse origin/main)" != "$commit" ]]; then
-            echo "release tag commit must exactly match origin/main" >&2
+          if [[ "$(git rev-parse origin/main)" != "$release_head" ]]; then
+            echo 'release control commit must exactly match origin/main' >&2
             exit 1
           fi
           short_sha="${commit:0:12}"
@@ -90,6 +136,7 @@ jobs:
             echo "tag=$tag"
             echo "version=$version"
             echo "commit=$commit"
+            echo "release_head=$release_head"
             echo "short_sha=$short_sha"
             echo "artifact_name=$artifact_name"
             echo "tag_candidate_run_id=$tag_candidate_run_id"
@@ -160,6 +207,7 @@ jobs:
           } >>"$GITHUB_OUTPUT"
 
       - name: Verify immutable real Docker acceptance
+        if: steps.entry.outputs.manual != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -183,6 +231,28 @@ jobs:
           mkdir -p "$acceptance_dir"
           gh run download "$ACCEPTANCE_RUN_ID" --name "$artifact_name" --dir "$acceptance_dir"
           python3 scripts/candidate_acceptance.py --candidate "$RUNNER_TEMP/candidate-proof/candidate.json" --acceptance "$acceptance_dir/acceptance.json" --output "$RUNNER_TEMP/verified-acceptance.json" --acceptance-run-id "$ACCEPTANCE_RUN_ID"
+
+      - name: Verify owner sign-off for this candidate
+        if: steps.entry.outputs.manual == 'true'
+        shell: bash
+        env:
+          RELEASE_HEAD: ${{ steps.identity.outputs.release_head }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.manual_release_signoff \
+            --candidate "$RUNNER_TEMP/candidate-proof/candidate.json" \
+            --signoff "$RUNNER_TEMP/manual-signoff-input.json" \
+            --actor "$GITHUB_ACTOR" --run-id "$GITHUB_RUN_ID" --release-head "$RELEASE_HEAD" \
+            --output "$RUNNER_TEMP/manual-signoff.json"
+
+      - name: Upload immutable manual sign-off
+        if: steps.entry.outputs.manual == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-signoff-${{ steps.identity.outputs.version }}-${{ steps.identity.outputs.short_sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/manual-signoff.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Verify registry promotion tool
         shell: bash
@@ -225,6 +295,55 @@ jobs:
           if [[ "$actual_digest" != "$EXPECTED_DIGEST" || "$actual_version" != "$EXPECTED_VERSION" || "$actual_revision" != "$EXPECTED_COMMIT" || "$actual_created" != "$EXPECTED_BUILD_DATE" ]]; then
             echo "candidate registry object does not match its validated proof" >&2
             exit 1
+          fi
+
+      - name: Seal manually approved candidate and create annotated tag
+        if: steps.entry.outputs.manual == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_HEAD: ${{ steps.identity.outputs.release_head }}
+          TAG: ${{ steps.identity.outputs.tag }}
+          CANDIDATE_REF: ${{ steps.proof.outputs.candidate_ref }}
+        run: |
+          set -euo pipefail
+          signoff="$RUNNER_TEMP/manual-signoff.json"
+          commit="$(jq -er '.commit' "$signoff")"
+          digest="$(jq -er '.digest' "$signoff")"
+          candidate_run_id="$(jq -er '.candidateWorkflowRunId' "$signoff")"
+          version="$(jq -er '.version' "$signoff")"
+          validation_ref="$(jq -er '.validationRef' "$RUNNER_TEMP/candidate-proof/candidate.json")"
+          [[ "$validation_ref" == "$GHCR_IMAGE:validation-$version-${commit:0:12}" ]]
+          [[ "$(skopeo inspect --format '{{.Digest}}' "docker://$validation_ref")" == "$digest" ]]
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          [[ "$(git rev-parse origin/main)" == "$RELEASE_HEAD" ]]
+          git fetch --tags origin
+          subject="$TAG manually approved candidate"
+          annotation="Candidate workflow: $candidate_run_id"$'\n'"Digest: $digest"$'\n'"Manual sign-off workflow: $GITHUB_RUN_ID"
+          create_tag=true
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            if [[ "$(git cat-file -t "refs/tags/$TAG")" != tag || "$(git rev-parse "refs/tags/$TAG^{}")" != "$commit" ||
+                  "$(git for-each-ref --format='%(contents)' "refs/tags/$TAG")" != "$subject"$'\n\n'"$annotation" ]]; then
+              echo 'existing tag is bound to a different candidate or sign-off run' >&2
+              exit 1
+            fi
+            create_tag=false
+          fi
+
+          versions_json="$(gh api --paginate --slurp "users/$GITHUB_REPOSITORY_OWNER/packages/container/stardew-server-anxi-panel/versions?per_page=100")"
+          candidate_exists="$(jq -r --arg tag "${CANDIDATE_REF##*:}" 'any(.[][]; .metadata.container.tags | index($tag) != null)' <<<"$versions_json")"
+          if [[ "$candidate_exists" == false ]]; then
+            skopeo copy --all --preserve-digests "docker://$GHCR_IMAGE@$digest" "docker://$CANDIDATE_REF"
+          fi
+          [[ "$(skopeo inspect --format '{{.Digest}}' "docker://$CANDIDATE_REF")" == "$digest" ]]
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          [[ "$(git rev-parse origin/main)" == "$RELEASE_HEAD" ]]
+          if [[ "$create_tag" == true ]]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a "$TAG" "$commit" -m "$subject" -m "$annotation"
+            git push origin "refs/tags/$TAG"
           fi
 
       - name: Promote exact version tags
@@ -292,14 +411,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_REF: ${{ steps.proof.outputs.candidate_ref }}
           EXPECTED_DIGEST: ${{ steps.proof.outputs.digest }}
-          EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+          RELEASE_HEAD: ${{ steps.identity.outputs.release_head }}
           PREVIOUS_VERSION: ${{ steps.proof.outputs.previous }}
           VERSION: ${{ steps.identity.outputs.version }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin main:refs/remotes/origin/main
           current_main="$(git rev-parse origin/main)"
-          if [[ "$current_main" != "$EXPECTED_COMMIT" ]]; then
+          if [[ "$current_main" != "$RELEASE_HEAD" ]]; then
             echo "origin/main changed after exact version promotion; refusing to move latest tags" >&2
             exit 1
           fi
@@ -343,6 +462,8 @@ jobs:
           public_notes="deploy/updates/${tag#v}.md"
           if [[ -f "$public_notes" ]]; then
             details="$(cat "$public_notes")"
+          elif [[ -s "$RUNNER_TEMP/manual-signoff.json" ]]; then
+            details="- $subject"
           fi
           previous_tag="$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)"
           notes_path="$RUNNER_TEMP/release-notes.md"
@@ -381,4 +502,7 @@ jobs:
             echo "- Commit: \`${{ steps.identity.outputs.commit }}\`"
             echo "- Digest: \`${{ steps.proof.outputs.digest }}\`"
             echo "- The release workflow did not rebuild the image."
+            if [[ -s "$RUNNER_TEMP/manual-signoff.json" ]]; then
+              jq -r '"- Manual sign-off by @" + .approvedBy, "- Evidence SHA256: " + .evidenceSha256, "- Checks without candidate-bound evidence: " + (.checksWithoutCandidateEvidence | join(", "))' "$RUNNER_TEMP/manual-signoff.json"
+            fi
           } >>"$GITHUB_STEP_SUMMARY"

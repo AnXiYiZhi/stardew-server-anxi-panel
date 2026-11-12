@@ -4,7 +4,7 @@
 
 - 本项目所有功能、修复、文档、测试和发布工作只能直接在本地 `main` 上进行，并同步到远端 `origin/main`。
 - 禁止代理自行创建、切换或保留任何非 `main` Git 分支，也禁止为任务或发布自行创建额外 Git worktree。除非用户在当次请求中明确要求特定分支，否则不得使用功能分支、发布分支、临时分支或 PR 分支。
-- 发布 tag 必须从已与 `origin/main` 完全同步、工作树干净且通过全部发布门禁的 `main` 提交创建；不得从其它分支创建 tag，也不得移动已有 tag。
+- 发布 tag 必须指向从干净且与 `origin/main` 同步的 `main` 构建并通过候选门禁的精确提交。自动发布要求候选仍是 `origin/main`。仓库所有者人工签核时可沿用主线祖先候选，前提是当前 `origin/main` 与候选的差异仅涉及签核入口限定的发布控制文件。不得从其它分支创建 tag，也不得移动已有 tag。
 - 发现历史非 `main` 分支或 worktree 时，先确认其有效提交已进入 `main`，再删除对应 worktree 和本地/远端分支；不得因清理分支丢失未合并提交或未提交文件。
 
 ## 工作开始前
@@ -52,18 +52,18 @@
 5. 每个候选必须完成全新安装、`/health`、`/api/version`、未初始化状态和 Panel 重启冒烟；本版新增或修改功能至少有一条真实 Docker E2E，并在升级得到的新 Panel 上再次验收。未变化旧功能由全量自动回归覆盖，升级后再抽验初始化/用户、实例、存档/Mod/备份等受影响的核心状态。
 6. 必须从“当前上一正式版”通过真实 Panel Web API 完成更新检查、dry-run、管理员确认、apply、预期断线重连和终态恢复，验证 SQLite、初始化状态、任务相关长期数据、非目标游戏容器/volume 及 Panel 重启后的状态。必须对同一候选引用注入一次 unhealthy 目标，确认 `failed_rolled_back/health_check_failed` 和旧版恢复。不能用直接调用 updater、手工改 Compose 或仅 `docker compose up` 替代这条验收。
 7. 默认不再每版测试更老版本。只有本版改变数据库迁移、部署格式、运行栈、长期数据结构或跨版本兼容逻辑时，才增加“受影响的最老支持版本 → 候选”一条代表升级；版本边界必须来自迁移代码和长期文档。Control/SMAPI/Junimo/网站未变化时不重复对应真实长链。
-8. Tag 必须是 annotated tag，指向候选证明中的完整 commit，且该 commit 必须仍精确等于 `origin/main`。候选 workflow 成功后，`.github/workflows/release-after-candidate.yml` 只有在该 commit 仍是最新 `origin/main` 时才自动创建 tag 并通过 `workflow_dispatch` 启动正式提升；被后续提交取代的候选只记录 superseded，不发布。`.github/workflows/release.yml` 只能提升候选证明里的精确 digest 到三仓正式版本和 `latest`，禁止重新 build；三仓六引用 digest 与 OCI 元数据必须一致。digest 一致时只从一个正式仓库回拉做 health/version 冒烟，不再启动三份相同镜像。
-9. 候选 workflow、任一必跑门禁、真实 Web 升级、unhealthy 回滚、digest 提升或正式冒烟失败时停止发布。只重跑失败及其受影响的下游步骤；候选输入未变化时不重复已经成功的独立门禁。高风险必测场景受外部条件阻塞时仍不得降级为“发布后观察”。
+8. Tag 必须是 annotated tag，指向候选证明中的完整 commit。候选 workflow 成功后，`.github/workflows/release-after-candidate.yml` 只在该 commit 仍等于 `origin/main` 且自动流程要求的专项回执齐全时创建 tag 并启动正式提升。仓库所有者可按下述人工入口签核同一候选。`.github/workflows/release.yml` 只能提升候选证明里的精确 digest 到三仓正式版本和 `latest`，禁止重新 build。三仓六引用 digest 与 OCI 元数据必须一致，回拉一个正式仓库的镜像验证 health/version。
+9. 候选 workflow、任一必跑自动门禁、真实 Web 升级、unhealthy 回滚、digest 提升或正式冒烟失败时停止发布。只重跑失败及其受影响的下游步骤。候选输入未变化时复用已经成功的独立门禁。
 10. 发布完成后把候选 workflow ID、正式 release workflow ID、唯一 digest、选择/跳过的矩阵、实际耗时、故障和资源清理结果写入 `docs/09-image-build.md`、对应接手文档和路线图。发布后证据提交不得移动既有 tag，也不得使已经发布的同 digest 候选重新走门禁。
 
-如果任何高风险场景因外部条件无法验证，停止发布并向用户说明阻塞项；不得擅自降低为“发布后再观察”。
+自动发布需要真实 Docker 专项回执。仓库所有者可明确批准精确候选，通过 `release.yml` 的 `manual_signoff` 输入提交验收证据 SHA256 与缺少候选回执的检查项。工作流保存独立人工签核 artifact，并在 tag 中记录签核运行。人工签核仍要求候选 workflow 成功、当前主线身份检查、三仓 digest/OCI 核验和正式冒烟。发布控制提交若需沿用已验证候选，使用现有 `[manual-release-candidate]` 标记，并核对实际差异范围。
 
 ## 命令执行与编码错题本
 
 - 复用 HTTP 验收夹具前，先按对应接口源码核对成功状态码和 JSON 包裹结构（例如任务详情为 `{"job": ...}`）。写请求接受后先保存原始状态码、operation/job/update ID，再做后续断言；断言失败必须先只读核对同一操作，禁止按旧脚本的错误假设重发动作。`wait` 结果必须先读取终态，再决定是否需要下一次写操作，不能在同一编排里预排重试。
 - Stardew 实例 Stop 接口返回 `202 {"ok":true}`，没有 jobId。验收先保留旧 jobs 列表，保存原始响应后只选择此次唯一新增的同实例 `stop` 任务，再追同一 job 到终态和实际容器状态；禁止合成响应 jobId。Panel 已更新后的 `legacy_full_stack_confirmation_required` 可能是后台只读 Noop 核验期间的 GET 投影，必须按实际生产尝试预算观察同 apply，再判定是否拒绝。
 
-GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同一 run ID、artifact 名或精确引用最多三次有界重读；监控失败不代表 workflow 失败。不得把只读重试用于 dispatch、取消、tag、push、Release edit 或镜像提升；写操作响应不确定时先核对外部实际状态。
+GitHub Actions 状态和制品查询优先使用已认证的 `gh api` 或 GitHub 连接器，避免共享匿名配额限制。GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同一 run ID、artifact 名或精确引用最多三次有界重读。监控失败不代表 workflow 失败。不得把只读重试用于 dispatch、取消、tag、push、Release edit 或镜像提升。写操作响应不确定时先核对外部实际状态。
 
 项目级错题本固定为 `.agents/error-notebook.md`。它是每次工作的必读输入，不是任务结束时可选的复盘。
 
