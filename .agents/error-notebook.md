@@ -12,6 +12,8 @@
 - GitHub Actions/Linux。人工签核提升 `43198186445` 第一次运行已封存签核和候选，`git push` 在创建指向发布控制提交之前的候选 tag 时退出 1。GitHub 认为两个提交的 workflow 文件差异需要 `Workflows` 权限。读回同一签核 artifact、候选 digest 和远端 ref 后，以仓库所有者会话推送绑定原 run 的同一注解 tag，随后续接原 job。仅在核准的候选与当前主线差异限于发布控制文件时使用此恢复方法。
 - GitHub Actions/Linux。`43198186445` 第二次运行在三仓版本引用写入后，`skopeo inspect` 读取阿里云 OSS 配置 blob 遇 TLS 握手超时、退出 1。三仓独立 manifest 查询确认版本引用均已到达精确 digest，随后续接同一发布 job。签名 URL 仅保留主机名。遇写入后的核验失败，先按精确引用确认外部状态，再决定续接。
 - Windows Python 3.12。验收测试加了 `scripts` 包导入后，`unittest discover` 通过，直接执行 `python scripts/tests/test_candidate_acceptance.py` 则在导入阶段退出 1。测试按自身路径定位仓库根，在直接执行和发现两种入口都通过同一个包导入。修改测试的导入方式时应复核既有两种入口。
+- Windows pwsh7。对官网日志做 GitHub Release 盘点时，直接用 `@(Invoke-RestMethod ...)` 接收顶层数组，分页把一整页当成一条，错误投影为 0 个正式版本。读取 HTTP 内容后使用 `ConvertFrom-Json -NoEnumerate -AsHashtable` 保留页内数组，再逐项展开并校验总数和最新 tag，实际为 81 个。适用于 GitHub 分页返回顶层数组的端点。
+- 官网读取工具对 GitHub Pages 返回不可访问时，先从 GitHub Pages API 确认正式 URL，再用有界 HTTPS 读回首页和更新日志。直接请求均为 200，旧线上内容可核对。网页工具返回不可访问时，站点状态以实际公开 URL 的 HTTP 回执为准。
 
 ## 2026-10-27 正式发布工具记录
 

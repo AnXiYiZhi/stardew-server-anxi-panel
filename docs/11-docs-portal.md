@@ -1,5 +1,11 @@
 # 文档门户网站建设方案
 
+## 2026-11-12 v0.8.3 和 v0.8.2 发布说明
+
+- 对照 81 个正式 GitHub Release，补齐官网缺少的 `v0.8.2` 和 `v0.8.3`。前者记录已达目标的游戏组跳过迁移及升级状态显示修复，后者记录全新安装和 Steam 校验恢复原版启动器后的 SMAPI 修复。首页、部署、升级、FAQ 和 README 的当前版本与安装示例同步到 `v0.8.3`。
+- 两版 GitHub Release 的可见正文同步官网变更。回读确认各版的注解 tag、四个附件及嵌入升级策略字节一致，旧版仍从 GitHub latest Release 获得 `v0.7.3` 准备版。[v0.8.2](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.2) · [v0.8.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.3)
+- VitePress 1.6.4 本地构建用时 6.01 秒，生成及线上 8 页内容核对通过。官网提交 `8b59bf7bb3042da6f11255e2eb9d5df16262505c` 由现有 Pages 手动入口发布，构建 20 秒、部署 11 秒。线上确认 81 个版本条目、最新版本顺序、首页更新日志链接、`v0.8.3` 安装示例及 `v0.7.3` 准备版路径。[Pages 部署](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/43202127031) · [官网更新日志](https://anxiyizhi.github.io/stardew-server-anxi-panel/changelog.html)
+
 ## 2026-10-27：073 → 080 升级说明准备
 
 - `website/docs/maintain/update.md` 按当前更新策略重写，`deploy/nas.md` 与 `guide/deploy.md` 同步入口：旧版先完成 `v0.7.3`，后续从游戏库/世界列表/实例版本入口打开统一更新中心，阅读提示、预检范围、明确确认后再执行 `v0.8.0` 游戏组升级。说明停服、备份、事务恢复、Auth `.140-anxi.1`、第三方 Mod 兼容性和升级后检查。

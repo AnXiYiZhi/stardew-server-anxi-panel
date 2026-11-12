@@ -32,6 +32,7 @@
 - 人工入口提交 `74cb4a8d123603d49949977c86234ac047ec9eac`，签核和正式提升均为 `43198186445`。第一次运行封存签核和候选后，GitHub 拒绝工作流令牌推祖先 tag。所有者确认回执后推送 annotated `v0.8.3`，tag 对象 `0e15c7f56f37c8116deb0a4067a4d7ca8ebda993` 解引用到原候选 commit。Tag push 触发的旧工作流 `43198753992` 在同步主线检查处停止。原 run 第二次在三仓版本写入后的阿里云 OSS 读取遇 TLS 超时，独立核对三个版本引用后续接原 job。
 - 第三次运行于 `2026-11-12T10:19:44Z` 至 `10:21:17Z` 成功，签核 artifact `13933629556`。工作流校验原 digest 与 OCI，正式 GHCR 镜像的 `/health` 和 `/api/version` 通过，冒烟容器及数据卷走退出清理。独立回读 Docker Hub、阿里云 ACR、GHCR 的 `0.8.3` 和 `latest` 六个引用，均为原候选 digest。发布过程复用已有镜像。
 - [GitHub Release v0.8.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.3) 于 `10:21:12Z` 公开，四个部署和修复附件的字节与 tag 中对应 Git blob 一致。
+- 官网补齐 `v0.8.2` 和 `v0.8.3` 的更新日志，首页、当前安装和升级入口同步至 `v0.8.3`。两版 GitHub Release 正文补充实际变更，回读确认各自 tag、资产和嵌入升级规则一致。Pages `43202127031` 成功，线上 8 页内容及 81 个正式版本覆盖通过，详见 [官网发布记录](11-docs-portal.md)。
 
 ## 2026-11-06 0.8.2 变更与专项矩阵
 
