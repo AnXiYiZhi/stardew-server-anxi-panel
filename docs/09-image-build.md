@@ -21,7 +21,17 @@
 
 人工入口仅接收同仓 `main` 上成功的候选。若发布控制提交已推进 `main`，候选必须是当前提交的祖先，且两棵 Git 树的差异仅涉及 `scripts/manual_release_signoff.py` 列出的发布控制文件。此类提交使用 `[manual-release-candidate]`，沿用候选和已完成的 CI。工作流验证当前 main、上一正式版、候选 OCI 与精确 digest，封存候选并创建指向原 commit 的 annotated tag，然后沿用三仓提升、正式 health/version 和 Release 资产流程。失败续接使用原运行，已创建的 tag 绑定原签核运行。
 
+当 GitHub 拒绝工作流令牌为含 workflow 差异的祖先创建 tag 时，先核验同一签核 artifact、当前 main、候选 digest 和远端 tag 状态。仓库所有者可推送指向原候选的 annotated tag，标题为 `v<version> manually approved candidate`，正文依次为 `Candidate workflow: <id>`、`Digest: <digest>` 和 `Manual sign-off workflow: <id>`，各占一行。然后重跑原发布 job，由工作流复核已存在的 tag 后继续提升。
+
 本次候选 `43181534350` 为 `7f78be4606a5ccbc792ea3544bc27d971424a192`，UTC 构建时间 `2026-11-12T08:16:04Z`，digest `sha256:737407c02951a15ac7efd86272b979587d0c910ea2f49efc96f5433a64f0659e`。候选 CI 已通过真实 `0.8.2` Web 升级、unhealthy 回滚和状态保持。本机使用同一镜像在隔离 DinD 完成 11 个安装场景，包括升级后的冷安装，共 4 项成功与 7 项预期拒绝。SteamCMD 使用固定游戏及 SDK 文件夹具，实际运行 `.140` 内置 SMAPI 安装器，任务容器、网络、卷和监听均清理。脱敏证据 SHA256 为 `670ba7f8e139a945dbe0301865eb320577b67a302c5ef323ad356d39e88f395d`。维护者确认人工放行，旧运行栈迁移和真实 Steam Auth/邀请码等 11 个缺少候选回执的检查随人工签核记录。
+
+### v0.8.3 正式发布证据
+
+- 候选 `43181534350` 用时 25 分 11 秒，独立兼容 `43181534316` 成功。实际执行兼容清单、部署脚本和 ShellCheck、后端 test/vet/build、updater/Docker、前端回归与构建、真实 SMAPI 下载、Junimo 运行集成及官网构建。镜像新装、重启、上一正式版 Web 升级与同候选 unhealthy 回滚通过。路径选择因运行栈清单未变跳过远程制品校验，最老代表链未选中。
+- 本机隔离验收从镜像准备到清理用时约 30 分钟。任务容器、网络、卷和监听的剩余计数均为 0，移除 4 份任务游戏归档副本。已通过的候选和兼容门禁沿用原回执。
+- 人工入口提交 `74cb4a8d123603d49949977c86234ac047ec9eac`，签核和正式提升均为 `43198186445`。第一次运行封存签核和候选后，GitHub 拒绝工作流令牌推祖先 tag。所有者确认回执后推送 annotated `v0.8.3`，tag 对象 `0e15c7f56f37c8116deb0a4067a4d7ca8ebda993` 解引用到原候选 commit。Tag push 触发的旧工作流 `43198753992` 在同步主线检查处停止。原 run 第二次在三仓版本写入后的阿里云 OSS 读取遇 TLS 超时，独立核对三个版本引用后续接原 job。
+- 第三次运行于 `2026-11-12T10:19:44Z` 至 `10:21:17Z` 成功，签核 artifact `13933629556`。工作流校验原 digest 与 OCI，正式 GHCR 镜像的 `/health` 和 `/api/version` 通过，冒烟容器及数据卷走退出清理。独立回读 Docker Hub、阿里云 ACR、GHCR 的 `0.8.3` 和 `latest` 六个引用，均为原候选 digest。发布过程复用已有镜像。
+- [GitHub Release v0.8.3](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.3) 于 `10:21:12Z` 公开，四个部署和修复附件的字节与 tag 中对应 Git blob 一致。
 
 ## 2026-11-06 0.8.2 变更与专项矩阵
 

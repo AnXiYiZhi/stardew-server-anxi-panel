@@ -9,6 +9,9 @@
 - Windows pwsh7/Docker Desktop。0.8.3 只读 Steam 游戏夹具导出首轮比较了清单的大写 MD5 与 Python `hexdigest()` 的小写输出，核验退出 1。对照生产校验契约统一为小写，保留首轮产物并仅重导同一固定清单，复核全部游戏文件和 SDK，原测试卷保持只读。适用于从 Steam 构建清单生成的夹具校验。
 - Windows pwsh7/DinD。0.8.3 冷安装在任务终态后查 Docker 历史 start 事件返回空，夹具又误将坏备份文件路径当成 `/api/jobs` 摘要字段。读取同一已受理 job 的阶段日志，结合实际卷内哈希、stamp 和安装标记核对冷安装与拒绝位置。安装阶段应以同一任务日志及文件结果交叉验证，原安装请求未重放。
 - Windows Codex Shell。将已归档的 0.8.3 夹具按计算后的 `Remove-Item` 目标清理时，命令在启动前被策略拒绝。以归档和工作副本 SHA256 相等的六个确切文件路径执行 `apply_patch` 删除，保留归档。精确文件清理优先提交字面路径，遇启动拦截先核对是否实际执行。
+- GitHub Actions/Linux。人工签核提升 `43198186445` 第一次运行已封存签核和候选，`git push` 在创建指向发布控制提交之前的候选 tag 时退出 1。GitHub 认为两个提交的 workflow 文件差异需要 `Workflows` 权限。读回同一签核 artifact、候选 digest 和远端 ref 后，以仓库所有者会话推送绑定原 run 的同一注解 tag，随后续接原 job。仅在核准的候选与当前主线差异限于发布控制文件时使用此恢复方法。
+- GitHub Actions/Linux。`43198186445` 第二次运行在三仓版本引用写入后，`skopeo inspect` 读取阿里云 OSS 配置 blob 遇 TLS 握手超时、退出 1。三仓独立 manifest 查询确认版本引用均已到达精确 digest，随后续接同一发布 job。签名 URL 仅保留主机名。遇写入后的核验失败，先按精确引用确认外部状态，再决定续接。
+- Windows Python 3.12。验收测试加了 `scripts` 包导入后，`unittest discover` 通过，直接执行 `python scripts/tests/test_candidate_acceptance.py` 则在导入阶段退出 1。测试按自身路径定位仓库根，在直接执行和发现两种入口都通过同一个包导入。修改测试的导入方式时应复核既有两种入口。
 
 ## 2026-10-27 正式发布工具记录
 

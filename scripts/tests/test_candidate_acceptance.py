@@ -1,21 +1,21 @@
 import contextlib
 import copy
 import hashlib
-import importlib.util
+import importlib
 import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts import manual_release_signoff as SIGNOFF
-
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("candidate_acceptance", ROOT / "scripts/candidate_acceptance.py")
-ACCEPTANCE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(ACCEPTANCE)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+ACCEPTANCE = importlib.import_module("scripts.candidate_acceptance")
+SIGNOFF = importlib.import_module("scripts.manual_release_signoff")
 
 
 class CandidateAcceptanceTests(unittest.TestCase):
