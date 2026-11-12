@@ -60,6 +60,58 @@ func (c *Client) runJunimo140GameEvidence(ctx context.Context, dir, volume, imag
 	return []byte(raw), nil
 }
 
+// Classify the two fixed launcher files on the unused install volume. The
+// installer can restore a leftover backup, so it must match the vanilla
+// launcher even when SteamCMD has already restored the main file.
+func (c *Client) RuntimeJunimo140InstallUsesVanillaLauncher(ctx context.Context, dir, volume, imageRef, imageID, vanillaHash, installedHash string) (bool, error) {
+	vanillaHash, installedHash = strings.ToLower(vanillaHash), strings.ToLower(installedHash)
+	if len(vanillaHash) != 64 || len(installedHash) != 64 || vanillaHash == installedHash ||
+		!fixedFileHashPattern.MatchString(vanillaHash) || !fixedFileHashPattern.MatchString(installedHash) {
+		return false, errors.New("invalid fixed game launcher checksums")
+	}
+	const script = `set -eu
+test ! -L /game
+cd /game
+launcher=StardewValley
+backup=StardewValley-original
+if test -L "$launcher" || test ! -f "$launcher"; then
+    printf '%s\n' invalid-launcher
+    exit 0
+fi
+checksum=$(sha256sum -- "$launcher")
+case "${checksum%% *}" in
+    "$1") layout=vanilla ;;
+    "$2") layout=installed ;;
+    *) printf '%s\n' launcher-mismatch; exit 0 ;;
+esac
+if test "$layout" = installed || test -e "$backup" || test -L "$backup"; then
+    if test -L "$backup" || test ! -f "$backup" ||
+        ! printf '%s  %s\n' "$1" "$backup" | sha256sum --check --strict --status -; then
+        printf '%s\n' invalid-backup
+        exit 0
+    fi
+fi
+printf '%s\n' "$layout"`
+	raw, err := c.runJunimo140GameEvidence(ctx, dir, volume, imageRef, imageID, "install-launchers", nil, script, vanillaHash, installedHash)
+	if err != nil {
+		return false, err
+	}
+	switch strings.TrimSpace(string(raw)) {
+	case "vanilla":
+		return true, nil
+	case "installed":
+		return false, nil
+	case "invalid-launcher":
+		return false, errors.New("StardewValley is missing or is not a regular file")
+	case "launcher-mismatch":
+		return false, errors.New("StardewValley does not match a fixed launcher checksum")
+	case "invalid-backup":
+		return false, errors.New("StardewValley-original must be a regular file with the vanilla launcher checksum")
+	default:
+		return false, errors.New("invalid fixed game launcher verification result")
+	}
+}
+
 type RuntimeGameFileStats struct{ GameFiles, GameBytes, SDKFiles, SDKBytes int64 }
 
 var fixedFileHashPattern = regexp.MustCompile(`^[0-9a-fA-F]+$`)

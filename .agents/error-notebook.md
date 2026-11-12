@@ -1,5 +1,11 @@
 # 项目执行错题本
 
+## 2026-11-12 SMAPI 安装反馈与格式化
+
+- Windows pwsh7 与 Codex Browser。QQ 闪传的公开分享页在网页读取工具中返回不可访问，直接 HTTPS 请求得到正常分享页。应用内 Browser 新建标签到 30 秒超时并重置会话。用户随后提供原 ZIP，从 ZIP 目录核对成员大小后读取 TXT 和补丁，定位了问题。以后已有本地原件时直接读取所需条目。网页可访问和实际下载是两个结果，分享参数不写入仓库。
+- Windows pwsh7。格式化前错误地把预期 Go 文件数写成 9，实际范围包含 10 个文件，守卫在执行 `gofmt` 前退出 1。以 `git diff --name-only -- '*.go'` 确认实际范围，复核十个路径并用明确名单运行 `gofmt`。预防时按路径集合核对格式化范围。
+- Windows pwsh7/Docker Desktop。一次观察命令把 `docker top` 的非零结果直接解释为容器不可见，当时日志文件仍在缓冲，结论失准。按名称精确查询 `docker ps` 和该容器的 `docker logs` 确认测试在运行，最终以原执行 session 的退出码收口。进程投影失败时保留具体诊断，容器是否存在由容器查询确认。
+
 ## 2026-10-27 正式发布工具记录
 
 - 最近补充（2026-10-28，PowerShell 数组与单项集合）：专属清理把 `@($prefix+'-docker',$prefix+'-fixtures')` 解析成一个拼接字符串，原账号窗口又把管道筛选结果当数组访问 `.Count`，分别在删除前和 Docker 调用前失败。保留原失败，名称每项加括号，筛选结果外再用 `@(...)` 收集；先以真实输入断言两名称、单项及空集合再执行。新工具的 Join-Path 数组同样每项完整括起，不把两个调用串成路径。StrictMode 读取混合容器角色的可选 Compose label 前先核属性存在，不能假定所有 inspect 条目形状一致。适用 Windows pwsh7 StrictMode 与任务清理/续接工具。
@@ -383,6 +389,8 @@
 - 同次续接执行补充（2026-10-15，PowerShell7）：只读命令把已知脚本误放在web-current-v5子目录，并把backend-current-v7.sh误记为backend-v7.sh，均fail-fast且未修改业务资源；独立rg文件清单后按实际路径继续。Get-Command git返回两份Application，未先选唯一结果，拼出的bash路径成为数组并导致调用拒绝；改为Select-Object -First 1后再从Source解析Git根，版本探针、逐文件bash语法和ShellCheck通过。沿用现有inventory/read-verified规则，不把父目录存在视为文件存在；命令探针先明确单个Application对象再构造路径。此类路径失误已重复，不新增平行泛化规则，继续执行AGENTS现有硬检查。
 
   最近复发/补充（2026-11-04，pwsh7/Git Bash 探针）：`Get-Command git` 再次返回多个 Source，派生 Bash 路径成为数组，构造阶段已中止。该轮改用已验证 Linux runner，没有试跑不明 Bash。执行 AGENTS 已提升的单一绝对路径与版本守卫，不能任取 first/last；适用于 PATH 多候选和 Windows Bash 路径推导。
+
+  最近复发/补充（2026-11-12，pwsh7）：Git Bash 版本探针把两个 Git Application 的 Source 当成单一路径，调用阶段退出 1。先选 PowerShell 实际调用的 Git Application，核对其安装根，再对得到的绝对 Bash 路径执行版本探针，确认 GNU Bash 5.2.37。单一 Git Application 的前置检查已明确写入 AGENTS。
 
 - 同次工程门禁 runner（2026-10-15，ShellCheck0.10）：后端全包/vet/build 已实际成功后，新增任务 runner 的内联 EXIT trap 被静态检查报 SC2154，未加引号的 `step=test` 报 SC2209。保留首次 lint 输出，在运行 cell 结束后才将 trap 改成独立 finish 函数并为字面量加引号；测试/vet/build 命令、冻结源码和退出结果不变，没有为样式调整重跑已通过整包。四个新增任务 Shell 脚本随后 ShellCheck通过，完整日志分别留存。
 
@@ -2684,6 +2692,7 @@
 
 ## 2026-07-28：Docker Desktop CLI 存在但 daemon 未启动
 
+- 最近复发/补充（2026-11-12，pwsh7）：`docker info` 退出 1，成功字段过滤掩盖了连接错误。确认 Desktop 进程未运行且 `desktop-linux` 为当前上下文，按 CLI 帮助用 `docker desktop start --detach` 启动，随后有界读取 `docker info` 得到就绪的 Linux daemon。失败分支应保留原退出码并先查看安全诊断，再筛选成功字段。
 - 最近复发/补充：2026-08-28 登录聊天隐私门禁首次 `docker info` 明确报告 Linux engine named pipe 不存在；隐藏启动 Docker Desktop 后，把会阻塞的 `docker info` 放进自写 10 次轮询，单次调用没有超时且 `ForEach-Object` 内的 `return` 也不能终止外层枚举，导致工具会话超过预期上限，随后被中断且未创建容器。正确做法是先用 named-pipe/后台日志做短探针，确认 engine heartbeat ready 后再单次执行 `docker info`；若必须轮询，每次 daemon 探针本身也要可取消，不能只限制循环次数。
 - 最近复发/补充：同轮 ShellCheck 后准备恢复 Docker Desktop 启动前状态时，把 `docker image ls --format '{{json .}}'` 中每个镜像的 `Containers=0` 误读成宿主总容器数为零；真正的 `docker container ls -a` 发现多批既有容器，保护断言在调用 `DockerCli -Shutdown` 前停止，未关闭 daemon 或修改容器。镜像行的 Containers 字段只描述该镜像引用，任何 daemon 停止判断必须重新读取容器清单和运行状态；有既有资源时保持当前状态并停止恢复动作。
 - 最近复发/补充：2026-08-18 为缺失的宿主 ShellCheck 寻找容器兜底时先执行 `docker info`，Linux engine named pipe 不存在，命令 fail-fast，尚未 inspect/pull/run 任何 lint 镜像。随后按既有规则从验证路径启动 Docker Desktop 并有界轮询；ShellCheck 容器只有在 inspect Entrypoint/Cmd 后才可运行。
@@ -3018,6 +3027,8 @@
 - 最近复发/补充：2026-08-06 在同一补丁中依次更新 Compose、删除临时 env、再更新错题本时，把第二个文件声明放进尚未结束的 hunk，`apply_patch` 报 `Unexpected line found in update hunk` 并零修改退出。多种 patch operation 混合时每个文件段必须先正常结束；更稳妥的是把 update/delete/文档补记拆成独立补丁并逐个检查返回。
 - 最近复发/补充：2026-08-10 滚动契约测试脚本与错题本合并补丁再次把第二个 `*** Update File` 放进未正常结束的首个 hunk，`apply_patch` 以同一 `Unexpected line found in update hunk` 零修改退出。随后按文件拆成两个补丁并各自核对成功；该重复错误已提升到 `AGENTS.md`，多文件或混合操作默认拆分，绝不在一个未闭合 hunk 中切换文件声明。
 - 最近复发/补充：2026-08-06 补记候选镜像 inspect 错误时，从聊天摘要重打了含多层反斜杠的旧行作为上下文，实际文件中的转义数量不同，`apply_patch` 校验失败且零修改；随后构造补丁时又漏了上下文原文本身的 Markdown 列表短横线，第二次校验仍失败。应先读取文件原文，再选不含易变转义的邻近稳定行作最小锚点；补丁正文行需明确区分 patch marker 与文件原有字符。
+
+  最近复发/补充（2026-11-12，pwsh7）：修改 Git Bash 规则时混淆 Markdown 列表短横线和补丁标记，`apply_patch` 校验拒绝且零修改。精确读取原行后，删除行保留补丁减号和原列表减号，新增行保留补丁加号和原列表减号，补丁通过。沿用 AGENTS 的逐完整行匹配与命中复核规则。
 - 最近复发/补充：2026-08-13 首次给 Runtime recovery manifest 和恢复入口合并较大补丁时，使用了与当前共享工作树字段间距/上下文不完全一致的长锚点，补丁安全零修改。随即读取准确行段并拆为按结构体、入口分支、helper 的独立小补丁后成功；共享工作树中正在并发变化的文件必须在每个语义段修改前重新读取，不能复用先前摘要中的整段上下文。
 - 适用范围：所有 `apply_patch` 修改，尤其是长行、编码敏感文件和多文件补丁。
 

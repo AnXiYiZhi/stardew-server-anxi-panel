@@ -132,6 +132,10 @@ func (f *fakeDocker) RuntimeValidateUnusedSMAPIStaging(_ context.Context, _ stri
 	return f.installVolumeOwnershipError
 }
 
+func (f *fakeDocker) RuntimeJunimo140InstallUsesVanillaLauncher(context.Context, string, string, string, string, string, string) (bool, error) {
+	return false, nil
+}
+
 func (f *fakeDocker) RuntimeClonePinnedJunimo140Game(context.Context, string, string, string, string, string) error {
 	f.installVolumeClones++
 	return nil

@@ -9,16 +9,17 @@ import (
 	"strings"
 	"testing"
 
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
-func freshInstallRunner(t *testing.T, fake *fakeDocker) *installRunner {
+func freshInstallRunner(t *testing.T, docker DockerService) *installRunner {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "freshworld")
-	driver := New(fake, nil, nil, nil)
+	driver := New(docker, nil, nil, nil)
 	instance := registry.Instance{ID: "freshworld", DataDir: dir, State: storage.InstanceStateUninitialized}
 	if err := driver.Prepare(context.Background(), instance); err != nil {
 		t.Fatal(err)
@@ -211,6 +212,120 @@ func TestJunimo140CachedPatchedSMAPIRequiresDownloadedPayloadProof(t *testing.T)
 	plan, err = readInstallVolumePlan(runner.instance.DataDir, volume)
 	if err != nil || plan.SMAPIVerified || len(fake.gameDownloadMarkers) != 1 || fake.smapiRuns != 0 {
 		t.Fatalf("stale payload verification receipt survived failed recheck: %v", err)
+	}
+}
+
+type steamLauncherInstallDocker struct {
+	*fakeDocker
+	cachedSMAPI, leaveVanilla, corruptContent bool
+	installs, stamps                          int
+}
+
+func (f *steamLauncherInstallDocker) RuntimeJunimo140InstallUsesVanillaLauncher(_ context.Context, _, _, _, _, vanilla, installed string) (bool, error) {
+	pins, err := fixedJunimo140GamePins()
+	if err != nil || vanilla != pins.CoreFiles["StardewValley-original"] || installed != pins.CoreFiles["StardewValley"] {
+		return false, errors.New("unexpected launcher checksum pins")
+	}
+	return true, nil
+}
+
+func (f *steamLauncherInstallDocker) RuntimeVerifyJunimo140GameFiles(ctx context.Context, dir, volume, image, id, algorithm string, files map[string]string) (paneldocker.RuntimeGameFileStats, error) {
+	if algorithm == "sha256" {
+		pins, err := fixedJunimo140GamePins()
+		if err != nil {
+			return paneldocker.RuntimeGameFileStats{}, err
+		}
+		vanilla := pins.CoreFiles["StardewValley-original"]
+		launcher, backup := pins.CoreFiles["StardewValley"], vanilla
+		if f.installs == 0 || f.leaveVanilla {
+			launcher, backup = vanilla, ""
+		}
+		if files["StardewValley"] != launcher || files["StardewValley-original"] != backup {
+			return paneldocker.RuntimeGameFileStats{}, errors.New("launcher layout does not match the staged files")
+		}
+	}
+	if algorithm == "md5" && f.corruptContent {
+		return paneldocker.RuntimeGameFileStats{}, errors.New("content checksum mismatch")
+	}
+	return f.fakeDocker.RuntimeVerifyJunimo140GameFiles(ctx, dir, volume, image, id, algorithm, files)
+}
+
+func (f *steamLauncherInstallDocker) RuntimeReadPinnedSMAPIMetadata(ctx context.Context, dir, volume, image, id string) (paneldocker.RuntimeSMAPIMetadata, error) {
+	if !f.cachedSMAPI && f.installs == 0 {
+		return paneldocker.RuntimeSMAPIMetadata{}, nil
+	}
+	metadata, err := f.fakeDocker.RuntimeReadPinnedSMAPIMetadata(ctx, dir, volume, image, id)
+	if f.installs > f.stamps {
+		metadata.BuildID = ""
+	}
+	return metadata, err
+}
+
+func (f *steamLauncherInstallDocker) RuntimeInstallImageSMAPI(context.Context, string, string, string, string) error {
+	f.installs++
+	if len(f.gameDownloadMarkers) != 0 {
+		return errors.New("completion markers were published before SMAPI installation")
+	}
+	return nil
+}
+
+func (f *steamLauncherInstallDocker) RuntimeCommitImageSMAPIStamp(context.Context, string, string, string, string, string) error {
+	f.stamps++
+	return nil
+}
+
+func TestJunimo140InstallFromSteamLauncher(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		cachedSMAPI    bool
+		leaveVanilla   bool
+		corruptContent bool
+		invalidSDK     bool
+		wantInstalls   int
+		wantError      string
+	}{
+		{name: "clean download", wantInstalls: 1},
+		{name: "Steam validate restored launcher with verified SMAPI cache", cachedSMAPI: true, wantInstalls: 1},
+		{name: "corrupt content", corruptContent: true, wantError: "content checksum mismatch"},
+		{name: "invalid SDK manifest", invalidSDK: true, wantError: "verify downloaded game before patched SMAPI"},
+		{name: "installer did not replace launcher", leaveVanilla: true, wantInstalls: 1, wantError: "verify downloaded game after patched SMAPI"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fake := &steamLauncherInstallDocker{
+				fakeDocker: &fakeDocker{}, cachedSMAPI: tc.cachedSMAPI,
+				leaveVanilla: tc.leaveVanilla, corruptContent: tc.corruptContent,
+			}
+			completeJunimo140GameEvidence(t, fake.fakeDocker, installedSDKFixture("99999999", "7900000000000000001"))
+			if tc.invalidSDK {
+				fake.gameIntegrityEvidence["sdk"] = []byte("invalid")
+			}
+			runner := freshInstallRunner(t, fake)
+			dir := runner.instance.DataDir
+			if err := runner.prepareJunimo140InstallVolume(ctx); err != nil {
+				t.Fatal(err)
+			}
+			err := runner.ensureJunimo140SMAPIInstalled(ctx, nil, gameInstallImage(dir))
+			wantVerified := tc.wantError == ""
+			if wantVerified && err != nil || !wantVerified && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
+				t.Fatalf("unexpected installation result: %v", err)
+			}
+			if fake.installs != tc.wantInstalls || fake.stamps != tc.wantInstalls {
+				t.Fatalf("unexpected installation/stamp count: %d/%d", fake.installs, fake.stamps)
+			}
+			volume, err := GameDataVolumeName(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := readInstallVolumePlan(dir, volume)
+			wantMarkers := 0
+			if wantVerified {
+				wantMarkers = 1
+			}
+			if err != nil || plan.SMAPIVerified != wantVerified || len(fake.gameDownloadMarkers) != wantMarkers {
+				t.Fatalf("unexpected installation journal or completion markers: %v", err)
+			}
+		})
 	}
 }
 

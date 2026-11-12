@@ -9,11 +9,14 @@ import (
 func TestJunimo140HelperRecoveryRejectsUnknownBeforeStopping(t *testing.T) {
 	id, image := strings.Repeat("a", 64), "sha256:"+strings.Repeat("b", 64)
 	scope := RuntimeJunimo140HelperScope{ApplyID: "apply_" + strings.Repeat("c", 24), Projects: []string{"world-a"}, ImageID: image}
-	for _, scenario := range []string{"owned", "wrong project", "wrong image", "wrong ref", "wrong name", "not auto removed", "unknown operation", "wrong owner", "duplicate", "different id"} {
+	for _, scenario := range []string{"owned", "install launcher check", "wrong project", "wrong image", "wrong ref", "wrong name", "not auto removed", "unknown operation", "wrong owner", "duplicate", "different id"} {
 		t.Run(scenario, func(t *testing.T) {
 			labels := map[string]string{"com.anxi-panel.junimo140-helper": "true", "com.anxi-panel.compose-project": "world-a", "com.anxi-panel.runtime-update-apply-id": scope.ApplyID, "com.anxi-panel.junimo140-operation": "smapi-clone"}
 			record := map[string]any{"ID": id, "Image": image, "Name": "/anxi-j140-" + strings.Repeat("c", 24) + "-smapi-clone", "Config": map[string]any{"Image": image, "Labels": labels}, "HostConfig": map[string]bool{"AutoRemove": true}}
 			switch scenario {
+			case "install launcher check":
+				labels["com.anxi-panel.junimo140-operation"] = "smapi-evidence-install-launchers"
+				record["Name"] = "/anxi-j140-" + strings.Repeat("c", 24) + "-smapi-evidence-install-launchers"
 			case "wrong project":
 				labels["com.anxi-panel.compose-project"] = "foreign"
 			case "wrong image":
@@ -37,7 +40,7 @@ func TestJunimo140HelperRecoveryRejectsUnknownBeforeStopping(t *testing.T) {
 			}
 			raw, _ := json.Marshal(records)
 			err := validateJunimo140Helpers(string(raw), []string{id}, scope)
-			if (err == nil) != (scenario == "owned") {
+			if (err == nil) != (scenario == "owned" || scenario == "install launcher check") {
 				t.Fatalf("wrong helper recovery decision: %v", err)
 			}
 		})

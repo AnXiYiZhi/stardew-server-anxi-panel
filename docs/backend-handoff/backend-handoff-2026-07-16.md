@@ -1,3 +1,13 @@
+## 2026-11-12 Junimo .140 安装启动器修复
+
+0.8.1 和 0.8.2 的反馈现场在 SteamCMD 下载完 413150 和 1007 后卡在 `smapi_install_failed`。安装器原本先按安装后清单查找 `StardewValley-original`，而纯净下载只有原版 `StardewValley`。
+
+`junimo140_install.go` 先在已准备的事务卷识别两种启动器布局，再由 `junimo140_game_integrity.go` 校验相应游戏清单与 SDK。`runtime_junimo140_game.go` 的 Docker helper 检查两份固定文件，拒绝未知哈希、目录和符号链接。`junimo140_smapi.go` 复用镜像内置安装与 stamp 校验。Steam 校验恢复原版启动器时强制执行该安装，成功后重验安装布局再写游戏、SDK 标记及 journal 回执。
+
+回归入口为 `TestJunimo140InstallFromSteamLauncher`、`TestJunimo140InstallationReusesVerifiedPatchedSMAPI` 和固定 .140 镜像下的 `ANXI_REAL_JUNIMO140_LAUNCHERS=1 go test -tags=integration ./internal/docker -run '^TestJunimo140InstallLaunchersRealOptIn$' -count=1`。候选验收使用隔离游戏卷，通过实际安装接口观察同一个 job 到 `succeeded`，确认实例达到 `game_installed`，并覆盖 Steam validate 恢复原版启动器的重试。升级后的候选按 docs09 矩阵复验。
+
+本地 Linux 后端整包测试、vet 和 build 通过，固定 .140 Docker helper 的 10 个启动器用例通过。独立事务卷以历史测试卷中的固定游戏和 SDK 文件还原纯净布局，实际运行镜像安装器通过。完整安装复验跳过安装器，复制回原版启动器并保留有效 SMAPI 缓存后再次运行安装器。三次均核对安装布局、SMAPI stamp、实际 SDK manifest、两份下载标记和 journal 回执。
+
 ## 2026-11-06 0.8.2 共享组重复迁移接手
 
 `junimo140_group_runtime.go` 在捕获整组身份后识别已达目标的组，`full_stack_prepare.go` 只为仍需迁移的组生成范围。保留真实旧组、配置漂移和待恢复状态的原安全边界。回归时从成功 `.140` 的既有游戏卷发起同版本范围预检，核对已运行版本及停服后的容器都可跳过，预检以 `succeeded` 结束，无新增迁移子任务或卷。验证陈旧预检再次确认会拒绝重复迁移，以及混合范围仍列出需要迁移的旧组。

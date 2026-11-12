@@ -106,7 +106,7 @@ GitHub 只读状态/制品查询遭遇 EOF 等瞬时网络错误时，使用同�
 - PowerShell 的语句形式 `foreach (...) { ... }`、`if (...) { ... }` 不能直接接管道；需要继续传给 `Format-Table`、`ConvertTo-Json` 等命令时，先用 `@(...)` 收集输出，或改用 `ForEach-Object`。工具调用中的单行批处理默认使用 `ForEach-Object`，不要写语句式 `foreach` 后再接管道。
 
   JSON 对象成员数必须先以 `@($object.PSObject.Properties)` 物化数组，再读取 `.Count`；不得直接用属性集合的 `.Count` 触发成员访问枚举。命令输出计数前先剔除 null/空白，并独立检查原始退出码。
-- Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。Windows 当前 PATH 的裸 `bash`/`Get-Command bash` 可能命中没有发行版的 WSL relay，必须从 `Get-Command git` 的真实安装根反解并验证 `bin\bash.exe --version`，或使用已验证的 Linux 容器；不得先执行 PATH `bash` 试错。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
+- Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行，发布一致性测试优先 Linux 容器。Windows 当前 PATH 的裸 `bash`/`Get-Command bash` 可能命中没有发行版的 WSL relay，不得先执行 PATH `bash` 试错。使用 Git Bash 时，先确认 PowerShell 实际调用的单个 Git Application 的绝对路径，再从其真实安装根反解并验证 `bin\bash.exe --version`。`Get-Command git -CommandType Application` 可能返回多个候选，不得用集合的 `.Source` 拼接路径。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
 - Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。使用 Pillow 等额外依赖前分别验证模块可用性，优先使用工作区 bundled runtime；读取/写入仓库 UTF-8 文本必须显式指定 `encoding='utf-8'`，不能仅设置 stdout 编码。CI 使用 workflow 明确配置的 Python。 Windows Python向工具输出Unicode文档/日志时，入口须显式sys.stdout.reconfigure(encoding="utf-8")；文件UTF-8不能代替stdout契约，编码失败只复读同一只读输入，不重跑业务。
 
   SQLite连接必须finally显式close；connection context manager不负责关闭。校验已quiesce快照的WAL-mode原DB时，先证明源/归档主DB字节相同及WAL/journal为空，再在task临时文件用mode=ro&immutable=1/query_only核验；不得改DB头/源sidecar或用immutable跳过有数据的WAL。SHM非空只能按已证实形态单独判断。

@@ -39,6 +39,9 @@ func TestFixedGameDockerRejectsUnscopedEvidenceAndMarkers(t *testing.T) {
 	if _, err := c.RuntimeVerifyJunimo140GameFiles(ctx, dir, "production", "image", "invalid", "sha256", map[string]string{"../secret": strings.Repeat("a", 64)}); err == nil {
 		t.Fatal("unsafe checksum invoked Docker")
 	}
+	if _, err := c.RuntimeJunimo140InstallUsesVanillaLauncher(ctx, dir, "production", "image", "invalid", strings.Repeat("a", 64), strings.Repeat("b", 64)); err == nil || err.Error() != "invalid image-managed SMAPI staging volume" {
+		t.Fatalf("unscoped launcher check reached Docker: %v", err)
+	}
 	if err := c.RuntimeCommitJunimo140GameMarkers(ctx, dir, "production", "image", "invalid", RuntimeGameDownloadMarker{}, RuntimeGameDownloadMarker{}); err == nil {
 		t.Fatal("unproved marker accepted")
 	}

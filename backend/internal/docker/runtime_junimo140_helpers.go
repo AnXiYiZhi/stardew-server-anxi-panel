@@ -49,7 +49,7 @@ func validateJunimo140Helpers(raw string, ids []string, scope RuntimeJunimo140He
 	for _, id := range ids {
 		expected[id] = true
 	}
-	operations := map[string]bool{"clone": true, "install": true, "stamp": true, "evidence-game": true, "evidence-sdk": true, "evidence-content": true, "check-sha256": true, "check-md5": true, "sdk-inspect": true, "game-markers": true, "game-permissions": true, "mod-extract": true, "archive": true, "restore": true, "permissions": true, "session-archive": true, "session-restore": true}
+	operations := map[string]bool{"clone": true, "install": true, "stamp": true, "evidence-game": true, "evidence-sdk": true, "evidence-content": true, "evidence-install-launchers": true, "check-sha256": true, "check-md5": true, "sdk-inspect": true, "game-markers": true, "game-permissions": true, "mod-extract": true, "archive": true, "restore": true, "permissions": true, "session-archive": true, "session-restore": true}
 	prefix := "/anxi-j140-" + strings.TrimPrefix(scope.ApplyID, "apply_") + "-"
 	for _, record := range records {
 		labels := record.Config.Labels

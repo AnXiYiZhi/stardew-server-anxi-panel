@@ -25,6 +25,7 @@ type junimo140InstallDocker interface {
 	RuntimeVolumeExists(context.Context, string, string) (bool, error)
 	RuntimeCreateSMAPIStagingVolume(context.Context, string, string, string) error
 	RuntimeValidateUnusedSMAPIStaging(context.Context, string, string) error
+	RuntimeJunimo140InstallUsesVanillaLauncher(context.Context, string, string, string, string, string, string) (bool, error)
 }
 
 // The selected volume is durable before Docker creates it. A failed or
@@ -238,48 +239,56 @@ func (r *installRunner) ensureJunimo140SMAPIInstalled(ctx context.Context, jobCt
 	if err != nil {
 		return err
 	}
-	volume, err := GameDataVolumeName(r.instance.DataDir)
+	dir := r.instance.DataDir
+	volume, err := GameDataVolumeName(dir)
 	if err != nil {
 		return err
 	}
-	current, err := docker.RuntimeReadPinnedSMAPIMetadata(ctx, r.instance.DataDir, volume, image.Image, image.ImageID)
-	if err != nil {
-		return err
-	}
-	if junimo140SMAPIIdentityVerified(current) {
-		plan, err := readInstallVolumePlan(r.instance.DataDir, volume)
-		if err != nil || !plan.Prepared || plan.ImageID != image.ImageID {
-			return errors.New("verified SMAPI is outside the prepared installation volume journal")
-		}
-		// SteamCMD may have refreshed the independently installed SDK even when
-		// the cached patched SMAPI is unchanged. Reverify the downloaded payload
-		// and publish its actual SDK marker before accepting this installation.
-		plan.SMAPIVerified = false
-		if err := writeInstallVolumePlan(r.instance.DataDir, plan); err != nil {
-			return err
-		}
-		if err := prepareJunimo140GameMarkers(ctx, docker, r.instance.DataDir, volume, image, time.Now()); err != nil {
-			return fmt.Errorf("verify downloaded game with cached patched SMAPI: %w", err)
-		}
-		plan.SMAPIVerified = true
-		return writeInstallVolumePlan(r.instance.DataDir, plan)
-	}
-	plan, err := readInstallVolumePlan(r.instance.DataDir, volume)
+	plan, err := readInstallVolumePlan(dir, volume)
 	if err != nil || !plan.Prepared || plan.ImageID != image.ImageID {
 		return errors.New("image-managed SMAPI requires the prepared installation volume journal")
 	}
-	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-		"正在安装并验证 Junimo .140 镜像内置的 SMAPI...", "smapi_installing", jobCtx.ID)
-	_, _ = jobCtx.Info(context.Background(), "[smapi] 使用固定 Junimo .140 镜像内置构建，校验核心文件后提交构建标记。")
-	if err := prepareJunimo140GameMarkers(ctx, docker, r.instance.DataDir, volume, image, time.Now()); err != nil {
-		return fmt.Errorf("verify downloaded game before patched SMAPI: %w", err)
+	if plan.SMAPIVerified {
+		plan.SMAPIVerified = false
+		if err := writeInstallVolumePlan(dir, plan); err != nil {
+			return err
+		}
 	}
-	if _, err := prepareJunimo140SMAPIStaging(ctx, docker, r.instance.DataDir, volume, image); err != nil {
+	pins, err := fixedJunimo140GamePins()
+	if err != nil {
 		return err
 	}
-	if err := prepareJunimo140GameMarkers(ctx, docker, r.instance.DataDir, volume, image, time.Now()); err != nil {
-		return fmt.Errorf("verify downloaded game after patched SMAPI: %w", err)
+	vanillaLauncher, err := docker.RuntimeJunimo140InstallUsesVanillaLauncher(ctx, dir, volume, image.Image, image.ImageID,
+		pins.CoreFiles["StardewValley-original"], pins.CoreFiles["StardewValley"])
+	if err != nil {
+		return fmt.Errorf("verify downloaded game launchers: %w", err)
+	}
+	var payload junimo140VerifiedGamePayload
+	if err := verifyJunimo140GamePayloadLayout(ctx, docker, dir, volume, image, time.Now(), &payload, vanillaLauncher); err != nil {
+		return fmt.Errorf("verify downloaded game before patched SMAPI: %w", err)
+	}
+	current, err := docker.RuntimeReadPinnedSMAPIMetadata(ctx, dir, volume, image.Image, image.ImageID)
+	if err != nil {
+		return err
+	}
+	// SteamCMD validate can restore the vanilla launcher while leaving the
+	// cached SMAPI DLLs and build stamp intact.
+	if vanillaLauncher || !junimo140SMAPIIdentityVerified(current) {
+		if jobCtx != nil {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+				"正在安装并验证 Junimo .140 镜像内置的 SMAPI...", "smapi_installing", jobCtx.ID)
+			_, _ = jobCtx.Info(context.Background(), "[smapi] 使用固定 Junimo .140 镜像内置构建，校验核心文件后提交构建标记。")
+		}
+		if _, err := installJunimo140SMAPIStaging(ctx, docker, dir, volume, image, current); err != nil {
+			return err
+		}
+		if err := verifyJunimo140GamePayload(ctx, docker, dir, volume, image, time.Now(), &payload); err != nil {
+			return fmt.Errorf("verify downloaded game after patched SMAPI: %w", err)
+		}
+	}
+	if err := docker.RuntimeCommitJunimo140GameMarkers(ctx, dir, volume, image.Image, image.ImageID, payload.Game, payload.SDK); err != nil {
+		return err
 	}
 	plan.SMAPIVerified = true
-	return writeInstallVolumePlan(r.instance.DataDir, plan)
+	return writeInstallVolumePlan(dir, plan)
 }

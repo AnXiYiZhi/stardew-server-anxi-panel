@@ -127,6 +127,10 @@ type junimo140VerifiedGamePayload struct {
 // This interface and function have no marker/install/clone method. Inspection
 // of an already current group must not reuse the mutating staging procedure.
 func verifyJunimo140GamePayload(ctx context.Context, docker junimo140GameEvidenceDocker, dir, volume string, image RuntimeUpdateSelectedImage, now time.Time, payload *junimo140VerifiedGamePayload) error {
+	return verifyJunimo140GamePayloadLayout(ctx, docker, dir, volume, image, now, payload, false)
+}
+
+func verifyJunimo140GamePayloadLayout(ctx context.Context, docker junimo140GameEvidenceDocker, dir, volume string, image RuntimeUpdateSelectedImage, now time.Time, payload *junimo140VerifiedGamePayload, vanillaLauncher bool) error {
 	if image.Digest != junimo140Digest {
 		return errors.New("fixed game migration requires the pinned Junimo .140 image")
 	}
@@ -159,6 +163,12 @@ func verifyJunimo140GamePayload(ctx context.Context, docker junimo140GameEvidenc
 	core := make(map[string]string, len(pins.CoreFiles)+1)
 	for file, hash := range pins.CoreFiles {
 		core[file] = hash
+	}
+	if vanillaLauncher {
+		// SteamCMD writes the original launcher. The install preflight checks
+		// any existing backup separately before the installer can restore it.
+		core["StardewValley"] = pins.CoreFiles["StardewValley-original"]
+		delete(core, "StardewValley-original")
 	}
 	core["Content/ContentHashes.json"] = pins.Content.ManifestSHA256
 	coreStats, err := docker.RuntimeVerifyJunimo140GameFiles(ctx, dir, volume, image.Image, image.ImageID, "sha256", core)

@@ -1,3 +1,9 @@
+## 2026-11-12 Junimo .140 首次安装与 Steam 校验重试
+
+- `POST /api/instances/:id/install` 的 .140 安装在 SteamCMD 完成后，根据固定 SHA-256 识别原版和已安装的 `StardewValley`。原版布局允许缺少 `StardewValley-original`。若备份存在，则必须是同一原版哈希的普通文件。
+- 两种布局均校验游戏 depot、其余核心文件、完整 Content 和实际 Steamworks SDK。Steam 校验恢复原版启动器时，即使 SMAPI DLL 和构建标记有效，也会运行镜像内置安装器。已安装布局和有效 SMAPI 可复用，并核验实际 SDK 后刷新完成标记。
+- 安装器结束后，driver 按安装后的固定清单重新校验游戏和 SDK，写入两个下载标记后才提交 `smapiVerified`。启动器检查通过断网、只读 Docker helper 在未被容器引用的事务卷上执行。
+
 ## 2026-11-06 0.8.2 共享组重复迁移修复
 
 - 共享组捕获阶段按实际 server 镜像 ID、启用时的 Steam Auth 镜像 ID、受管组件状态和恢复记录判断组是否已是目标。已达目标的组退出迁移入口，避免创建子任务、租约或游戏暂存卷。旧预检的确认和执行同样经过该检查。

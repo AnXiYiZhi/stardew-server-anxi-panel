@@ -43,26 +43,27 @@ type imageSMAPIStagingDocker interface {
 	RuntimeCommitImageSMAPIStamp(context.Context, string, string, string, string, string) error
 }
 
-// A valid stamp is published only after the actual staged bytes match the
-// fixed image's payload, then read back with the same immutable image ID.
 func prepareJunimo140SMAPIStaging(ctx context.Context, docker imageSMAPIStagingDocker, dataDir, volume string, image RuntimeUpdateSelectedImage) (paneldocker.RuntimeSMAPIMetadata, error) {
 	if image.Digest != junimo140Digest {
 		return paneldocker.RuntimeSMAPIMetadata{}, errors.New("image-managed SMAPI requires the fixed Junimo .140 digest")
 	}
-	read := func() (paneldocker.RuntimeSMAPIMetadata, error) {
-		return docker.RuntimeReadPinnedSMAPIMetadata(ctx, dataDir, volume, image.Image, image.ImageID)
-	}
-	current, err := read()
-	if err != nil {
+	current, err := docker.RuntimeReadPinnedSMAPIMetadata(ctx, dataDir, volume, image.Image, image.ImageID)
+	if err != nil || junimo140SMAPIIdentityVerified(current) {
 		return current, err
 	}
-	if junimo140SMAPIIdentityVerified(current) {
-		return current, nil
+	return installJunimo140SMAPIStaging(ctx, docker, dataDir, volume, image, current)
+}
+
+// A valid stamp is published only after the actual staged bytes match the
+// fixed image's payload, then read back with the same immutable image ID.
+func installJunimo140SMAPIStaging(ctx context.Context, docker imageSMAPIStagingDocker, dataDir, volume string, image RuntimeUpdateSelectedImage, current paneldocker.RuntimeSMAPIMetadata) (paneldocker.RuntimeSMAPIMetadata, error) {
+	if image.Digest != junimo140Digest {
+		return current, errors.New("image-managed SMAPI requires the fixed Junimo .140 digest")
 	}
 	if err := docker.RuntimeInstallImageSMAPI(ctx, dataDir, volume, image.Image, image.ImageID); err != nil {
 		return current, err
 	}
-	staged, err := read()
+	staged, err := docker.RuntimeReadPinnedSMAPIMetadata(ctx, dataDir, volume, image.Image, image.ImageID)
 	if err != nil {
 		return staged, err
 	}
@@ -72,7 +73,7 @@ func prepareJunimo140SMAPIStaging(ctx context.Context, docker imageSMAPIStagingD
 	if err := docker.RuntimeCommitImageSMAPIStamp(ctx, dataDir, volume, image.Image, image.ImageID, junimo140SMAPIBuildID); err != nil {
 		return staged, err
 	}
-	verified, err := read()
+	verified, err := docker.RuntimeReadPinnedSMAPIMetadata(ctx, dataDir, volume, image.Image, image.ImageID)
 	if err != nil {
 		return verified, err
 	}
