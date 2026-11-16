@@ -13,6 +13,7 @@ import (
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -80,6 +81,49 @@ func readInstallVolumePlan(dir, volume string) (junimo140InstallVolume, error) {
 		return plan, errors.New("invalid image-managed installation volume journal")
 	}
 	return plan, nil
+}
+
+// The first installation has no previously started runtime to migrate. Its
+// durable transaction distinguishes unfinished installation from a completed
+// game awaiting its first Start, where JunimoServer is normally extracted.
+func initialJunimo140InstallStage(instance storage.Instance) string {
+	stage := ""
+	switch instance.State {
+	case storage.InstanceStateError:
+		if instance.DriverPhase != "smapi_install_failed" {
+			return ""
+		}
+		stage = "install"
+	case storage.InstanceStateGameInstalled, storage.InstanceStateSaveRequired, storage.InstanceStateReadyToStart:
+		stage = "first_start"
+	default:
+		return ""
+	}
+	volume, err := GameDataVolumeName(instance.DataDir)
+	if err != nil {
+		return ""
+	}
+	info, err := os.Lstat(installVolumePlanPath(instance.DataDir, volume))
+	if err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+	plan, err := readInstallVolumePlan(instance.DataDir, volume)
+	if err != nil || !plan.Created || !plan.Prepared || plan.SMAPIVerified != (stage == "first_start") || plan.SourceExisted ||
+		plan.Project != strings.ToLower(filepath.Base(instance.DataDir)) || plan.SourceVolume != plan.Project+"_game-data" {
+		return ""
+	}
+	current := InspectRuntimeStack(instance.DataDir, instance.State)
+	if current.Current.Server.Tag != "1.5.0-preview.140" || current.Status == sjconfig.RuntimeStackStatusCustomImages || current.Status == sjconfig.RuntimeStackStatusInvalidConfig {
+		return ""
+	}
+	if _, err := os.Lstat(junimoServerModDir(instance.DataDir)); !errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	entries, err := os.ReadDir(filepath.Join(savesDir(instance.DataDir), "Saves"))
+	if len(entries) != 0 || err != nil && !errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	return stage
 }
 
 // Target volumes are discovered by their existing per-project Docker labels.

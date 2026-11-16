@@ -1,3 +1,11 @@
+## 2026-11-16 0.8.4 安装恢复接手
+
+- 修改 `GameInstallRail.tsx`，失败后提供「重试安装」与「修改凭据并重试」。复用凭据请求仍发往原 `instanceId`，返回 `jobId` 后由原轮询跟踪同一任务；已有活跃任务由服务端 `install_in_progress` 接管。
+- `installation-state.ts` 在 `incomplete` 的明确失败安装阶段保留安装入口。Control 尚未就绪时可返回游戏安装，保留运行中及诊断不可用的原分类。
+- `api.ts` 接收可选 `installationRequiredInstances`；`UpdateDetailsDialog.tsx` 展示原世界安装链接，`full-stack-state.ts` 对排除待安装世界后的迁移检查显示对应说明。老 API 缺该字段时沿用旧展示。
+- 已安装而尚未首次启动的世界使用 `firstStartRequiredInstances` 展示，链接原世界总览；提示由首次启动同步运行组件。
+- 本轮按用户要求跳过运行测试及浏览器验收，仅静态核对。后续验证应覆盖旧 `smapi_install_failed`、保存凭据缺失、重复提交的原任务接管及更新中心混合范围。
+
 ## 2026-11-06 0.8.2 更新中心展示接手
 
 `UpdateDetailsDialog` 分别消费原面板 apply 与游戏操作投影。面板旧版本只出现在折叠的成功历史，当前游戏操作使用当前面板版本。`full-stack-state.ts` 识别同版本、无授权且无待迁移组的成功预检，保留原操作身份和真正失败的恢复入口。验证时先模拟 0.7.3 到当前面板的成功历史，再重检、取消和处理一次游戏组失败，检查当前状态与历史可分别辨识。

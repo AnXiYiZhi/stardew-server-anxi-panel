@@ -162,6 +162,7 @@ GitHub Actions 状态和制品查询优先使用已认证的 `gh api` 或 GitHub
 - 读取或比较历史 Git 版本前，先用 `git rev-parse --verify --quiet '<ref>^{commit}'` 核对准确引用和退出码。缺本地 tag 时，使用已核验的正式完整 commit，并确认本地对象可读后再运行 `git show`、`git grep` 或 `git diff`。远端发布状态以已认证的 GitHub 查询为准。
 - Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。`functions.exec` 中编排 `web__run` 对象数组时，只从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
+- BOM 检测必须比较原始文件的前三字节是否为 `EF BB BF`，或对已解码文本显式使用 `[StringComparison]::Ordinal`。禁止使用默认文化比较的 `.StartsWith([string][char]0xFEFF)`，它可能把 U+FEFF 视为可忽略字符，从而将无 BOM 文本误报为有 BOM。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - Windows 上 `apply_patch` 修改 CRLF 为主的文件后，在构建前按明确文件清单进行字节级换行检查；混合换行仅对该清单机械恢复原 CRLF，并核对 `git diff --ignore-space-at-eol` 语义完全相同。不得改变 `.sh` 的 LF，也不得对整个工作树无差别归一化。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。U+FFFD 审计只检查 `git diff --unified=0` 中单个 `+` 开头且排除 `+++` 文件头的本次新增行，不得扫描整个历史文件后把合法示例误报为新乱码；BOM 仍检查完整变更文件。发现新增 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。

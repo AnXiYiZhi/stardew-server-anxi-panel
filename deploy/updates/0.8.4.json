@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "version": "0.8.4",
+  "minimumUpdaterVersion": "0.7.3",
+  "title": "v0.8.4 · 首次安装恢复与迁移预检修复",
+  "summary": "补充安装失败后的重试入口，并处理首次安装尚未完成时的游戏迁移预检。",
+  "changes": [
+    "安装失败页新增“重试安装”，沿用已有配置、下载文件和原实例继续安装。",
+    "更新中心列出待继续首次安装的实例，提供各自的安装页入口。",
+    "首次安装已完成、尚未启动的世界显示首次启动提示，并提供世界总览入口。",
+    "首次安装失败状态优先展示恢复安装操作，已安装世界按原范围检查和迁移。"
+  ],
+  "notices": [
+    {
+      "level": "info",
+      "title": "此前卡在 SMAPI 安装",
+      "message": "面板更新后，打开原实例的安装页并点击“重试安装”。任务完成完整性校验后显示安装成功。",
+      "requiresConfirmation": false
+    },
+    {
+      "level": "info",
+      "title": "v0.7.3 及以后的升级顺序",
+      "message": "先完成面板更新，页面重连后再按各实例状态继续安装，或在更新中心确认需要迁移的游戏组。",
+      "requiresConfirmation": false
+    },
+    {
+      "level": "warning",
+      "title": "需要短暂停服",
+      "message": "迁移游戏运行栈时，在线玩家会断开。系统先保存和备份，完成后恢复原来运行的世界。",
+      "requiresConfirmation": true
+    },
+    {
+      "level": "warning",
+      "title": "确认 Mod 兼容性",
+      "message": "现有 Mod 和配置会保留，部分第三方 Mod 可能需要更新，请提前确认兼容性。",
+      "requiresConfirmation": true
+    }
+  ],
+  "blocked": false
+}

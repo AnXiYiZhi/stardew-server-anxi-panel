@@ -990,6 +990,8 @@ export type FullStackUpgradeStatus = {
   errorCode?: string
   error?: string
   jobId?: string
+  installationRequiredInstances?: Array<{ id: string; name: string }>
+  firstStartRequiredInstances?: Array<{ id: string; name: string }>
   groups: Array<{ primaryId: string; members: string[]; memberNames: Record<string,string>; runningWorlds: number; coldTemplates: number; savedWorlds: number; stoppedWorlds: number; updatedWorlds: number; scopeSha256: string; applyId: string; phase: string; errorCode?: string }>
 }
 

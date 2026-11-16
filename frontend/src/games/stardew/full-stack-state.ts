@@ -87,7 +87,12 @@ export const fullStackPhaseLabel = (phase: string) => ({
 export function projectFullStackApply(base: PanelUpdateApplyStatus | null, op: FullStackUpgradeStatus | null, currentVersion: string): PanelUpdateApplyStatus | null {
   op = selectCurrentFullStackUpgrade(base, op, currentVersion)
   if (op && currentRuntimeCheckComplete(op, currentVersion) && base?.phase === 'succeeded' && base.toVersion.replace(/^[vV]/, '') === op.panel.version.replace(/^[vV]/, '')) {
-    return { ...base, fullStack: { phase: 'not_needed', progress: 100, runtimeRequired: false, result: '当前游戏组件已是目标版本，无需迁移。' } }
+    const result = op.installationRequiredInstances?.length
+      ? '游戏迁移范围检查完成。尚未完成首次安装的世界可继续安装。'
+      : op.firstStartRequiredInstances?.length
+        ? '游戏已安装，首次启动时将同步运行组件。'
+        : '当前游戏组件已是目标版本，无需迁移。'
+    return { ...base, fullStack: { phase: 'not_needed', progress: 100, runtimeRequired: false, result } }
   }
   if (!op?.authorizedAt) return base
   const matching = base && (explicitlyLinkedApply(base, op) || op.continuation && base.toVersion.replace(/^v/,'') === op.panel.version)

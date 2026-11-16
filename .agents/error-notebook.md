@@ -1,5 +1,12 @@
 # 项目执行错题本
 
+## 2026-11-16 PowerShell BOM 检测的文化比较误判
+
+- 环境为 Windows PowerShell 7 和 UTF-8 文档。错误探针使用 `$text.StartsWith([string][char]0xFEFF)`，对实际无 BOM 的文本返回 `true`，随后补丁带上不存在的 BOM，`apply_patch` 验证拒绝且零修改。
+- 根因是字符串前缀检查默认使用文化比较，U+FEFF 在该比较中属于可忽略字符。使用原始前三字节 `EF BB BF` 核对后确认四份文档均无 BOM，再按实际首行应用补丁成功。
+- 正确做法是先以 `ReadAllBytes` 检查长度和前三字节，或对已解码文本显式指定 `[StringComparison]::Ordinal`。禁止用默认文化比较判断 BOM。该预防规则已加入 `AGENTS.md`，适用于 PowerShell 和 .NET 文本编码审计。
+- 同日 0.8.4 发布说明补充。新增两份版本说明末尾多写一行空行，未暂存的 `git diff --check` 未覆盖 untracked 文件；统一暂存后 `git diff --cached --check` 退出 2。按精确文件用 `apply_patch` 删除 EOF 多余空行。以后新增文件在纳入暂存后检查 `git diff --cached --check`，同时保留末尾单个换行，适用于新文档及其它 Git 新文件。
+
 ## 2026-11-12 SMAPI 安装反馈与格式化
 
 - Windows pwsh7 与 Codex Browser。QQ 闪传的公开分享页在网页读取工具中返回不可访问，直接 HTTPS 请求得到正常分享页。应用内 Browser 新建标签到 30 秒超时并重置会话。用户随后提供原 ZIP，从 ZIP 目录核对成员大小后读取 TXT 和补丁，定位了问题。以后已有本地原件时直接读取所需条目。网页可访问和实际下载是两个结果，分享参数不写入仓库。
@@ -213,6 +220,8 @@
 
 - 最近复发/补充（2026-10-28，080冷恢复与诊断）：release receipt成功只表示gate已释放，立即执行inner docker info因socket尚未就绪退出1；未重放release或任何start，先只读确认同一outer/daemon已完成初始化，再用新只读命名空间续取原未执行inspect，完整身份及5个原ID恢复通过。冷恢复也必须等待真实Docker API ready，不能把release命令成功当daemon ready。诊断曾把含完整sandbox ID的daemon警告输出到工具；后续只保存原日志到私有证据，公开按状态/布尔/计数投影，不输出原warn行。最近复发（2026-11-05，Windows/独占repair probe）：只捕获docker logs的stdout，stderr直出导致工具截断；业务未重发，daemon正常完成就绪。后续统一经本任务Journal同时捕获两流、保存原exit和私有raw，工具仅输出阶段/字节数/hash；不得在其外直接打印native stderr。沿用AGENTS已有完整capture和本任务实际Journal守卫，不新增重复规则。
 - 最近复发/补充（2026-10-28，目录检索预算）：`rg -m`限制每文件命中数，不是目录总数；审计目录仍聚合333行并截断，后端上下文恢复又复发两次。目录检索先完整捕获原退出码，再全局限量投影，或先`rg -l`取得真实文件库存后分文件短段读取；不得仅靠`-m`推断全局输出有界。已将本任务后续内容检索限定为已确认单文件、扩库存仅捕获rg--files后限量的强制规则提升到AGENTS，避免继续重复目录查询。
+
+  最近复发（2026-11-16，Windows pwsh7，0.8.4 前端修复）。合并读取安装轨道、安装分类和卡片状态的完整源码超过聚合输出预算。已按单文件精确短段补读缺失内容；后续源码读取同样按总字符限量，沿用 AGENTS 的截断恢复规则。
 
   最近复发/补充（2026-11-04，073 来源与账户窗口审计）：子代理一次回显 258 条账户窗口库存路径而截断；后续仅消费已确认的 origin-account-window-v7/inputs.safe.json。073 只读审计的文档短段、checkpoint/归档文件名和 DB 表清单投影也数次超出总预算，本轮整理笔记时合并短段又截断；原 native 退出已保存为 0，未据截断结果执行写入，缺失文档段另行补读。该类已多次复发，任务 auditor 现先断言聚合记录不超过 12、完整输出不超过 2000 字符，258 条和超字符输入均在输出前拒绝；完整证据留 ignored tmp，再按精确对象投影。继续沿用 AGENTS 全局限量规则，不新增重复章节或规则。
 

@@ -5,6 +5,7 @@ import { FullStackUpgradeActions, FullStackUpgradePanel } from './FullStackUpgra
 import { canStartPanelUpdate, hasGameUpgradeFlow, isPanelUpdateActive, panelUpdatePhaseLabel, panelUpdateSurface } from './panel-update-machine'
 import { withVersionPrefix } from './update-status'
 import { currentGameUpgradeComplete } from './full-stack-state'
+import { routeToPath } from './stardew-routes'
 import './UpdateDetailsDialog.css'
 import './UpdateCenter.css'
 
@@ -40,6 +41,8 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
   const finishedGameCheck = runtimeStage?.phase === 'not_needed'
   const historicalRecovery = data.historicalFullStackRecovery
   const completedGameUpgrade = currentGameUpgradeComplete(apply,data.fullStackUpgrade,data.versionInfo?.version || '',historicalRecovery)
+  const installationRequired = data.fullStackUpgrade?.installationRequiredInstances ?? []
+  const firstStartRequired = data.fullStackUpgrade?.firstStartRequiredInstances ?? []
   const authorizedGameUpgrade = Boolean(data.fullStackUpgrade?.authorizedAt && !['succeeded', 'failed_safe', 'panel_failed_rolled_back'].includes(data.fullStackUpgrade.phase))
   const newAuthorization = !authorizedGameUpgrade && Boolean(status?.updateAvailable || scopedUpgrade && !completedGameUpgrade)
   const visibleNotices = content?.notices?.filter(notice => newAuthorization || content?.blocked || notice.level === 'danger' || notice.level === 'warning' && !notice.requiresConfirmation) || []
@@ -106,7 +109,25 @@ export function UpdateDetailsDialog({ user }: { user: CurrentUser }) {
       {showScope ? <FullStackUpgradePanel compact hideActions /> : null}
       {environmentReady && status?.updateAvailable && !active ? <p className="sd-update-environment-result">升级环境检查通过</p> : null}
       {data.updateDryRunError || data.updateApplyError ? <p className="sd-update-error" role="alert">{data.updateDryRunError || data.updateApplyError}</p> : null}
-      {completedGameUpgrade && (finishedGameCheck || !data.fullStackUpgrade?.authorizedAt) ? <p className="sd-update-environment-result" role="status">{runtimeStage?.result || '当前游戏组件已是目标版本，无需迁移。'}</p> : null}
+      {completedGameUpgrade && (finishedGameCheck || !data.fullStackUpgrade?.authorizedAt) ? <p className="sd-update-environment-result" role="status">{installationRequired.length || firstStartRequired.length ? '游戏迁移范围检查完成。以下世界可继续安装或首次启动。' : runtimeStage?.result || '当前游戏组件已是目标版本，无需迁移。'}</p> : null}
+      {installationRequired.length ? <section className="sd-update-dry-run" aria-label="待完成的游戏安装">
+        <h3>继续安装星露谷</h3>
+        <p>这些世界的首次安装尚未完成。进入原世界可使用已保存的凭据重试安装。</p>
+        <ul>{installationRequired.map(instance => <li key={instance.id}>
+          {admin && !active && !authorizedGameUpgrade && !historicalRecovery
+            ? <a href={routeToPath('install', undefined, instance.id)}>继续安装 · {instance.name}</a>
+            : <span>{instance.name} · 等待管理员继续安装</span>}
+        </li>)}</ul>
+      </section> : null}
+      {firstStartRequired.length ? <section className="sd-update-dry-run" aria-label="等待首次启动的世界">
+        <h3>游戏已安装</h3>
+        <p>首次启动时将同步运行组件。请进入世界完成存档设置并启动服务器。</p>
+        <ul>{firstStartRequired.map(instance => <li key={instance.id}>
+          {admin && !active && !authorizedGameUpgrade && !historicalRecovery
+            ? <a href={routeToPath('overview', undefined, instance.id)}>进入世界 · {instance.name}</a>
+            : <span>{instance.name} · 等待首次启动</span>}
+        </li>)}</ul>
+      </section> : null}
       {panelRecord ? <details className="sd-update-history"><summary>上次面板升级已完成 · {withVersionPrefix(panelRecord.toVersion)}</summary>
         <p>{withVersionPrefix(panelRecord.fromVersion)} → {withVersionPrefix(panelRecord.toVersion)}</p>
         {panelRecord.result ? <p>{panelRecord.result}</p> : null}

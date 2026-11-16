@@ -1,3 +1,11 @@
+## 2026-11-16 首次安装失败后的迁移范围与恢复入口
+
+- `junimo140_install.go` 通过当前绑定的安装事务识别 `smapi_install_failed` 的首次安装。要求事务已创建和准备、SMAPI 尚未验证、原游戏卷从未存在、项目和来源卷一致，并核对 Junimo Mod 目录缺失及存档目录为空。已安装、存在原卷、已有存档、组件存在或事务记录不可用的实例继续使用原迁移检查。
+- `full_stack_prepare.go` 将识别到的实例返回为 `installationRequiredInstances`，包含实例 ID 和名称。面板升级续接且无待迁移组时结束范围预检，前端可直接链接原实例继续安装。`full_stack_current.go` 的混合实例只读核验使用同一判定，空已安装范围仍不生成完整安装核验回执。
+- `FullStackUpgradeStatus` 的返回投影刷新名称，并移除已完成安装或已删除的实例提示。持久操作和授权摘要保持原记录。公共接口仅增加可选字段，没有数据库迁移和运行镜像变更。
+- 同一初装事务的 SMAPI 已验证，且实例处于 `game_installed`、`save_required` 或 `ready_to_start` 时，未首次启动的 Junimo 目录同样允许缺失。预检通过 `firstStartRequiredInstances` 提示首次启动同步组件，并在启动、组件同步或删除后清除该提示。两类初装判定都要求当前配置为有效受管 `.140`，已有运行组件或存档继续进入普通迁移检查。
+- 已补首次失败、已有源卷、已验证安装、运行中、其他失败、存档、Junimo 组件、缺少事务，以及首次启动前的三种已安装状态和安装完成后提示刷新等回归源码。按本次用户要求未执行测试。已完成代码格式化和差异静态检查，发布回执与实机安装结果由本轮交付统一记录。
+
 ## 2026-11-12 Junimo .140 首次安装与 Steam 校验重试
 
 - `POST /api/instances/:id/install` 的 .140 安装在 SteamCMD 完成后，根据固定 SHA-256 识别原版和已安装的 `StardewValley`。原版布局允许缺少 `StardewValley-original`。若备份存在，则必须是同一原版哈希的普通文件。

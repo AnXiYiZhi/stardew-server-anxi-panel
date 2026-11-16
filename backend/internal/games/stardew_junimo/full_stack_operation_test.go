@@ -62,6 +62,29 @@ func TestFullStackUnresolvedRecoveryCannotBeReplaced(t *testing.T) {
 	}
 }
 
+func TestFullStackInstallationRecoveryLinksFollowCurrentState(t *testing.T) {
+	driver, op, _ := fullStackTestOperation(t)
+	op.Public.InstallationRequiredInstances = []FullStackInstallationRequiredInstance{
+		{ID: "pending", Name: "original name"}, {ID: "installed"}, {ID: "deleted"},
+	}
+	if err := driver.writeFullStackOperation(op); err != nil {
+		t.Fatal(err)
+	}
+	driver.store = &currentRuntimeTestStore{instances: []storage.Instance{
+		{ID: "pending", Name: "renamed world", State: storage.InstanceStateError},
+		{ID: "installed", State: storage.InstanceStateGameInstalled},
+	}}
+	status, err := driver.FullStackUpgradeStatus()
+	if err != nil || len(status.InstallationRequiredInstances) != 1 ||
+		status.InstallationRequiredInstances[0].ID != "pending" || status.InstallationRequiredInstances[0].Name != "renamed world" {
+		t.Fatalf("installation recovery links do not match current state: %+v, %v", status.InstallationRequiredInstances, err)
+	}
+	persisted, err := driver.readFullStackOperation()
+	if err != nil || len(persisted.Public.InstallationRequiredInstances) != 3 || persisted.digest() != op.digest() {
+		t.Fatal("refreshing recovery links rewrote the original upgrade operation")
+	}
+}
+
 func TestFullStackConfirmationBindsActorOperationTargetAndExpiry(t *testing.T) {
 	for _, scenario := range []string{"wrong actor", "wrong operation", "wrong hash", "changed image", "expired"} {
 		t.Run(scenario, func(t *testing.T) {

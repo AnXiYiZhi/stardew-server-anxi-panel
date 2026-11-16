@@ -12,6 +12,7 @@ import (
 	"time"
 
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updater"
 )
 
@@ -30,6 +31,11 @@ type FullStackGroupStatus struct {
 	ApplyID       string            `json:"applyId"`
 	Phase         string            `json:"phase"`
 	ErrorCode     string            `json:"errorCode,omitempty"`
+}
+
+type FullStackInstallationRequiredInstance struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // This is the complete admin-facing representation; filesystem paths,
@@ -58,6 +64,9 @@ type FullStackUpgradeStatus struct {
 	ErrorCode      string                 `json:"errorCode,omitempty"`
 	Error          string                 `json:"error,omitempty"`
 	JobID          string                 `json:"jobId,omitempty"`
+
+	InstallationRequiredInstances []FullStackInstallationRequiredInstance `json:"installationRequiredInstances,omitempty"`
+	FirstStartRequiredInstances   []FullStackInstallationRequiredInstance `json:"firstStartRequiredInstances,omitempty"`
 
 	ConfirmationExpired *bool `json:"confirmationExpired,omitempty"`
 }
@@ -242,6 +251,34 @@ func (d *Driver) FullStackUpgradeStatus() (FullStackUpgradeStatus, error) {
 	op, err := d.readFullStackOperation()
 	expired := op.Public.Phase == "awaiting_confirmation" && op.Public.AuthorizedAt == nil && !time.Now().Before(op.Public.ExpiresAt)
 	op.Public.ConfirmationExpired = &expired
+	if err == nil && d.store != nil && (len(op.Public.InstallationRequiredInstances) > 0 || len(op.Public.FirstStartRequiredInstances) > 0) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		pending := op.Public.InstallationRequiredInstances[:0]
+		for _, item := range op.Public.InstallationRequiredInstances {
+			instance, readErr := d.store.GetInstance(ctx, item.ID)
+			if errors.Is(readErr, storage.ErrNotFound) || readErr == nil && requiresInstalledFiles(instance.State) {
+				continue
+			}
+			if readErr == nil {
+				item.Name = instance.Name
+			}
+			pending = append(pending, item)
+		}
+		op.Public.InstallationRequiredInstances = pending
+		waitingStart := op.Public.FirstStartRequiredInstances[:0]
+		for _, item := range op.Public.FirstStartRequiredInstances {
+			instance, readErr := d.store.GetInstance(ctx, item.ID)
+			if errors.Is(readErr, storage.ErrNotFound) || readErr == nil && initialJunimo140InstallStage(instance) != "first_start" {
+				continue
+			}
+			if readErr == nil {
+				item.Name = instance.Name
+			}
+			waitingStart = append(waitingStart, item)
+		}
+		op.Public.FirstStartRequiredInstances = waitingStart
+	}
 	return op.Public, err
 }
 

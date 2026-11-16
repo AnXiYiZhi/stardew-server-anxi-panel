@@ -127,7 +127,7 @@ func (d *Driver) currentRuntimeMembers(ctx context.Context) ([]storage.Instance,
 	}
 	var members []currentRuntimeMember
 	for _, stored := range instances {
-		if stored.DriverID != DriverID || !runtimeContentInstalled(stored.State) {
+		if stored.DriverID != DriverID || !runtimeContentInstalled(stored.State) || initialJunimo140InstallStage(stored) != "" {
 			continue
 		}
 		if stored.State != storage.InstanceStateRunning && stored.State != storage.InstanceStateStopped {

@@ -129,6 +129,11 @@ function classifyDiagnostic(
     )
   }
 
+  if (diagnostic.status === 'incomplete' && state.state === 'error'
+    && INSTALL_FAILURE_PHASES.has(state.driverPhase)) {
+    return result('install_failed', 'install', 'install_failed')
+  }
+
   if (diagnostic.control.static === 'mismatch'
     || diagnostic.control.static === 'missing'
     || diagnostic.control.runtime === 'mismatch'

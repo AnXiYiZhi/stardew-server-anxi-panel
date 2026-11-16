@@ -226,11 +226,16 @@ export function GameInstallRail({
 
   async function submitInstall(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    await startInstall(false)
+  }
+
+  async function startInstall(reuseCredentials: boolean) {
     if (user.role !== 'admin' || busy) return
     setBusy(true)
     setMessage(null)
     try {
-      const response = await installInstance({ steamUsername, steamPassword, vncPassword }, targetId)
+      const body = reuseCredentials ? { reuseCredentials: true } : { steamUsername, steamPassword, vncPassword }
+      const response = await installInstance(body, targetId)
       setEditingCredentials(false)
       setSteamPasswordVisible(false)
       setVncPasswordVisible(false)
@@ -473,7 +478,10 @@ export function GameInstallRail({
       {message || pollError ? <span className="game-install-message is-error" role="alert">{installationRequestErrorMessage(message || pollError)}</span> : null}
 
       {presentation.mode === 'failed' ? (
-        <button type="button" className="game-install-retry" disabled={busy || user.role !== 'admin'} onClick={() => void retryWithCredentials()}>{authOnly ? '重新授权' : '重新填写并重试'}</button>
+        <span className="game-install-actions">
+          {!authOnly ? <button type="button" className="game-install-retry" disabled={busy || user.role !== 'admin' || loading} onClick={() => void startInstall(true)}>{busy ? '正在重试…' : '重试安装'}</button> : null}
+          <button type="button" className="game-install-retry" disabled={busy || user.role !== 'admin'} onClick={() => void retryWithCredentials()}>{authOnly ? '重新授权' : '修改凭据并重试'}</button>
+        </span>
       ) : presentation.mode === 'complete' ? (
         <button type="button" className="game-install-retry" onClick={() => onNavigate('/games/stardew')}>选择世界</button>
       ) : null}

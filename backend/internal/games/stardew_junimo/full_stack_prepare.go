@@ -124,7 +124,7 @@ func (d *Driver) prepareFullStackGroups(ctx context.Context, job *jobs.Context, 
 			if errors.As(resultErr, &validation) {
 				op.Public.ErrorCode, op.Public.Error = validation.Code, validation.Message
 			}
-		} else if op.Public.Continuation && skippedCurrent && len(op.Groups) == 0 {
+		} else if op.Public.Continuation && (skippedCurrent || len(op.Public.InstallationRequiredInstances) > 0 || len(op.Public.FirstStartRequiredInstances) > 0) && len(op.Groups) == 0 {
 			op.Public.Phase = "succeeded"
 		} else {
 			op.Public.Phase = "awaiting_confirmation"
@@ -146,6 +146,17 @@ func (d *Driver) prepareFullStackGroups(ctx context.Context, job *jobs.Context, 
 	seen := map[string]bool{}
 	for _, stored := range instances {
 		if stored.DriverID != DriverID || stored.State == storage.InstanceStateUninitialized || stored.State == storage.InstanceStateAdminCreated || seen[stored.ID] {
+			continue
+		}
+		if stage := initialJunimo140InstallStage(stored); stage != "" {
+			item := FullStackInstallationRequiredInstance{ID: stored.ID, Name: stored.Name}
+			if stage == "install" {
+				op.Public.InstallationRequiredInstances = append(op.Public.InstallationRequiredInstances, item)
+				_, _ = job.Info(ctx, "此世界的首次游戏安装尚未完成，请回到安装入口继续安装。")
+			} else {
+				op.Public.FirstStartRequiredInstances = append(op.Public.FirstStartRequiredInstances, item)
+				_, _ = job.Info(ctx, "此世界的游戏已安装，首次启动时同步 JunimoServer 运行组件。")
+			}
 			continue
 		}
 		instance := registry.Instance{ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: stored.DataDir, State: stored.State}

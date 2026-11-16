@@ -1,3 +1,13 @@
+## 2026-11-16 首次安装恢复与迁移预检
+
+0.8.3 的范围预检曾把 `error/smapi_install_failed` 的首次安装当作已安装世界，捕获 `JunimoServer.dll` 哈希时终止。`junimo140_install.go` 现在以绑定安装事务、原卷不存在、尚未验证的 SMAPI、缺少运行 Mod 和空存档目录共同确认首次安装待续，避免缺失文件单独改变已有世界的迁移准入。
+
+`full_stack_prepare.go` 返回可选 `installationRequiredInstances[{id,name}]`。升级续接中仅剩待安装实例时，范围预检以 `succeeded` 结束并提供恢复入口数据。`full_stack_current.go` 同步识别这类实例，已安装组的完整核验照常执行。`full_stack_operation.go` 读取状态时刷新名称，清除已安装或已删除实例的恢复提示，仅修改响应投影。
+
+实机恢复安装成功后还发现首次启动前也没有 JunimoServer DLL。统一 `initialJunimo140InstallStage` 在同一严格初装边界内，以 `smapiVerified=true` 和 `game_installed/save_required/ready_to_start` 区分已安装待首启，通过 `firstStartRequiredInstances` 提供正常世界入口。既有 Start 完成组件同步，后续状态读取自动清除此提示。当前配置必须是有效受管 `.140`，出现原卷、运行组件、存档或未知事务时继续原迁移检查。
+
+回归源码覆盖初装识别的八个边界、首次启动前三种已安装状态，以及完成安装后的链接更新和原操作完整性。用户要求跳过验证，本轮未执行这些测试，已做 `gofmt` 与静态差异检查。后续验证应从原失败实例的安装 API 重试，确认同一实例和游戏卷保留、安装 job 成功，并在更新中心重新检查范围。发布结果、实机恢复和人工签核范围由本轮镜像文档记录。
+
 ## 2026-11-12 Junimo .140 安装启动器修复
 
 0.8.1 和 0.8.2 的反馈现场在 SteamCMD 下载完 413150 和 1007 后卡在 `smapi_install_failed`。安装器原本先按安装后清单查找 `StardewValley-original`，而纯净下载只有原版 `StardewValley`。

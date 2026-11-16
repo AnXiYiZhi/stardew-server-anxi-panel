@@ -126,6 +126,94 @@ func TestJunimo140InstallationVolumeResumesWithoutLosingDownload(t *testing.T) {
 	}
 }
 
+func TestIncompleteInitialJunimo140InstallKeepsExistingWorldsInMigrationScope(t *testing.T) {
+	for _, scenario := range []string{"initial failure", "existing source", "verified install", "running world", "other failure", "saved world", "junimo runtime", "missing journal"} {
+		t.Run(scenario, func(t *testing.T) {
+			fake := &fakeDocker{installVolumes: map[string]bool{"freshworld_game-data": scenario == "existing source"}}
+			runner := freshInstallRunner(t, fake)
+			if err := runner.prepareJunimo140InstallVolume(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			instance := runner.instance
+			instance.State, instance.DriverPhase = storage.InstanceStateError, "smapi_install_failed"
+			volume, err := GameDataVolumeName(instance.DataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch scenario {
+			case "verified install":
+				plan, err := readInstallVolumePlan(instance.DataDir, volume)
+				if err != nil {
+					t.Fatal(err)
+				}
+				plan.SMAPIVerified = true
+				if err := writeInstallVolumePlan(instance.DataDir, plan); err != nil {
+					t.Fatal(err)
+				}
+			case "running world":
+				instance.State = storage.InstanceStateRunning
+			case "other failure":
+				instance.DriverPhase = "start_failed"
+			case "saved world":
+				if err := os.MkdirAll(filepath.Join(savesDir(instance.DataDir), "Saves", "existing-world"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "junimo runtime":
+				if err := os.MkdirAll(junimoServerModDir(instance.DataDir), 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "missing journal":
+				if err := os.Remove(installVolumePlanPath(instance.DataDir, volume)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := initialJunimo140InstallStage(instance) == "install"; got != (scenario == "initial failure") {
+				t.Fatalf("installation recovery classification = %v", got)
+			}
+			after, err := GameDataVolumeName(instance.DataDir)
+			if err != nil || after != volume || fake.installVolumeCreates != 1 {
+				t.Fatal("classifying migration eligibility changed the installation destination")
+			}
+		})
+	}
+}
+
+func TestInitialJunimo140InstallAwaitsFirstStartWithoutRuntimeMigration(t *testing.T) {
+	for _, state := range []string{storage.InstanceStateGameInstalled, storage.InstanceStateSaveRequired, storage.InstanceStateReadyToStart} {
+		t.Run(state, func(t *testing.T) {
+			runner := freshInstallRunner(t, &fakeDocker{})
+			if err := runner.prepareJunimo140InstallVolume(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			volume, err := GameDataVolumeName(runner.instance.DataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := readInstallVolumePlan(runner.instance.DataDir, volume)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runner.instance.State = state
+			if stage := initialJunimo140InstallStage(runner.instance); stage != "" {
+				t.Fatal("an unverified installation was accepted as ready for its first start")
+			}
+			plan.SMAPIVerified = true
+			if err := writeInstallVolumePlan(runner.instance.DataDir, plan); err != nil {
+				t.Fatal(err)
+			}
+			if stage := initialJunimo140InstallStage(runner.instance); stage != "first_start" {
+				t.Fatalf("completed first installation classification = %q", stage)
+			}
+			if err := os.MkdirAll(junimoServerModDir(runner.instance.DataDir), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if stage := initialJunimo140InstallStage(runner.instance); stage != "" {
+				t.Fatal("a world with an existing runtime was exempted from migration checks")
+			}
+		})
+	}
+}
+
 func TestJunimo140InstallationResolvesUncertainCreateWithoutReplay(t *testing.T) {
 	fake := &fakeDocker{installVolumeCreateError: errors.New("client lost create response")}
 	runner := freshInstallRunner(t, fake)

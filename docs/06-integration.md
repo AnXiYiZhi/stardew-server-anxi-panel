@@ -1,3 +1,10 @@
+## 2026-11-16 0.8.4 未完成首次安装恢复
+
+- `FullStackUpgradeStatus` 新增可选 `installationRequiredInstances: [{id, name}]`，记录通过初装事务和现场文件证明仍需完成首次安装的世界。当前 Panel 续检在无待迁移组时返回 `succeeded`，前端显示该列表并链接到原实例安装路由。已安装世界的身份捕获与迁移确认继续使用原契约。
+- 已完成安装但尚未首次启动的初装实例返回 `firstStartRequiredInstances: [{id, name}]`，前端提示已安装并链接原世界总览，由正常启动路径同步运行组件。
+- 安装恢复复用 `POST /api/instances/:id/install` 的 `reuseCredentials: true`，读取服务端保存的 Steam 凭据和实例 VNC 配置。正常返回 `202` 与 `jobId`，前端只追踪该任务；`install_in_progress` 先核对既有任务的目标实例再接管。修改凭据入口继续提交原有字段。
+- 本轮按用户要求跳过执行测试，静态核对后端 DTO、安装请求与任务跟踪。运行结果由实际部署/发布记录另行记录。
+
 ## 2026-11-06 0.8.2 同版本范围预检
 
 - `POST /api/system/update/full-stack` 的 `prepare` 仍返回 `202`，随后按同 `operationId` 读取状态。当前 Panel 的预检全部命中已达目标的共享组时，终态为 `succeeded`，`groups` 为空且无需确认。存在待迁移组时仍以 `awaiting_confirmation` 展示其范围。陈旧预检确认时，后端重新捕获实际身份并用 `already_up_to_date` 拒绝重复迁移。
