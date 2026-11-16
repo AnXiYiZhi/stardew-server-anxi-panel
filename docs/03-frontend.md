@@ -3,7 +3,12 @@
 - `save-import.ts` 的 `saveImportRuntimeUnsupported` 与后端 `supportsTransactionalImportVersion` 对齐，接受完整版本 `1.5.0-preview.125` 和 `1.5.0-preview.140`。桌面存档页的三处上传入口与移动存档页共用该判断，`.140` 且版本匹配时可打开上传流程。
 - `junimoVersionMatches=false`、未知版本、空版本和简写/后缀相似版本仍返回不支持。完全缺少 `runtimeDiagnostic` 时沿用既有客户端行为，实际导入由后端安全契约校验。
 - `test-save-import.ts` 增补 14 个版本与诊断输入场景。实际执行一次 `npm run test:save-import` 成功，既有请求和导入状态回归同时通过；`git diff --check` 与新增编码核对通过。
-- 当前代码待现场热修、候选及正式 `0.8.5` 回执。额外独立大矩阵按用户要求跳过；临时热修将继续显示 `0.8.4` 并携带新提交身份，正式版可用后经正常更新替换。
+- 现场热修已生效，保留原容器，临时版本仍为 `0.8.4`，源码提交 `1bcc13b4fa5a25e0d01ca6e5b7b5304d8b02a115`，构建时间 `2026-11-16T09:42:02Z`，health 与部署身份匹配。现场 `.140`、`junimoVersionMatches=true` 输入对应新判断 `blocked=false`。
+- 共享资源 `save-import-CONP2LCT.js` 返回 HTTP 200，SHA256 为 `90f5b6440da305b4d06de351383546bfd7bf8f630ac249e9fbacb6bd5bc50c3e`，与本地构建一致；临时会话已删除。本轮只核对现场 API 和新 JS 字节，未真实上传存档，也未进行浏览器视觉验收。
+- `0.8.5` 候选 workflow `43842022819` 成功，固定提交为上述 `1bcc13b4`，正式构建时间 `2026-11-16T09:41:34Z`，唯一 digest 为 `sha256:c24cd96cd928b84308cabc30b927e32d5d679a71740703f74ad33440be1350db`。额外独立大矩阵按用户要求跳过。
+- 正式 workflow `43846117614` 于 UTC `10:08:26–10:18:23` 成功，用时 9 分 57 秒；[v0.8.5 Release](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.5) 于 `10:18:18Z` 公开。三仓版本与 `latest` digest 一致，正式冒烟通过。
+- 现场经正常 apply `65fb90048d0d` 于 UTC `10:20:18.735–10:20:28.744` 完成，终态 `succeeded`、`cleanupCompleted=true`；health/version 为正式 `0.8.5`、上述提交与正式构建时间，实际镜像 digest/OCI 匹配。新范围检查 `succeeded`，迁移组 0、待首次启动 1、待安装 0、无错误，旧缺 DLL 提示已清除。
+- 原用户、实例、游戏卷及 7 个数据区/7 个文件的哈希核对均一致；安装状态为 `installed=true`、`requiredFiles=ok`、`game_installed`。正式共享 JS 的路径与 SHA256 和上述热修一致，现场 `.140` 对应 `versionGuardBlocked=false`；临时会话已删除。现场仍未真实上传存档或进行浏览器视觉验收。
 
 ## 2026-11-16 0.8.4 首次安装恢复入口
 

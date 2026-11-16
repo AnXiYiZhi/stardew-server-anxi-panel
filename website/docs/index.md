@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.8.4
+release: v0.8.5
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: v0.8.4 补齐失败安装的重试入口，并修复首次安装与首次启动前的升级范围检查。
+    details: v0.8.5 修复 Junimo .140 下桌面和移动端存档上传入口被误禁用的问题。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -46,7 +46,7 @@ features:
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
     <strong>{{ $frontmatter.release }}</strong>
-  <p>新装使用 v0.8.4，默认 Junimo .140 与正式 Auth 1.5.0-preview.140-anxi.1。v0.7.2 及更早版本先升到 v0.7.3，再更新面板并检查需要迁移的游戏组。</p>
+  <p>新装使用 v0.8.5，默认 Junimo .140 与正式 Auth 1.5.0-preview.140-anxi.1。v0.7.2 及更早版本先升到 v0.7.3，再更新面板并检查需要迁移的游戏组。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

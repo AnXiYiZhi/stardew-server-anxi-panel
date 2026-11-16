@@ -2,7 +2,12 @@
 
 - 现场 `serverVersion` 与 `expectedServerVersion` 均为 `1.5.0-preview.140` 且 `junimoVersionMatches=true`，旧前端的 `.125` 后缀判断使桌面和移动端按钮禁用。现仅修改 `save-import.ts` 的共用版本能力判断及 `test-save-import.ts`。
 - 接受精确 `.125`、`.140` 完整版本并继续拒绝组件不匹配；未知或缺版本的诊断保持禁用，完全缺诊断时沿用既有行为。后端导入前的组件准备、完整校验和事务执行仍为最终准入依据。
-- 定向 `npm run test:save-import` 一次通过，包含 14 个新增/更新的输入场景与既有 API、导入状态断言。下一步记录新提交对应的现场热修，以及候选和正式 `0.8.5` 发布结果。用户要求跳过额外独立大矩阵，尚无本轮浏览器验收回执。
+- 定向 `npm run test:save-import` 一次通过，包含 14 个新增/更新的输入场景与既有 API、导入状态断言。用户要求跳过额外独立大矩阵。
+- 现场热修已保留原容器部署成功：临时版本 `0.8.4`，源码提交 `1bcc13b4fa5a25e0d01ca6e5b7b5304d8b02a115`，构建时间 `2026-11-16T09:42:02Z`，health 与部署身份匹配。现场 `.140` 且 `junimoVersionMatches=true` 对应 `blocked=false`；共享资源 `save-import-CONP2LCT.js` 返回 HTTP 200，SHA256 `90f5b6440da305b4d06de351383546bfd7bf8f630ac249e9fbacb6bd5bc50c3e` 与构建字节一致，临时会话已删除。
+- 本轮现场回执仅覆盖 API 和新 JS 字节，未真实上传存档，也未进行浏览器视觉验收。
+- `0.8.5` 候选 `43842022819` 已通过，沿用提交 `1bcc13b4fa5a25e0d01ca6e5b7b5304d8b02a115`，正式构建时间 `2026-11-16T09:41:34Z`，唯一 digest `sha256:c24cd96cd928b84308cabc30b927e32d5d679a71740703f74ad33440be1350db`。正式 workflow `43846117614` UTC `10:08:26–10:18:23` 成功，用时 9 分 57 秒，Release 于 `10:18:18Z` 公开；三仓版本与 `latest` digest 一致，正式冒烟通过。
+- 现场正常 apply `65fb90048d0d` 于 UTC `10:20:18.735–10:20:28.744` 达到 `succeeded`、`cleanupCompleted=true`，正式 `0.8.5` 的 health/version、提交、构建时间、实际镜像 digest 和 OCI 一致。新范围检查 `succeeded`、`continuation=true`，迁移组 0、待首次启动 1、待安装 0、无错误，原缺 DLL 预检已清除。
+- 原用户、实例、游戏卷及 7 个数据区/7 个文件哈希均一致，实例为 `installed=true`、`requiredFiles=ok`、`game_installed`。正式 `/assets/save-import-CONP2LCT.js` 的 SHA256 与上述热修相同，`.140` 的 `versionGuardBlocked=false`，临时会话已删除。后续如验收实际存档导入，仍需单独记录真实上传结果；本轮没有该回执或浏览器视觉验收。
 
 ## 2026-11-16 0.8.4 安装恢复接手
 

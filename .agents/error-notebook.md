@@ -1,5 +1,10 @@
 # 项目执行错题本
 
+## 2026-11-16 0.8.5 热修执行记录
+
+- Windows pwsh7、Posh-SSH 3.2.7 与 Ubuntu Docker。热修脚本已完成上传校验、原子替换和单次重启，收据停在 `restarted`，随后健康读取阶段异常退出 1；包装器未保存原始 stderr，无法据此确定具体网络异常类型。只读续查确认同一容器健康、二进制与修复提交相符，再核对共享前端资源 SHA256 和实时版本条件，更新同一收据为 `healthy`，没有重复替换或重启。以后远程包装器保存受保护的完整 stderr，并向工具仅投影异常类型及阶段；重启后的 readiness 对连接暂时断开使用有界只读续接，动作终态不明时不得重放业务操作。
+- 同日只读审计由 `saves_handlers_test.go` 猜测实现文件为 `saves_handlers.go`，实际路径不存在，`rg` 退出 2。改用精确函数名的文件库存确认实现为 `lifecycle_handlers.go` 后继续读取，未执行任何业务写入。继续遵守已有 AGENTS 路径库存规则，不以测试文件名推导未确认的源码路径。
+
 ## 2026-11-16 0.8.4 发布执行记录
 
 - 环境为 Windows PowerShell 7 和 UTF-8 文档。错误探针使用 `$text.StartsWith([string][char]0xFEFF)`，对实际无 BOM 的文本返回 `true`，随后补丁带上不存在的 BOM，`apply_patch` 验证拒绝且零修改。

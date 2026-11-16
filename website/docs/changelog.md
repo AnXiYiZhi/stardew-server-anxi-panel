@@ -6,7 +6,15 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.8.4（最新版本）
+## v0.8.5（最新版本）
+
+**修复 Junimo .140 的存档上传入口。** 桌面和移动端不再把匹配的 `1.5.0-preview.140` 运行版本误判为不支持安全导入，安装完成后可以进入存档上传流程。
+
+**继续保留导入安全检查。** 上传入口支持已适配的 `1.5.0-preview.125` 和 `1.5.0-preview.140`，未知版本或组件版本不匹配仍会被拦截；实际导入继续由服务端检查存档和运行组件。
+
+完整说明见 [GitHub Release v0.8.5](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.5)，升级步骤见 [更新面板与游戏实例](/maintain/update)。
+
+## v0.8.4
 
 **失败安装可以直接重试。** 安装进度中新增「重试安装」，使用已保存的凭据继续原世界安装；需要修改账号时可选择「修改凭据并重试」。
 
