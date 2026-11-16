@@ -77,7 +77,8 @@ export function saveImportRuntimeUnsupported(state: InstanceState | null | undef
   const diagnostic = state?.runtimeDiagnostic
   if (!diagnostic) return false
   const serverVersion = diagnostic.serverVersion?.trim() ?? ''
-  return (serverVersion !== '' && !serverVersion.endsWith('.125')) || diagnostic.junimoVersionMatches === false
+  const supportedVersion = serverVersion === '1.5.0-preview.125' || serverVersion === '1.5.0-preview.140'
+  return !supportedVersion || diagnostic.junimoVersionMatches === false
 }
 
 export function saveImportSubmissionDisabled(input: {

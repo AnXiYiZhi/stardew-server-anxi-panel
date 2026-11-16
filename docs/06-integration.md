@@ -1,3 +1,10 @@
+## 2026-11-16 0.8.5 存档上传版本判断
+
+- `saveImportRuntimeUnsupported` 与后端 `supportsTransactionalImportVersion` 统一为完整版本白名单：`1.5.0-preview.125`、`1.5.0-preview.140`。读取前去除首尾空白，`junimoVersionMatches=false` 始终拒绝；有诊断但版本为空、未知、仅 `.125/.140` 简写或自定义后缀时拒绝。缺少整份诊断沿用原入口行为，由后端执行能力校验。
+- 桌面和移动端共用此判断，修复已安装 `.140` 世界的上传按钮误禁用；运行中、忙碌和已有导入事务的限制保留。本次没有新增 DTO 或修改上传、预检、确认 API。
+- 已安装但尚未首次启动的 `.140` 实例可以进入原导入流程；后端 `prepareImportRuntimeAssets` 在执行事务前同步并校验所需 Junimo Mod，随后继续原 Control、命令通道和数据保护检查。前端开放入口不构成服务端能力通过凭据。
+- 定向 `test:save-import` 已通过，包含 14 个版本/诊断输入与既有请求和导入决策断言；后端准备顺序仅做源码复核。本轮未新增真实存档导入验收，0.8.5 候选及升级后现场按钮状态回执待补。
+
 ## 2026-11-16 0.8.4 未完成首次安装恢复
 
 - `FullStackUpgradeStatus` 新增可选 `installationRequiredInstances: [{id, name}]`，记录通过初装事务和现场文件证明仍需完成首次安装的世界。当前 Panel 续检在无待迁移组时返回 `succeeded`，前端显示该列表并链接到原实例安装路由。已安装世界的身份捕获与迁移确认继续使用原契约。

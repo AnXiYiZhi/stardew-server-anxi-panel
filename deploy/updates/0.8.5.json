@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "version": "0.8.5",
+  "minimumUpdaterVersion": "0.7.3",
+  "title": "v0.8.5 · Junimo .140 存档上传修复",
+  "summary": "修复 .140 运行栈下桌面和移动端存档上传按钮被误禁用的问题。",
+  "changes": [
+    "存档上传入口精确接受受支持的 Junimo 1.5.0-preview.125 和 1.5.0-preview.140。",
+    "运行组件版本不匹配或版本不受支持时，继续显示诊断并阻止上传。",
+    "首次安装完成的 .140 实例可从存档页继续导入，后端按既有流程同步组件并校验。"
+  ],
+  "notices": [
+    {
+      "level": "info",
+      "title": "恢复存档上传",
+      "message": "面板更新后，打开原实例的存档页进行上传，按导入预览确认目标存档。",
+      "requiresConfirmation": false
+    },
+    {
+      "level": "info",
+      "title": "v0.7.3 及以后的升级顺序",
+      "message": "先完成面板更新，页面重连后再按各实例状态继续安装，或在更新中心确认需要迁移的游戏组。",
+      "requiresConfirmation": false
+    },
+    {
+      "level": "warning",
+      "title": "需要短暂停服",
+      "message": "迁移游戏运行栈时，在线玩家会断开。系统先保存和备份，完成后恢复原来运行的世界。",
+      "requiresConfirmation": true
+    },
+    {
+      "level": "warning",
+      "title": "确认 Mod 兼容性",
+      "message": "现有 Mod 和配置会保留，部分第三方 Mod 可能需要更新，请提前确认兼容性。",
+      "requiresConfirmation": true
+    }
+  ],
+  "blocked": false
+}

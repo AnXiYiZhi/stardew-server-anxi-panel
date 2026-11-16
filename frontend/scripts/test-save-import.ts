@@ -24,9 +24,16 @@ assert.deepEqual(
   validateSaveImportDecision({ mode: 'virtual_host_takeover', platformId: '', takeoverAcknowledged: true }).hostHandling,
   { mode: 'virtual_host_takeover', acknowledged: true },
 )
-assert.equal(saveImportRuntimeUnsupported({ runtimeDiagnostic: { serverVersion: '1.5.0-preview.125', junimoVersionMatches: true } } as never), false)
-assert.equal(saveImportRuntimeUnsupported({ runtimeDiagnostic: { serverVersion: '.125', junimoVersionMatches: true } } as never), false)
-assert.equal(saveImportRuntimeUnsupported({ runtimeDiagnostic: { serverVersion: '1.5.0-preview.124', junimoVersionMatches: false } } as never), true)
+for (const serverVersion of ['1.5.0-preview.125', '1.5.0-preview.140']) {
+  assert.equal(saveImportRuntimeUnsupported({ runtimeDiagnostic: { serverVersion, junimoVersionMatches: true } } as never), false)
+  assert.equal(saveImportRuntimeUnsupported({ runtimeDiagnostic: { serverVersion, junimoVersionMatches: false } } as never), true)
+}
+for (const serverVersion of ['.125', '.140', '1.5.0-preview.124', '1.5.0-preview.141', 'custom.125', '', undefined]) {
+  assert.equal(saveImportRuntimeUnsupported({ runtimeDiagnostic: { serverVersion, junimoVersionMatches: true } } as never), true)
+}
+assert.equal(saveImportRuntimeUnsupported(null), false)
+assert.equal(saveImportRuntimeUnsupported(undefined), false)
+assert.equal(saveImportRuntimeUnsupported({} as never), false)
 
 const capturedBodies: unknown[] = []
 const originalFetch = globalThis.fetch

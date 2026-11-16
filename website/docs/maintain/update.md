@@ -2,11 +2,11 @@
 
 ## 面板内直接升级（推荐）
 
-当前正式版为 `v0.8.3`，新装默认使用 Junimo `1.5.0-preview.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。已有服务器按下面的顺序先更新面板，再检查需要迁移的游戏组。
+当前正式版为 `v0.8.4`，新装默认使用 Junimo `1.5.0-preview.140` 与正式 Auth `1.5.0-preview.140-anxi.1`。已有服务器按下面的顺序先更新面板，再检查需要迁移的游戏组。
 
 ### 新装服务器
 
-全新部署直接安装 `v0.8.3`。按安装页完成游戏安装，启用 Steam 邀请码时再完成授权。新装流程见 [一键脚本部署](/deploy/quick-start) 或 [NAS 图形化部署](/deploy/nas)。
+全新部署直接安装 `v0.8.4`。按安装页完成游戏安装，启用 Steam 邀请码时再完成授权。新装流程见 [一键脚本部署](/deploy/quick-start) 或 [NAS 图形化部署](/deploy/nas)。
 
 ### 第一步：旧版本先升级到 v0.7.3
 
@@ -18,7 +18,7 @@ Panel 重建期间网页会暂时断开，等待自动重连即可。新 Panel �
 
 ### 第二步：更新面板，再确认游戏组范围
 
-`v0.7.3` 及以后，管理员可从游戏库、世界列表的顶部更新入口打开“更新中心”，也可使用实例内的“面板版本”入口。选择当前适用的最高稳定版本（目前为 `v0.8.3`），按以下顺序操作：
+`v0.7.3` 及以后，管理员可从游戏库、世界列表的顶部更新入口打开“更新中心”，也可使用实例内的“面板版本”入口。选择当前适用的最高稳定版本（目前为 `v0.8.4`），按以下顺序操作：
 
 1. 阅读本次更新内容和重要提示，先确认面板更新。Panel 会备份面板数据并重建；网页短暂断线后等待自动重连。
 2. 页面刷新后，在新版本更新中心点击“检查升级范围”，先下载目标并完成预检，查看需要迁移的游戏组与世界。
@@ -48,16 +48,16 @@ Panel 健康验收失败会自动回滚。游戏组迁移失败时会按事务�
 
 ## GitHub latest 与 Docker latest
 
-GitHub 的 latest Release 保持在 `v0.7.3`，让旧版先得到准备版本。`v0.7.3` 及以后的更新中心从正式 Release 列表中选择满足升级前置条件的最高稳定版本，目前为 `v0.8.3`。
+GitHub 的 latest Release 保持在 `v0.7.3`，让旧版先得到准备版本。`v0.7.3` 及以后的更新中心从正式 Release 列表中选择满足升级前置条件的最高稳定版本，目前为 `v0.8.4`。
 
-Docker Hub、阿里云 ACR、GHCR 的 Docker `latest` 均指向 `v0.8.3`。已有服务器可以通过 Web 更新中心完成面板更新和游戏组范围确认。
+Docker Hub、阿里云 ACR、GHCR 的 Docker `latest` 均指向 `v0.8.4`。已有服务器可以通过 Web 更新中心完成面板更新和游戏组范围确认。
 
 ## 一键脚本部署的服务器
 
 旧版本使用脚本更新前，先取得本版脚本：
 
 ```bash
-cd ~ && curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.3/run.sh && chmod +x run.sh
+cd ~ && curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/download/v0.8.4/run.sh && chmod +x run.sh
 ```
 
 如果当前版本低于 `v0.7.3`，可显式升级到准备版本：

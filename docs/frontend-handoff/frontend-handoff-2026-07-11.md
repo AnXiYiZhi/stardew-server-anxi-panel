@@ -1,3 +1,9 @@
+## 2026-11-16 0.8.5 存档上传修复接手
+
+- 现场 `serverVersion` 与 `expectedServerVersion` 均为 `1.5.0-preview.140` 且 `junimoVersionMatches=true`，旧前端的 `.125` 后缀判断使桌面和移动端按钮禁用。现仅修改 `save-import.ts` 的共用版本能力判断及 `test-save-import.ts`。
+- 接受精确 `.125`、`.140` 完整版本并继续拒绝组件不匹配；未知或缺版本的诊断保持禁用，完全缺诊断时沿用既有行为。后端导入前的组件准备、完整校验和事务执行仍为最终准入依据。
+- 定向 `npm run test:save-import` 一次通过，包含 14 个新增/更新的输入场景与既有 API、导入状态断言。下一步记录新提交对应的现场热修，以及候选和正式 `0.8.5` 发布结果。用户要求跳过额外独立大矩阵，尚无本轮浏览器验收回执。
+
 ## 2026-11-16 0.8.4 安装恢复接手
 
 - 修改 `GameInstallRail.tsx`，失败后提供「重试安装」与「修改凭据并重试」。复用凭据请求仍发往原 `instanceId`，返回 `jobId` 后由原轮询跟踪同一任务；已有活跃任务由服务端 `install_in_progress` 接管。
@@ -5,6 +11,11 @@
 - `api.ts` 接收可选 `installationRequiredInstances`；`UpdateDetailsDialog.tsx` 展示原世界安装链接，`full-stack-state.ts` 对排除待安装世界后的迁移检查显示对应说明。老 API 缺该字段时沿用旧展示。
 - 已安装而尚未首次启动的世界使用 `firstStartRequiredInstances` 展示，链接原世界总览；提示由首次启动同步运行组件。
 - 已静态核对。独立兼容发现安装接口源代码断言绑定旧对象字面量，现同步 `test-install-state.ts` 和 `test-responsive-layout.ts`，覆盖编辑凭据与保存凭据的统一调用。定向 `test:install-state` 通过，浏览器验收未执行。后续验证应覆盖旧 `smapi_install_failed`、保存凭据缺失、重复提交的原任务接管及更新中心混合范围。
+- 现场游戏已在原实例安装成功。前后端热补丁后的同版本范围检查成功，清除了缺少 `JunimoServer.dll` 的旧预检阻断。后续真实 Web 更新已更换为正式 `0.8.4`，范围检查 `succeeded`，返回 1 个待首次启动世界，迁移范围为空且无错误。用户、实例、原游戏卷与受保护文件前后核对一致，正式 digest、OCI 与前端资源 HTTP 200 已核对。额外独立专项矩阵按用户要求未执行，具体范围见镜像发布记录。
+
+- `v0.8.4` 已由人工签核工作流 `43839290307` 首次运行正式发布，UTC `09:23:22` 至 `09:25:12`，用时约 1 分 50 秒。候选提交 `00345d3e783a51823d6f0d816262e7beedf896f0` 的唯一 digest `sha256:d31ea52039e8834b175cf163e46ebd8b536b82364c62bc2ac4f066521e78b8d7` 已提升至三仓版本与 `latest`，正式 health/version 冒烟通过。[Release v0.8.4](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.4)
+
+- `0.8.4` 发布后确认存档上传入口遗留问题。现场 `.140` 与期望版本匹配，前端仍因仅接受 `.125` 而禁用上传。后续修复已进入上述 `0.8.5` 准备，部署与发布结果分别记录。
 
 ## 2026-11-06 0.8.2 更新中心展示接手
 

@@ -6,7 +6,17 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.8.3（最新版本）
+## v0.8.4（最新版本）
+
+**失败安装可以直接重试。** 安装进度中新增「重试安装」，使用已保存的凭据继续原世界安装；需要修改账号时可选择「修改凭据并重试」。
+
+**首次安装与首次启动有明确入口。** 更新中心会列出需要继续安装的世界，并提供原世界的安装链接。游戏已安装、尚未首次启动的世界会提示进入世界完成存档设置与启动，由正常启动流程同步运行组件。
+
+**修复游戏升级范围预检。** 对符合初装事务和文件状态的世界，预检区分安装尚未完成与等待首次启动，避免因 JunimoServer 组件尚未生成而中止。已有游戏组继续按实际组件与数据检查决定迁移范围。
+
+完整说明见 [GitHub Release v0.8.4](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.8.4)，升级步骤见 [更新面板与游戏实例](/maintain/update)。
+
+## v0.8.3
 
 **修复全新安装时的 SMAPI 失败。** SteamCMD 下载游戏和 SDK 后，面板能识别原版 `StardewValley` 启动器，并运行 Junimo `.140` 镜像内置的 SMAPI 安装器。游戏和 SDK 通过安装后的完整性检查，任务才会显示完成。
 
