@@ -37,7 +37,10 @@ const apiSource = readFileSync(
 ).replace(/\r\n?/g, '\n')
 
 assert.match(apiSource, /\/install`, \{\s*method: 'POST',\s*body,/)
-assert.match(gameInstallRailSource, /installInstance\(\{ steamUsername, steamPassword, vncPassword \}, targetId\)/)
+assert.match(gameInstallRailSource, /const body\s*=\s*reuseCredentials\s*\?\s*\{\s*reuseCredentials:\s*true\s*\}\s*:\s*\{\s*steamUsername,\s*steamPassword,\s*vncPassword\s*\}/, 'saved credentials and edited credentials must produce distinct install payloads')
+assert.match(gameInstallRailSource, /installInstance\(\s*body,\s*targetId\s*\)/, 'both install paths must use the selected instance')
+assert.match(gameInstallRailSource, /async function submitInstall\([\s\S]*?await startInstall\(false\)/, 'the credential form must submit its edited values')
+assert.match(gameInstallRailSource, /!authOnly\s*\?\s*<button[^>]*onClick=\{\(\) => void startInstall\(true\)\}/, 'saved-credential retry must be available only for game installation')
 assert.doesNotMatch(apiSource, /forceReauth/)
 assert.match(gameInstallRailSource, /sourceInstallation\.reason === 'required_files_missing'/)
 assert.match(gameInstallRailSource, /sourceState\?\.driverPhase === 'install_verification_failed'/)

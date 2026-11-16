@@ -4,7 +4,7 @@
 - `installation-state.ts` 在 `incomplete` 的明确失败安装阶段保留安装入口。Control 尚未就绪时可返回游戏安装，保留运行中及诊断不可用的原分类。
 - `api.ts` 接收可选 `installationRequiredInstances`；`UpdateDetailsDialog.tsx` 展示原世界安装链接，`full-stack-state.ts` 对排除待安装世界后的迁移检查显示对应说明。老 API 缺该字段时沿用旧展示。
 - 已安装而尚未首次启动的世界使用 `firstStartRequiredInstances` 展示，链接原世界总览；提示由首次启动同步运行组件。
-- 本轮按用户要求跳过运行测试及浏览器验收，仅静态核对。后续验证应覆盖旧 `smapi_install_failed`、保存凭据缺失、重复提交的原任务接管及更新中心混合范围。
+- 已静态核对。独立兼容发现安装接口源代码断言绑定旧对象字面量，现同步 `test-install-state.ts` 和 `test-responsive-layout.ts`，覆盖编辑凭据与保存凭据的统一调用。定向 `test:install-state` 通过，浏览器验收未执行。后续验证应覆盖旧 `smapi_install_failed`、保存凭据缺失、重复提交的原任务接管及更新中心混合范围。
 
 ## 2026-11-06 0.8.2 更新中心展示接手
 

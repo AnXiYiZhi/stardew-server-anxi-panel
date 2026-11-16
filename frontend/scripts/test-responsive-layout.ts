@@ -506,7 +506,7 @@ assert.match(gameInstallRailSource, /type=\{steamPasswordVisible \? 'text' : 'pa
 assert.match(gameInstallRailSource, /type=\{vncPasswordVisible \? 'text' : 'password'\}/)
 assert.ok(gameInstallRailSource.includes("aria-label={`${steamPasswordVisible ? '隐藏' : '显示'} Steam 密码`}"))
 assert.ok(gameInstallRailSource.includes("aria-label={`${vncPasswordVisible ? '隐藏' : '显示'} VNC 密码`}"))
-assert.match(gameInstallRailSource, /installInstance\(\{ steamUsername, steamPassword, vncPassword \}, targetId\)/)
+assert.match(gameInstallRailSource, /installInstance\(\s*body,\s*targetId\s*\)/)
 assert.match(gameInstallRailSource, /canonicalInstallPageJobs\([\s\S]*?requestedInstallJobId/)
 assert.match(gameInstallRailSource, /getLatestJobLogs\(jobId, 1000\)/)
 assert.match(gameInstallRailSource, /aria-label="当前安装步骤进度"/)
