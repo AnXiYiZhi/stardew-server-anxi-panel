@@ -6,6 +6,8 @@
 - Windows pwsh7。格式化前错误地把预期 Go 文件数写成 9，实际范围包含 10 个文件，守卫在执行 `gofmt` 前退出 1。以 `git diff --name-only -- '*.go'` 确认实际范围，复核十个路径并用明确名单运行 `gofmt`。预防时按路径集合核对格式化范围。
 - Windows pwsh7/Docker Desktop。一次观察命令把 `docker top` 的非零结果直接解释为容器不可见，当时日志文件仍在缓冲，结论失准。按名称精确查询 `docker ps` 和该容器的 `docker logs` 确认测试在运行，最终以原执行 session 的退出码收口。进程投影失败时保留具体诊断，容器是否存在由容器查询确认。
 - Windows pwsh7。0.8.3 路径差异查询使用了本机未抓取的 `v0.8.2`，`git diff` 退出 128。以正式 Release 已核验的 peeled commit `4ad902f553782f0dfda7b4bd1b92823e809bea32` 核对同一范围。发布差异查询前先确认旧引用已解析，缺本地 tag 时使用经远端核验的完整提交。
+
+  最近复发（2026-11-16，Windows pwsh7，远程安装只读排查）。本地缺少 `v0.8.1` tag，`git grep` 退出 128。用发布记录核验的完整提交执行 `git rev-parse --verify --quiet '<commit>^{commit}'` 后，读取同一历史源码成功。已在 `AGENTS.md` 增加引用预检，适用于查阅和比较历史源码。
 - Windows pwsh7/Docker Desktop。0.8.3 只读 Steam 游戏夹具导出首轮比较了清单的大写 MD5 与 Python `hexdigest()` 的小写输出，核验退出 1。对照生产校验契约统一为小写，保留首轮产物并仅重导同一固定清单，复核全部游戏文件和 SDK，原测试卷保持只读。适用于从 Steam 构建清单生成的夹具校验。
 - Windows pwsh7/DinD。0.8.3 冷安装在任务终态后查 Docker 历史 start 事件返回空，夹具又误将坏备份文件路径当成 `/api/jobs` 摘要字段。读取同一已受理 job 的阶段日志，结合实际卷内哈希、stamp 和安装标记核对冷安装与拒绝位置。安装阶段应以同一任务日志及文件结果交叉验证，原安装请求未重放。
 - Windows Codex Shell。将已归档的 0.8.3 夹具按计算后的 `Remove-Item` 目标清理时，命令在启动前被策略拒绝。以归档和工作副本 SHA256 相等的六个确切文件路径执行 `apply_patch` 删除，保留归档。精确文件清理优先提交字面路径，遇启动拦截先核对是否实际执行。

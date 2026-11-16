@@ -159,6 +159,7 @@ GitHub Actions 状态和制品查询优先使用已认证的 `gh api` 或 GitHub
 - 同一任务出现一次猜测源码路径导致的退出 2 后，下一条同类命令必须先独立运行 `rg --files` 取得目录清单；后续读取/检索的文件参数须来自该清单并先通过 `Test-Path -LiteralPath`，不得在有效命中后追加由模块名称推导的新文件路径。
   库存中的文件路径须逐项精确匹配，测试文件存在不能推导同名实现文件存在；保留完整库存并核对成员关系后再读取，不能凭限量展示的印象拼路径。
 - Git tag/ref 发布审计中，`git for-each-ref --format` 禁止使用属于 `git log --format` 的 `%n` 换行占位符；结构化证据默认一字段一命令，只有经过独立探针确认时才使用该子命令支持的 `%0a`。tag type、object、peeled commit、tagger date 与 subject 分别核对，不能让退出 0 的字面量占位符冒充有效格式。
+- 读取或比较历史 Git 版本前，先用 `git rev-parse --verify --quiet '<ref>^{commit}'` 核对准确引用和退出码。缺本地 tag 时，使用已核验的正式完整 commit，并确认本地对象可读后再运行 `git show`、`git grep` 或 `git diff`。远端发布状态以已认证的 GitHub 查询为准。
 - Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。`functions.exec` 中编排 `web__run` 对象数组时，只从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
